@@ -9,9 +9,12 @@
     "serve": "npx http-server dist -p 8443 --ssl --cert localhost.pem --key localhost-key.pem -c-1"
   },
   "devDependencies": {
+    "chokidar": "^3.6.0",
     "coffeescript": "^2.7.0",
     "pug": "^3.0.3",
-    "chokidar": "^3.6.0",
     "verovio": "^4.4.0"
+  },
+  "dependencies": {
+    "fflate": "^0.8.2"
   }
 }

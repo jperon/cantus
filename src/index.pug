@@ -7,6 +7,7 @@ html(lang="fr")
     meta(name="apple-mobile-web-app-capable" content="yes")
     meta(name="theme-color" content="#ffffff")
     link(rel="manifest" href="manifest.json")
+    link(rel="icon" href="favicon.ico" type="image/x-icon")
     title Liseuse MusicXML
     style !{css}
   body
@@ -22,13 +23,47 @@ html(lang="fr")
         p Ouvrir un fichier MusicXML pour commencer
         button#import-btn Ouvrir un fichier
         input#file-input(type="file" accept=".xml,.musicxml,.mxl")
+    button#btn-library.hidden ☰
+    button#btn-settings.hidden ⚙
     #overlay-loading
       .spinner
       p Chargement…
     #overlay-error
       p#error-message Une erreur est survenue.
+    #settings-overlay.hidden
+      #settings-header
+        h2 Réglages
+        button#settings-close ✕
+      .settings-group
+        label.settings-label Zoom
+        .settings-row
+          span#zoom-value 40
+          input#zoom-range(type="range" min="30" max="80" step="5" value="40")
+      .settings-group
+        label.settings-label Thème
+        .settings-row
+          button.theme-btn.active(data-theme="white") Blanc
+          button.theme-btn(data-theme="sepia") Sépia
+          button.theme-btn(data-theme="dark") Sombre
+      .settings-group
+        label.settings-label Zone de tap
+        .settings-row
+          button.tap-btn(data-size="20") Petite
+          button.tap-btn.active(data-size="30") Normale
+          button.tap-btn(data-size="40") Grande
+    #library-overlay.hidden
+      #library-header
+        h2 Bibliothèque
+        button#library-close ✕
+      #library-list
+      #library-actions
+        button#library-import-btn Ajouter un fichier
+        input#library-file-input(type="file" accept=".xml,.musicxml,.mxl")
     #page-indicator
     script !{workerSetup}
+    script !{fflateSetup}
+    script !{mxlJs}
+    script !{storageJs}
     script !{appJs}
     script.
       if ('serviceWorker' in navigator) {

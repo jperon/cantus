@@ -48,27 +48,43 @@ function build() {
 })();
 `;
 
-  // 5. Compile app.coffee -> JS
+  // 5. Read fflate (for MXL/ZIP decompression)
+  console.log('  Reading fflate...');
+  const fflateSrc = fs.readFileSync(path.join(__dirname, 'node_modules', 'fflate', 'umd', 'index.js'), 'utf-8');
+  const fflateSetup = `(function(){${fflateSrc}; window.__fflate = fflate;})()`;
+
+  // 6. Compile mxl.coffee -> JS
+  console.log('  Compiling mxl.coffee...');
+  const mxlJs = compileCoffee('mxl.coffee');
+
+  // 7. Compile storage.coffee -> JS
+  console.log('  Compiling storage.coffee...');
+  const storageJs = compileCoffee('storage.coffee');
+
+  // 8. Compile app.coffee -> JS
   console.log('  Compiling app.coffee...');
   const appJs = compileCoffee('app.coffee');
 
-  // 6. Read CSS
+  // 9. Read CSS
   const css = readSrc('styles.css');
 
-  // 7. Compile Pug
+  // 10. Compile Pug
   console.log('  Compiling index.pug...');
   const html = pug.renderFile(path.join(SRC, 'index.pug'), {
     css,
     workerSetup,
+    fflateSetup,
+    mxlJs,
+    storageJs,
     appJs,
   });
 
-  // 8. Write dist/index.html
+  // 11. Write dist/index.html
   fs.writeFileSync(path.join(DIST, 'index.html'), html);
   const sizeMB = (fs.statSync(path.join(DIST, 'index.html')).size / 1024 / 1024).toFixed(1);
   console.log(`  -> dist/index.html (${sizeMB} MB)`);
 
-  // 9. Copy PWA files
+  // 12. Copy PWA files
   console.log('  Copying PWA files...');
   fs.copyFileSync(path.join(PWA, 'manifest.json'), path.join(DIST, 'manifest.json'));
   fs.copyFileSync(path.join(PWA, 'sw.js'), path.join(DIST, 'sw.js'));
@@ -76,7 +92,11 @@ function build() {
   const iconsDir = path.join(PWA, 'icons');
   if (fs.existsSync(iconsDir)) {
     for (const file of fs.readdirSync(iconsDir)) {
-      fs.copyFileSync(path.join(iconsDir, file), path.join(DIST, 'icons', file));
+      if (file === 'favicon.ico') {
+        fs.copyFileSync(path.join(iconsDir, file), path.join(DIST, file));
+      } else {
+        fs.copyFileSync(path.join(iconsDir, file), path.join(DIST, 'icons', file));
+      }
     }
   }
 
