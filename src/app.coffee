@@ -5,6 +5,7 @@ console.log "Musica — Liseuse MusicXML"
 worker = window.__musicaWorker
 storage = window.__musicaStorage
 currentPage = 1
+scrollPos = 0
 pageCount = 0
 svgCache = new Map()
 fileLoaded = false
@@ -87,30 +88,60 @@ showLibraryBtn = ->
 
 showIndicator = ->
   el = $("page-indicator")
-  el.textContent = "#{currentPage} / #{pageCount}"
+  topPage = Math.floor(scrollPos / 2) + 1
+  el.textContent = "#{topPage} / #{pageCount}"
   el.classList.add "visible"
   clearTimeout indicatorTimeout if indicatorTimeout
   indicatorTimeout = setTimeout ->
     el.classList.remove "visible"
   , 1500
 
-displayPage = (page) ->
+# Render two stacked pages in the current slot with vertical offset
+displayView = ->
   slot = $("page-current")
-  cached = svgCache.get page
-  if cached
-    slot.innerHTML = cached
-  else
-    slot.innerHTML = '<div style="padding:40px;color:#999;text-align:center">Rendu en cours…</div>'
-    worker.postMessage { type: "render", page }
+  topPage = Math.floor(scrollPos / 2) + 1
+  bottomPage = topPage + 1
+  offset = (scrollPos % 2) * 50
+
+  topSvg = svgCache.get(topPage) or ""
+  bottomSvg = ""
+  if bottomPage <= pageCount
+    bottomSvg = svgCache.get(bottomPage) or ""
+
+  # Request rendering for missing pages
+  unless svgCache.has(topPage)
+    worker.postMessage { type: "render", page: topPage }
+  unless svgCache.has(bottomPage) or bottomPage > pageCount
+    worker.postMessage { type: "render", page: bottomPage }
+
+  slot.innerHTML = ""
+  wrapper = document.createElement "div"
+  wrapper.className = "scroll-wrapper"
+  wrapper.style.transform = "translateY(-#{offset}vh)"
+
+  topDiv = document.createElement "div"
+  topDiv.className = "scroll-page"
+  topDiv.innerHTML = topSvg
+  wrapper.appendChild topDiv
+
+  if bottomSvg or bottomPage <= pageCount
+    bottomDiv = document.createElement "div"
+    bottomDiv.className = "scroll-page"
+    bottomDiv.innerHTML = bottomSvg
+    wrapper.appendChild bottomDiv
+
+  slot.appendChild wrapper
 
 purgeCacheFarPages = ->
-  return if svgCache.size <= 5
+  topPage = Math.floor(scrollPos / 2) + 1
+  return if svgCache.size <= 7
   for key from svgCache.keys()
-    if Math.abs(key - currentPage) > 2
+    if Math.abs(key - topPage) > 3
       svgCache.delete key
 
 prefetch = ->
-  for p in [currentPage + 1, currentPage + 2]
+  topPage = Math.floor(scrollPos / 2) + 1
+  for p in [topPage + 1, topPage + 2]
     if p <= pageCount and not svgCache.has(p)
       worker.postMessage { type: "render", page: p }
   purgeCacheFarPages()
@@ -119,13 +150,28 @@ savePositionDebounced = ->
   return unless currentFileId
   clearTimeout positionTimer if positionTimer
   positionTimer = setTimeout ->
-    storage.savePosition currentFileId, currentPage
+    page = Math.floor(scrollPos / 2) + 1
+    storage.savePosition currentFileId, page
   , 1000
 
-goToPage = (page) ->
-  return if page < 1 or page > pageCount
-  currentPage = page
-  displayPage currentPage
+maxScrollPos = -> (pageCount * 2) - 2
+
+goNext = ->
+  return unless fileLoaded
+  return if scrollPos >= maxScrollPos()
+  scrollPos++
+  currentPage = Math.floor(scrollPos / 2) + 1
+  displayView()
+  showIndicator()
+  prefetch()
+  savePositionDebounced()
+
+goPrev = ->
+  return unless fileLoaded
+  return if scrollPos <= 0
+  scrollPos--
+  currentPage = Math.floor(scrollPos / 2) + 1
+  displayView()
   showIndicator()
   prefetch()
   savePositionDebounced()
@@ -165,6 +211,7 @@ loadXml = (xml, startPage = 1) ->
   currentXml = xml
   processedXml = preprocessMusicXML xml
   currentPage = startPage
+  scrollPos = (startPage - 1) * 2
   pw = Math.round(window.innerWidth * 100 / currentScale)
   ph = Math.round(window.innerHeight * 100 / currentScale)
   lastWidth = window.innerWidth
@@ -185,19 +232,23 @@ worker.onmessage = (e) ->
     when "loaded"
       pageCount = e.data.pageCount
       currentPage = Math.min(currentPage, pageCount) or 1
+      scrollPos = Math.min(scrollPos, maxScrollPos())
       fileLoaded = true
       hideLoading()
       hideImport()
       showLibraryBtn()
       console.log "Partition chargée: #{pageCount} pages"
-      displayPage currentPage
+      displayView()
       showIndicator()
       prefetch()
 
     when "svg"
       svgCache.set e.data.page, e.data.svg
-      if e.data.page is currentPage
-        $("page-current").innerHTML = e.data.svg
+      # Re-render view if this page is currently visible
+      topPage = Math.floor(scrollPos / 2) + 1
+      bottomPage = topPage + 1
+      if e.data.page is topPage or e.data.page is bottomPage
+        displayView()
 
     when "error"
       console.error "Worker error:", e.data.message
@@ -272,11 +323,11 @@ startApp = ->
 setupNavigation = ->
   $("tap-left").addEventListener "click", (e) ->
     e.preventDefault()
-    goToPage currentPage - 1 if fileLoaded
+    goPrev()
 
   $("tap-right").addEventListener "click", (e) ->
     e.preventDefault()
-    goToPage currentPage + 1 if fileLoaded
+    goNext()
 
   # Keyboard navigation
   document.addEventListener "keydown", (e) ->
@@ -284,10 +335,10 @@ setupNavigation = ->
     switch e.key
       when "ArrowRight", " "
         e.preventDefault()
-        goToPage currentPage + 1
+        goNext()
       when "ArrowLeft"
         e.preventDefault()
-        goToPage currentPage - 1
+        goPrev()
 
 # File import (both from import-section and library overlay)
 handleFileImport = (file) ->
