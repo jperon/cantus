@@ -17,7 +17,7 @@ verovioReady = new Promise (resolve) ->
 loadScore = (xmlString, pageWidth, pageHeight, scale = 40) ->
   tk.setOptions
     breaks: "auto"
-    adjustPageHeight: false
+    adjustPageHeight: true
     pageWidth: pageWidth
     pageHeight: pageHeight
     scale: scale

@@ -17,6 +17,7 @@ resizeTimer = null
 positionTimer = null
 verovioReady = false
 currentScale = 40
+verticalScrollRatio = 0
 
 # Settings defaults
 defaultSettings = { zoom: 40, theme: "white", tapSize: 30 }
@@ -132,6 +133,12 @@ displayView = ->
 
   slot.appendChild wrapper
 
+  # Restore vertical scroll position and apply alignment after render
+  requestAnimationFrame ->
+    if slot.scrollHeight > slot.clientHeight and verticalScrollRatio > 0
+      slot.scrollTop = verticalScrollRatio * (slot.scrollHeight - slot.clientHeight)
+    applyVerticalAlignment()
+
 purgeCacheFarPages = ->
   topPage = Math.floor(scrollPos / 2) + 1
   return if svgCache.size <= 7
@@ -156,9 +163,34 @@ savePositionDebounced = ->
 
 maxScrollPos = -> (pageCount * 2) - 2
 
+# Proportional vertical alignment: each page's SVG gets independent translateY
+# so pages with different heights stay aligned based on scroll ratio
+applyVerticalAlignment = ->
+  slot = $("page-current")
+  maxScroll = slot.scrollHeight - slot.clientHeight
+  return unless maxScroll > 0
+  ratio = slot.scrollTop / maxScroll
+  viewH = slot.clientHeight
+  pages = slot.querySelectorAll(".scroll-page")
+  for page in pages
+    svg = page.querySelector("svg")
+    continue unless svg
+    svgH = svg.getBoundingClientRect().height
+    idealY = ratio * Math.max(0, svgH - viewH)
+    actualY = slot.scrollTop
+    compensation = actualY - idealY
+    svg.style.transform = "translateY(#{compensation}px)"
+
+captureVerticalScroll = ->
+  slot = $("page-current")
+  maxScroll = slot.scrollHeight - slot.clientHeight
+  if maxScroll > 0
+    verticalScrollRatio = slot.scrollTop / maxScroll
+
 goNext = ->
   return unless fileLoaded
   return if scrollPos >= maxScrollPos()
+  captureVerticalScroll()
   scrollPos++
   currentPage = Math.floor(scrollPos / 2) + 1
   displayView()
@@ -169,6 +201,7 @@ goNext = ->
 goPrev = ->
   return unless fileLoaded
   return if scrollPos <= 0
+  captureVerticalScroll()
   scrollPos--
   currentPage = Math.floor(scrollPos / 2) + 1
   displayView()
@@ -462,6 +495,8 @@ document.addEventListener "DOMContentLoaded", ->
   setupLibrary()
   setupSettings()
   setupResize()
+  # Vertical scroll alignment listener
+  $("page-current").addEventListener "scroll", applyVerticalAlignment
   # Init the Verovio worker
   worker.postMessage { type: "init" }
   console.log "Initialisation Verovio…"
