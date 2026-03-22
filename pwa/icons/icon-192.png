@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="192" height="192" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="64" fill="#1a1a2e"/>
+  <!-- Staff lines -->
+  <g stroke="#e0e0e0" stroke-width="4">
+    <line x1="60" y1="180" x2="452" y2="180"/>
+    <line x1="60" y1="210" x2="452" y2="210"/>
+    <line x1="60" y1="240" x2="452" y2="240"/>
+    <line x1="60" y1="270" x2="452" y2="270"/>
+    <line x1="60" y1="300" x2="452" y2="300"/>
+  </g>
+  <!-- Treble clef stylized -->
+  <text x="80" y="290" font-size="140" font-family="serif" fill="#e94560">&#119070;</text>
+  <!-- Notes -->
+  <ellipse cx="250" cy="270" rx="18" ry="14" fill="#e0e0e0" transform="rotate(-15,250,270)"/>
+  <line x1="266" y1="270" x2="266" y2="170" stroke="#e0e0e0" stroke-width="5"/>
+  <ellipse cx="320" cy="240" rx="18" ry="14" fill="#e0e0e0" transform="rotate(-15,320,240)"/>
+  <line x1="336" y1="240" x2="336" y2="140" stroke="#e0e0e0" stroke-width="5"/>
+  <ellipse cx="390" cy="300" rx="18" ry="14" fill="#e0e0e0" transform="rotate(-15,390,300)"/>
+  <line x1="406" y1="300" x2="406" y2="200" stroke="#e0e0e0" stroke-width="5"/>
+  <!-- App name -->
+  <text x="256" y="400" text-anchor="middle" font-size="56" font-family="sans-serif" font-weight="bold" fill="#e0e0e0">Musica</text>
+</svg>

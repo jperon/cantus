@@ -1,0 +1,17 @@
+{
+  "name": "musica",
+  "version": "1.0.0",
+  "description": "Liseuse MusicXML PWA — lecteur de partitions pour liseuse Android",
+  "private": true,
+  "scripts": {
+    "build": "node build.js",
+    "watch": "node build.js --watch",
+    "serve": "npx http-server dist -p 8443 --ssl --cert localhost.pem --key localhost-key.pem -c-1"
+  },
+  "devDependencies": {
+    "coffeescript": "^2.7.0",
+    "pug": "^3.0.3",
+    "chokidar": "^3.6.0",
+    "verovio": "^4.4.0"
+  }
+}
