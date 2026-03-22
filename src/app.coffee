@@ -166,10 +166,11 @@ loadXml = (xml, startPage = 1) ->
   processedXml = preprocessMusicXML xml
   currentPage = startPage
   pw = Math.round(window.innerWidth * 100 / currentScale)
+  ph = Math.round(window.innerHeight * 100 / currentScale)
   lastWidth = window.innerWidth
   svgCache.clear()
   showLoading()
-  worker.postMessage { type: "load", xml: processedXml, pageWidth: pw, scale: currentScale }
+  worker.postMessage { type: "load", xml: processedXml, pageWidth: pw, pageHeight: ph, scale: currentScale }
 
 # Worker message handler
 worker.onmessage = (e) ->

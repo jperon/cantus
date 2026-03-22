@@ -14,11 +14,12 @@ verovioReady = new Promise (resolve) ->
       prevCallback?()
       resolve()
 
-loadScore = (xmlString, pageWidth, scale = 40) ->
+loadScore = (xmlString, pageWidth, pageHeight, scale = 40) ->
   tk.setOptions
     breaks: "auto"
-    adjustPageHeight: true
+    adjustPageHeight: false
     pageWidth: pageWidth
+    pageHeight: pageHeight
     scale: scale
   tk.loadData xmlString
   pageCount = tk.getPageCount()
@@ -40,8 +41,8 @@ self.onmessage = (e) ->
           self.postMessage { type: "error", message: err.message or String(err) }
 
       when "load"
-        {xml, pageWidth, scale} = e.data
-        loadScore xml, pageWidth, scale
+        {xml, pageWidth, pageHeight, scale} = e.data
+        loadScore xml, pageWidth, pageHeight, scale
 
       when "render"
         renderPage e.data.page
