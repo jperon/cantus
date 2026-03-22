@@ -96,17 +96,17 @@ showIndicator = ->
     el.classList.remove "visible"
   , 1500
 
-# Render two stacked pages in the current slot with vertical offset
+# Render two pages side by side with horizontal offset (50% scroll)
 displayView = ->
   slot = $("page-current")
   topPage = Math.floor(scrollPos / 2) + 1
   bottomPage = topPage + 1
   offset = (scrollPos % 2) * 50
 
-  topSvg = svgCache.get(topPage) or ""
-  bottomSvg = ""
+  leftSvg = svgCache.get(topPage) or ""
+  rightSvg = ""
   if bottomPage <= pageCount
-    bottomSvg = svgCache.get(bottomPage) or ""
+    rightSvg = svgCache.get(bottomPage) or ""
 
   # Request rendering for missing pages
   unless svgCache.has(topPage)
@@ -117,18 +117,18 @@ displayView = ->
   slot.innerHTML = ""
   wrapper = document.createElement "div"
   wrapper.className = "scroll-wrapper"
-  wrapper.style.transform = "translateY(-#{offset}vh)"
+  wrapper.style.transform = "translateX(-#{offset}vw)"
 
-  topDiv = document.createElement "div"
-  topDiv.className = "scroll-page"
-  topDiv.innerHTML = topSvg
-  wrapper.appendChild topDiv
+  leftDiv = document.createElement "div"
+  leftDiv.className = "scroll-page"
+  leftDiv.innerHTML = leftSvg
+  wrapper.appendChild leftDiv
 
-  if bottomSvg or bottomPage <= pageCount
-    bottomDiv = document.createElement "div"
-    bottomDiv.className = "scroll-page"
-    bottomDiv.innerHTML = bottomSvg
-    wrapper.appendChild bottomDiv
+  if rightSvg or bottomPage <= pageCount
+    rightDiv = document.createElement "div"
+    rightDiv.className = "scroll-page"
+    rightDiv.innerHTML = rightSvg
+    wrapper.appendChild rightDiv
 
   slot.appendChild wrapper
 
