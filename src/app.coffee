@@ -83,6 +83,9 @@ worker.onmessage = (e) ->
           if mvPages > 1
             requestPage(1, 2)
           prefetch()
+          # Check if all pages are already cached (from persistent cache)
+          if memoryCache.size >= pageCount and pageCount > 0
+            hideLoadingIndicator()
       # Navigate to target page if all movements are loaded
       if targetPage and movements.every((m) -> m.loaded)
         goToPage targetPage
@@ -104,11 +107,12 @@ worker.onmessage = (e) ->
       if pendingRenders.has(key)
         pendingRenders.get(key)(svg)
         pendingRenders.delete(key)
-      # Update display if this is a visible page
-      topPage = Math.floor(scrollPos / 2) + 1
-      bottomPage = topPage + 1
-      if globalPage is topPage or globalPage is bottomPage
-        displayView()
+      # Note: displayView() is now async, so we don't call it here
+      # The async displayView will update when pages are loaded
+
+      # Hide loading indicator if all pages are cached
+      if memoryCache.size >= pageCount and pageCount > 0
+        hideLoadingIndicator()
 
     when "error"
       {message, movementId} = e.data
@@ -260,7 +264,8 @@ renderPageSync = (globalPage) ->
   return "" unless result
   {movement, localPage} = result
   requestPage(movement.id, localPage)
-  ""
+  # Return loading placeholder while waiting for worker
+  '<div class="loading-placeholder">Chargement...</div>'
 
 renderPageAsync = (globalPage) ->
   return Promise.resolve(memoryCache.get(globalPage)) if memoryCache.has(globalPage)
@@ -275,11 +280,7 @@ displayView = ->
   bottomPage = topPage + 1
   offset = (scrollPos % 2) * 50
 
-  leftSvg = renderPageSync topPage
-  rightSvg = ""
-  if bottomPage <= pageCount
-    rightSvg = renderPageSync bottomPage
-
+  # Show loading placeholder immediately
   slot.innerHTML = ""
   wrapper = document.createElement "div"
   wrapper.className = "scroll-wrapper"
@@ -287,25 +288,35 @@ displayView = ->
 
   leftDiv = document.createElement "div"
   leftDiv.className = "scroll-page"
-  leftDiv.innerHTML = leftSvg
+  leftDiv.innerHTML = '<div class="loading-placeholder">Chargement...</div>'
   wrapper.appendChild leftDiv
 
-  if rightSvg or bottomPage <= pageCount
+  if bottomPage <= pageCount
     rightDiv = document.createElement "div"
     rightDiv.className = "scroll-page"
-    rightDiv.innerHTML = rightSvg
+    rightDiv.innerHTML = '<div class="loading-placeholder">Chargement...</div>'
     wrapper.appendChild rightDiv
 
   slot.appendChild wrapper
 
-  requestAnimationFrame ->
-    if slot.scrollHeight > slot.clientHeight and verticalScrollRatio > 0
-      slot.scrollTop = verticalScrollRatio * (slot.scrollHeight - slot.clientHeight)
-    applyVerticalAlignment()
+  # Render pages asynchronously and update when ready
+  Promise.all([
+    renderPageAsync(topPage),
+    renderPageAsync(bottomPage) if bottomPage <= pageCount
+  ]).then ([leftSvg, rightSvg]) ->
+    # Update with actual content
+    leftDiv.innerHTML = leftSvg
+    if rightSvg
+      rightDiv.innerHTML = rightSvg
+
+    requestAnimationFrame ->
+      if slot.scrollHeight > slot.clientHeight and verticalScrollRatio > 0
+        slot.scrollTop = verticalScrollRatio * (slot.scrollHeight - slot.clientHeight)
+      applyVerticalAlignment()
 
 prefetch = ->
   topPage = Math.floor(scrollPos / 2) + 1
-  for p in [topPage + 1, topPage + 2]
+  for p in [topPage + 1, topPage + 2, topPage + 3, topPage + 4, topPage + 5]
     if p <= pageCount and not memoryCache.has(p)
       result = getMovementForPage(p)
       if result

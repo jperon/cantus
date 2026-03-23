@@ -66,7 +66,8 @@ switchToMovement = (movementId) ->
   mv = movements[movementId]
   unless mv?.loaded
     return false
-  # Reload the movement data
+  # Reload the movement data only if movement changed
+  console.log "Switching to movement #{movementId}"
   tk.setOptions mv.options
   loaded = tk.loadData mv.xml
   unless loaded
@@ -76,11 +77,14 @@ switchToMovement = (movementId) ->
 
 renderMovementPage = (movementId, pageNumber) ->
   # Switch to the requested movement
+  console.log "Rendering page #{pageNumber} for movement #{movementId}"
   unless switchToMovement(movementId)
     self.postMessage { type: "error", movementId, message: "Movement not loaded" }
     return
 
+  console.log "Calling tk.renderToSVG for page #{pageNumber}"
   svg = tk.renderToSVG pageNumber
+  console.log "SVG generated for page #{pageNumber}, size: #{svg.length}"
   self.postMessage { type: "svg", movementId, page: pageNumber, svg }
 
 self.onmessage = (e) ->
