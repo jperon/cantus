@@ -96,7 +96,14 @@ function build() {
   // 12. Copy PWA files
   console.log('  Copying PWA files...');
   fs.copyFileSync(path.join(PWA, 'manifest.json'), path.join(DIST, 'manifest.json'));
-  fs.copyFileSync(path.join(PWA, 'sw.js'), path.join(DIST, 'sw.js'));
+
+  // Inject build date as cache version to force cache invalidation on updates
+  const swSrc = fs.readFileSync(path.join(PWA, 'sw.js'), 'utf-8');
+  const swWithVersion = swSrc.replace(
+    "const CACHE_NAME = 'musica-v1';",
+    `const CACHE_NAME = 'musica-${buildDate}';`
+  );
+  fs.writeFileSync(path.join(DIST, 'sw.js'), swWithVersion);
   const faviconSrc = path.join(PWA, 'favicon.ico');
   if (fs.existsSync(faviconSrc)) {
     fs.copyFileSync(faviconSrc, path.join(DIST, 'favicon.ico'));

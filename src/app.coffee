@@ -5,6 +5,18 @@ buildDate = window.__musicaBuildDate ? "(non défini)"
 console.log "Musica — Liseuse MusicXML"
 console.log "Date de build : #{buildDate}"
 
+# Display build date in bottom-left corner
+document.addEventListener "DOMContentLoaded", ->
+  buildDateEl = document.getElementById("build-date")
+  if buildDateEl
+    # Format: "2026-03-23T15:25:45.733Z" -> "Build: 23/03 17:25"
+    try
+      date = new Date(buildDate)
+      formatted = "Build: #{date.toLocaleDateString('fr-FR', {day: '2-digit', month: '2-digit'})} #{date.toLocaleTimeString('fr-FR', {hour: '2-digit', minute: '2-digit'})}"
+      buildDateEl.textContent = formatted
+    catch
+      buildDateEl.textContent = buildDate
+
 storage = window.__musicaStorage
 worker = window.__musicaWorker
 svgStore = window.__svgCache  # Persistent cache with compression
