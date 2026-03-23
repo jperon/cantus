@@ -34,6 +34,8 @@ positionTimer = null
 workerReady = false
 currentScale = 40
 verticalScrollRatio = 0
+currentPageWidth = 0
+currentPageHeight = 0
 
 # Movement tracking
 movements = []  # [{id, pageCount, loaded}]
@@ -94,8 +96,8 @@ worker.onmessage = (e) ->
         globalPage += m.pageCount or 0
       memoryCache.set globalPage, svg
       # Store in persistent cache (async, non-blocking)
-      if currentFileId
-        svgStore.set(currentFileId, globalPage, svg).catch (err) ->
+      if currentFileId and currentPageWidth and currentPageHeight
+        svgStore.set(currentFileId, globalPage, svg, currentPageWidth, currentPageHeight).catch (err) ->
           console.error "Erreur stockage SVG:", err
       # Resolve pending render if any
       key = "#{movementId}:#{page}"
@@ -133,8 +135,8 @@ requestPage = (movementId, localPage) ->
     return Promise.resolve(memoryCache.get(globalPage))
 
   # Check persistent cache if fileId available
-  if currentFileId
-    return svgStore.get(currentFileId, globalPage).then (svg) ->
+  if currentFileId and currentPageWidth and currentPageHeight
+    return svgStore.get(currentFileId, globalPage, currentPageWidth, currentPageHeight).then (svg) ->
       if svg
         memoryCache.set(globalPage, svg)
         return svg
@@ -750,9 +752,11 @@ loadXml = (xml, startPage = 1) ->
     for i in [0...movementCount]
       movements.push {id: i + 1, pageCount: 0, loaded: false}
 
-    # Calculate dimensions
-    pageWidth = Math.round(window.innerWidth * 100 / currentScale)
-    pageHeight = Math.round(window.innerHeight * 100 / currentScale)
+    # Calculate and store dimensions
+    currentPageWidth = Math.round(window.innerWidth * 100 / currentScale)
+    currentPageHeight = Math.round(window.innerHeight * 100 / currentScale)
+    pageWidth = currentPageWidth
+    pageHeight = currentPageHeight
 
     # Clear previous movements before loading new file
     worker.postMessage { type: "clearMovements" }
@@ -790,8 +794,10 @@ loadRemainingMovements = ->
     return unless currentXml and currentSplitInfo
 
     movementId = index + 1
-    pageWidth = Math.round(window.innerWidth * 100 / currentScale)
-    pageHeight = Math.round(window.innerHeight * 100 / currentScale)
+    currentPageWidth = Math.round(window.innerWidth * 100 / currentScale)
+    currentPageHeight = Math.round(window.innerHeight * 100 / currentScale)
+    pageWidth = currentPageWidth
+    pageHeight = currentPageHeight
 
     mvXml = extractMovement currentXml, currentSplitInfo, index
     return processNextMovement(index + 1) unless mvXml

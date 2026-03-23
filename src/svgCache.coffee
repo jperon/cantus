@@ -37,18 +37,18 @@ decompress = (compressed) ->
   decoder = new TextDecoder()
   decoder.decode(decompressed)
 
-# Generate cache key as full URL
-makeKey = (fileId, page) ->
-  "http://cache.local/svg/#{fileId}/#{page}"
+# Generate cache key as full URL (includes dimensions for portrait/landscape)
+makeKey = (fileId, page, width, height) ->
+  "http://cache.local/svg/#{fileId}/#{page}/#{width}x#{height}"
 
-# Store SVG in cache
-set = (fileId, page, svg) ->
+# Store SVG in cache (includes dimensions)
+set = (fileId, page, svg, width, height) ->
   return Promise.resolve() unless svg and fileId
   getCache().then (c) ->
     compressed = compress(svg)
     return unless compressed
 
-    key = makeKey(fileId, page)
+    key = makeKey(fileId, page, width, height)
     # Cache API requires a Request object as key
     request = new Request(key, method: "GET")
     blob = new Blob([compressed], type: "application/octet-stream")
@@ -56,11 +56,11 @@ set = (fileId, page, svg) ->
     c.put(request, response).then ->
       console.log "Cache écriture: #{fileId}:#{page} (#{compressed.byteLength} bytes compressé)"
 
-# Retrieve SVG from cache
-get = (fileId, page) ->
+# Retrieve SVG from cache (includes dimensions)
+get = (fileId, page, width, height) ->
   return Promise.resolve(null) unless fileId
   getCache().then (c) ->
-    key = makeKey(fileId, page)
+    key = makeKey(fileId, page, width, height)
     request = new Request(key)
     c.match(request).then (response) ->
       return null unless response
