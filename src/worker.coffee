@@ -1,51 +1,113 @@
-# Web Worker — Verovio rendering
-# Verovio UMD is prepended by the build script, exposing globalThis.verovio
+# Web Worker — Verovio rendering with movement support
+# Supports multiple movements loaded sequentially
 
 tk = null
+verovioLoaded = false
+verovioUrl = null
+movements = {}  # movementId -> {pageCount, loaded, xml, options}
+currentMovement = null
 
-# Promise that resolves when Verovio WASM is fully initialized
-verovioReady = new Promise (resolve) ->
-  mod = verovio.module
-  if mod.calledRun
-    resolve()
-  else
-    prevCallback = mod.onRuntimeInitialized
-    mod.onRuntimeInitialized = ->
-      prevCallback?()
-      resolve()
+# Clear all movements (call before loading new file)
+clearMovements = ->
+  movements = {}
+  currentMovement = null
 
-loadScore = (xmlString, pageWidth, pageHeight, scale = 40) ->
-  tk.setOptions
+# Load Verovio dynamically and initialize
+loadVerovio = (url) ->
+  new Promise (resolve, reject) ->
+    try
+      importScripts(url)
+      verovioLoaded = true
+
+      mod = verovio.module
+      if mod.INITIAL_MEMORY?
+        mod.INITIAL_MEMORY = 8 * 1024 * 1024
+
+      verovioReady = new Promise (resolveInit) ->
+        if mod.calledRun
+          resolveInit()
+        else
+          prevCallback = mod.onRuntimeInitialized
+          mod.onRuntimeInitialized = ->
+            prevCallback?()
+            resolveInit()
+
+      verovioReady.then ->
+        tk = new verovio.toolkit()
+        resolve()
+      .catch (err) ->
+        reject(err)
+    catch err
+      reject(err)
+
+loadMovement = (movementId, xmlString, pageWidth, pageHeight, scale = 40) ->
+  options =
     breaks: "auto"
     adjustPageHeight: true
     pageWidth: pageWidth
     pageHeight: pageHeight
     scale: scale
-  tk.loadData xmlString
+  tk.setOptions options
+  loaded = tk.loadData xmlString
+  unless loaded
+    self.postMessage { type: "error", movementId, message: "Failed to load movement data" }
+    return
   pageCount = tk.getPageCount()
-  self.postMessage { type: "loaded", pageCount }
+  movements[movementId] = {pageCount, loaded: true, xml: xmlString, options}
+  currentMovement = movementId
+  self.postMessage { type: "movementLoaded", movementId, pageCount }
 
-renderPage = (pageNumber) ->
+# Switch to a different movement if needed
+switchToMovement = (movementId) ->
+  return true if currentMovement is movementId
+  mv = movements[movementId]
+  unless mv?.loaded
+    return false
+  # Reload the movement data
+  tk.setOptions mv.options
+  loaded = tk.loadData mv.xml
+  unless loaded
+    return false
+  currentMovement = movementId
+  true
+
+renderMovementPage = (movementId, pageNumber) ->
+  # Switch to the requested movement
+  unless switchToMovement(movementId)
+    self.postMessage { type: "error", movementId, message: "Movement not loaded" }
+    return
+
   svg = tk.renderToSVG pageNumber
-  self.postMessage { type: "svg", page: pageNumber, svg }
+  self.postMessage { type: "svg", movementId, page: pageNumber, svg }
 
 self.onmessage = (e) ->
   {type} = e.data
   try
     switch type
+      when "setVerovioUrl"
+        verovioUrl = e.data.url
+        loadVerovio(verovioUrl)
+          .then ->
+            self.postMessage { type: "ready" }
+          .catch (err) ->
+            self.postMessage { type: "error", message: "Failed to load Verovio: #{err.message or String(err)}" }
+
       when "init"
-        verovioReady.then ->
-          tk = new verovio.toolkit()
+        if tk
           self.postMessage { type: "ready" }
-        .catch (err) ->
-          self.postMessage { type: "error", message: err.message or String(err) }
 
-      when "load"
-        {xml, pageWidth, pageHeight, scale} = e.data
-        loadScore xml, pageWidth, pageHeight, scale
+      when "clearMovements"
+        clearMovements()
 
-      when "render"
-        renderPage e.data.page
+      when "loadMovement"
+        return unless tk
+        {movementId, xmlString, pageWidth, pageHeight, scale} = e.data
+        loadMovement movementId, xmlString, pageWidth, pageHeight, scale
+
+      when "renderMovementPage"
+        return unless tk
+        {movementId, page} = e.data
+        renderMovementPage movementId, page
 
   catch err
     self.postMessage { type: "error", message: err.message or String(err) }

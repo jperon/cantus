@@ -25,28 +25,16 @@ function build() {
   ensureDir(DIST);
   ensureDir(path.join(DIST, 'icons'));
 
-  // 1. Read Verovio toolkit (UMD, WASM inline)
-  console.log('  Reading Verovio toolkit...');
-  const verovioJs = fs.readFileSync(require.resolve('verovio'), 'utf-8');
+  const buildDate = new Date().toISOString();
 
-  // 2. Compile worker.coffee -> JS
-  console.log('  Compiling worker.coffee...');
-  const workerJs = compileCoffee('worker.coffee');
-
-  // 3. Build combined worker code: verovio UMD + worker logic
-  //    The UMD sets globalThis.verovio which the worker code uses.
-  const fullWorkerCode = verovioJs + '\n;\n' + workerJs;
-  const workerB64 = Buffer.from(fullWorkerCode, 'utf-8').toString('base64');
-
-  // 4. Build inline script that creates the worker from Blob URL
-  const workerSetup = `
-(function() {
-  var workerCode = atob("${workerB64}");
-  var blob = new Blob([workerCode], { type: "application/javascript" });
-  var workerUrl = URL.createObjectURL(blob);
-  window.__musicaWorker = new Worker(workerUrl);
-})();
-`;
+  // 1. Copy Partitura's Verovio toolkit bundle to dist
+  console.log('  Copying Partitura Verovio toolkit...');
+  const partituraToolkit = path.join(__dirname, '..', 'partitura', 'verovio-toolkit-wasm.js');
+  if (!fs.existsSync(partituraToolkit)) {
+    throw new Error('Partitura verovio-toolkit-wasm.js not found; run npm install or update the path.');
+  }
+  fs.copyFileSync(partituraToolkit, path.join(DIST, 'verovio-toolkit-wasm.js'));
+  console.log('  -> dist/verovio-toolkit-wasm.js (partitura)');
 
   // 5. Read fflate (for MXL/ZIP decompression)
   console.log('  Reading fflate...');
@@ -61,14 +49,33 @@ function build() {
   console.log('  Compiling storage.coffee...');
   const storageJs = compileCoffee('storage.coffee');
 
-  // 8. Compile app.coffee -> JS
+  // 7b. Compile svgCache.coffee -> JS
+  console.log('  Compiling svgCache.coffee...');
+  const svgCacheJs = compileCoffee('svgCache.coffee');
+
+  // 8. Compile worker.coffee -> JS
+  console.log('  Compiling worker.coffee...');
+  const workerJs = compileCoffee('worker.coffee');
+
+  // 9. Compile app.coffee -> JS
   console.log('  Compiling app.coffee...');
   const appJs = compileCoffee('app.coffee');
 
-  // 9. Read CSS
+  // 10. Read CSS
   const css = readSrc('styles.css');
 
-  // 10. Compile Pug
+  // 11. Create worker setup script
+  // Write worker to separate file and load via importScripts
+  fs.writeFileSync(path.join(DIST, 'worker.js'), workerJs);
+  const workerSetup = `
+    (function() {
+      var worker = new Worker('worker.js');
+      window.__musicaWorker = worker;
+      worker.postMessage({type: 'setVerovioUrl', url: 'verovio-toolkit-wasm.js'});
+    })();
+  `;
+
+  // 12. Compile Pug
   console.log('  Compiling index.pug...');
   const html = pug.renderFile(path.join(SRC, 'index.pug'), {
     css,
@@ -76,10 +83,12 @@ function build() {
     fflateSetup,
     mxlJs,
     storageJs,
+    svgCacheJs,
     appJs,
+    buildDate,
   });
 
-  // 11. Write dist/index.html
+  // 13. Write dist/index.html
   fs.writeFileSync(path.join(DIST, 'index.html'), html);
   const sizeMB = (fs.statSync(path.join(DIST, 'index.html')).size / 1024 / 1024).toFixed(1);
   console.log(`  -> dist/index.html (${sizeMB} MB)`);
@@ -88,6 +97,10 @@ function build() {
   console.log('  Copying PWA files...');
   fs.copyFileSync(path.join(PWA, 'manifest.json'), path.join(DIST, 'manifest.json'));
   fs.copyFileSync(path.join(PWA, 'sw.js'), path.join(DIST, 'sw.js'));
+  const faviconSrc = path.join(PWA, 'favicon.ico');
+  if (fs.existsSync(faviconSrc)) {
+    fs.copyFileSync(faviconSrc, path.join(DIST, 'favicon.ico'));
+  }
 
   const iconsDir = path.join(PWA, 'icons');
   if (fs.existsSync(iconsDir)) {

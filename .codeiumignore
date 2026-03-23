@@ -1,0 +1,47 @@
+# Dependencies
+node_modules/
+.pnpm/
+
+# Build outputs
+dist/
+build/
+.next/
+.turbo/
+.cache/
+
+# Data / uploads / binary files
+uploads/
+*.pdf
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.zip
+*.core
+core
+
+# Lock files
+pnpm-lock.yaml
+package-lock.json
+
+# Logs
+logs/
+*.log
+
+# Infrastructure
+monitoring/
+certbot/
+nginx/
+docker-compose*.yml
+Dockerfile*
+
+# Generated
+*.tsbuildinfo
+coverage/
+
+# Tests & reports
+playwright-report/
+test-results/
+
+# Scripts (not main source code)
+scripts/

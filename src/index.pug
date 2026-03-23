@@ -60,10 +60,24 @@ html(lang="fr")
         button#library-import-btn Ajouter un fichier
         input#library-file-input(type="file" accept=".xml,.musicxml,.mxl")
     #page-indicator
+    #loading-indicator.hidden
+      .spinner-small
+    #nav-buttons
+      button.nav-btn(data-action="start" title="Début") ⏮
+      button.nav-btn(data-action="prev-mov" title="Mouvement précédent") ◀◀
+      button.nav-btn(data-action="prev-5" title="5 pages avant") −5
+      span#page-number
+      button.nav-btn(data-action="next-5" title="5 pages après") +5
+      button.nav-btn(data-action="next-mov" title="Mouvement suivant") ▶▶
+      button.nav-btn(data-action="end" title="Fin") ⏭
+    script(src="verovio-toolkit-wasm.js")
+    script.
+      window.__musicaBuildDate = "#{buildDate}"
     script !{workerSetup}
     script !{fflateSetup}
     script !{mxlJs}
     script !{storageJs}
+    script !{svgCacheJs}
     script !{appJs}
     script.
       if ('serviceWorker' in navigator) {

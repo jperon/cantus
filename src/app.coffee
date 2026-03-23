@@ -1,13 +1,17 @@
-# App — logique principale
+buildDate = window.__musicaBuildDate ? "(non défini)"
+
+# App — logique principale (worker-based with movement support)
 
 console.log "Musica — Liseuse MusicXML"
+console.log "Date de build : #{buildDate}"
 
-worker = window.__musicaWorker
 storage = window.__musicaStorage
+worker = window.__musicaWorker
+svgStore = window.__svgCache  # Persistent cache with compression
 currentPage = 1
 scrollPos = 0
 pageCount = 0
-svgCache = new Map()
+memoryCache = new Map()  # In-memory cache for current session
 fileLoaded = false
 indicatorTimeout = null
 currentXml = null
@@ -15,9 +19,142 @@ currentFileId = null
 lastWidth = window.innerWidth
 resizeTimer = null
 positionTimer = null
-verovioReady = false
+workerReady = false
 currentScale = 40
 verticalScrollRatio = 0
+
+# Movement tracking
+movements = []  # [{id, pageCount, loaded}]
+pendingRenders = new Map()  # "movementId:page" -> resolve function
+pendingMovementLoads = new Map()  # movementId -> resolve function
+targetPage = null  # Page to navigate to once all movements are loaded
+currentSplitInfo = null  # Split info for lazy extraction
+
+# Worker message handler
+worker.onmessage = (e) ->
+  {type} = e.data
+  switch type
+    when "ready"
+      console.log "Worker Verovio prêt"
+      workerReady = true
+      hideLoading()
+      startApp()
+
+    when "movementLoaded"
+      {movementId, pageCount: mvPages} = e.data
+      console.log "Mouvement #{movementId} chargé: #{mvPages} pages"
+      mv = movements.find (m) -> m.id is movementId
+      if mv
+        mv.pageCount = mvPages
+        mv.loaded = true
+      # Update total page count
+      pageCount = movements.reduce (sum, m) ->
+        sum + (m.pageCount or 0)
+      , 0
+      # Update page indicator
+      showIndicator()
+      # Resolve pending movement load promise if any
+      if pendingMovementLoads?.has(movementId)
+        pendingMovementLoads.get(movementId)()
+        pendingMovementLoads.delete(movementId)
+      # Hide loading overlay and render first pages once first movement is ready
+      if movementId is 1
+        hideLoading()
+        if mvPages > 0
+          # Request first pages immediately so displayView can show them
+          requestPage(1, 1).then (svg) ->
+            displayView()
+            # Now load subsequent movements after first page is displayed
+            loadRemainingMovements()
+          if mvPages > 1
+            requestPage(1, 2)
+          prefetch()
+      # Navigate to target page if all movements are loaded
+      if targetPage and movements.every((m) -> m.loaded)
+        goToPage targetPage
+        targetPage = null
+
+    when "svg"
+      {movementId, page, svg} = e.data
+      # Convert movement-local page to global page number
+      globalPage = page
+      for m in movements when m.id < movementId
+        globalPage += m.pageCount or 0
+      memoryCache.set globalPage, svg
+      # Store in persistent cache (async, non-blocking)
+      if currentFileId
+        svgStore.set(currentFileId, globalPage, svg).catch (err) ->
+          console.error "Erreur stockage SVG:", err
+      # Resolve pending render if any
+      key = "#{movementId}:#{page}"
+      if pendingRenders.has(key)
+        pendingRenders.get(key)(svg)
+        pendingRenders.delete(key)
+      # Update display if this is a visible page
+      topPage = Math.floor(scrollPos / 2) + 1
+      bottomPage = topPage + 1
+      if globalPage is topPage or globalPage is bottomPage
+        displayView()
+
+    when "error"
+      {message, movementId} = e.data
+      console.error "Worker error:", message
+      if movementId
+        showError "Erreur mouvement #{movementId}: #{message}"
+      else
+        showError message
+
+# Calculate global page from movementId and localPage
+getGlobalPage = (movementId, localPage) ->
+  offset = 0
+  for m in movements when m.id < movementId
+    offset += m.pageCount or 0
+  offset + localPage
+
+# Request SVG from worker, returns Promise
+# Checks persistent cache first if fileId is available
+requestPage = (movementId, localPage) ->
+  globalPage = getGlobalPage(movementId, localPage)
+
+  # Check memory cache first
+  if memoryCache.has(globalPage)
+    return Promise.resolve(memoryCache.get(globalPage))
+
+  # Check persistent cache if fileId available
+  if currentFileId
+    return svgStore.get(currentFileId, globalPage).then (svg) ->
+      if svg
+        memoryCache.set(globalPage, svg)
+        return svg
+      # Not in cache, request from worker
+      return requestFromWorker(movementId, localPage)
+
+  # No fileId, request from worker
+  requestFromWorker(movementId, localPage)
+
+# Actually request from worker
+requestFromWorker = (movementId, localPage) ->
+  new Promise (resolve) ->
+    key = "#{movementId}:#{localPage}"
+    pendingRenders.set key, resolve
+    worker.postMessage
+      type: "renderMovementPage"
+      movementId: movementId
+      page: localPage
+
+# Get movement and local page from global page number
+# Only returns loaded movements, falls back to movement 1 if not loaded
+getMovementForPage = (globalPage) ->
+  offset = 0
+  for m in movements
+    if m.loaded and offset + m.pageCount >= globalPage
+      return {movement: m, localPage: globalPage - offset}
+    offset += m.pageCount or 0
+  # Fallback: use first loaded movement (movement 1 should always be loaded first)
+  firstMv = movements[0]
+  if firstMv?.loaded
+    return {movement: firstMv, localPage: 1}
+  null
 
 # Settings defaults
 defaultSettings = { zoom: 40, theme: "white", tapSize: 30 }
@@ -92,28 +229,42 @@ showIndicator = ->
   topPage = Math.floor(scrollPos / 2) + 1
   el.textContent = "#{topPage} / #{pageCount}"
   el.classList.add "visible"
+  # Update page number in nav buttons
+  pageNumberEl = $("page-number")
+  if pageNumberEl
+    pageNumberEl.textContent = topPage
   clearTimeout indicatorTimeout if indicatorTimeout
   indicatorTimeout = setTimeout ->
     el.classList.remove "visible"
   , 1500
 
 # Render two pages side by side with horizontal offset (50% scroll)
+renderPageSync = (globalPage) ->
+  return memoryCache.get(globalPage) if memoryCache.has(globalPage)
+  # Request from worker (requestPage checks persistent cache first)
+  result = getMovementForPage(globalPage)
+  return "" unless result
+  {movement, localPage} = result
+  requestPage(movement.id, localPage)
+  ""
+
+renderPageAsync = (globalPage) ->
+  return Promise.resolve(memoryCache.get(globalPage)) if memoryCache.has(globalPage)
+  result = getMovementForPage(globalPage)
+  return Promise.resolve("") unless result
+  {movement, localPage} = result
+  requestPage(movement.id, localPage)
+
 displayView = ->
   slot = $("page-current")
   topPage = Math.floor(scrollPos / 2) + 1
   bottomPage = topPage + 1
   offset = (scrollPos % 2) * 50
 
-  leftSvg = svgCache.get(topPage) or ""
+  leftSvg = renderPageSync topPage
   rightSvg = ""
   if bottomPage <= pageCount
-    rightSvg = svgCache.get(bottomPage) or ""
-
-  # Request rendering for missing pages
-  unless svgCache.has(topPage)
-    worker.postMessage { type: "render", page: topPage }
-  unless svgCache.has(bottomPage) or bottomPage > pageCount
-    worker.postMessage { type: "render", page: bottomPage }
+    rightSvg = renderPageSync bottomPage
 
   slot.innerHTML = ""
   wrapper = document.createElement "div"
@@ -133,25 +284,27 @@ displayView = ->
 
   slot.appendChild wrapper
 
-  # Restore vertical scroll position and apply alignment after render
   requestAnimationFrame ->
     if slot.scrollHeight > slot.clientHeight and verticalScrollRatio > 0
       slot.scrollTop = verticalScrollRatio * (slot.scrollHeight - slot.clientHeight)
     applyVerticalAlignment()
 
-purgeCacheFarPages = ->
-  topPage = Math.floor(scrollPos / 2) + 1
-  return if svgCache.size <= 7
-  for key from svgCache.keys()
-    if Math.abs(key - topPage) > 3
-      svgCache.delete key
-
 prefetch = ->
   topPage = Math.floor(scrollPos / 2) + 1
   for p in [topPage + 1, topPage + 2]
-    if p <= pageCount and not svgCache.has(p)
-      worker.postMessage { type: "render", page: p }
+    if p <= pageCount and not memoryCache.has(p)
+      result = getMovementForPage(p)
+      if result
+        {movement, localPage} = result
+        requestPage(movement.id, localPage)
   purgeCacheFarPages()
+
+purgeCacheFarPages = ->
+  topPage = Math.floor(scrollPos / 2) + 1
+  return if memoryCache.size <= 7
+  for key from memoryCache.keys()
+    if Math.abs(key - topPage) > 3
+      memoryCache.delete key
 
 savePositionDebounced = ->
   return unless currentFileId
@@ -209,6 +362,256 @@ goPrev = ->
   prefetch()
   savePositionDebounced()
 
+# Get current movement index from page
+getCurrentMovementIndex = ->
+  topPage = Math.floor(scrollPos / 2) + 1
+  offset = 0
+  for m, i in movements
+    offset += m.pageCount or 0
+    if offset >= topPage
+      return i
+  movements.length - 1
+
+# Get first page of a movement (1-indexed)
+getMovementStartPage = (movIndex) ->
+  page = 1
+  for m, i in movements when i < movIndex
+    page += m.pageCount or 0
+  page
+
+# Navigation functions
+goToPage = (page) ->
+  return unless fileLoaded and page >= 1 and page <= pageCount
+  scrollPos = (page - 1) * 2
+  currentPage = page
+  displayView()
+  showIndicator()
+  prefetch()
+  savePositionDebounced()
+
+goToStart = ->
+  return unless fileLoaded
+  scrollPos = 0
+  currentPage = 1
+  displayView()
+  showIndicator()
+  prefetch()
+  savePositionDebounced()
+
+goToEnd = ->
+  return unless fileLoaded
+  scrollPos = maxScrollPos()
+  currentPage = Math.floor(scrollPos / 2) + 1
+  displayView()
+  showIndicator()
+  prefetch()
+  savePositionDebounced()
+
+goToPrevMovement = ->
+  return unless fileLoaded
+  currentIdx = getCurrentMovementIndex()
+  return if currentIdx <= 0
+  targetPage = getMovementStartPage(currentIdx - 1)
+  scrollPos = (targetPage - 1) * 2
+  currentPage = targetPage
+  displayView()
+  showIndicator()
+  prefetch()
+  savePositionDebounced()
+
+goToNextMovement = ->
+  return unless fileLoaded
+  currentIdx = getCurrentMovementIndex()
+  return if currentIdx >= movements.length - 1
+  targetPage = getMovementStartPage(currentIdx + 1)
+  scrollPos = (targetPage - 1) * 2
+  currentPage = targetPage
+  displayView()
+  showIndicator()
+  prefetch()
+  savePositionDebounced()
+
+goBack5 = ->
+  return unless fileLoaded
+  scrollPos = Math.max(0, scrollPos - 10)
+  currentPage = Math.floor(scrollPos / 2) + 1
+  displayView()
+  showIndicator()
+  prefetch()
+  savePositionDebounced()
+
+goForward5 = ->
+  return unless fileLoaded
+  scrollPos = Math.min(maxScrollPos(), scrollPos + 10)
+  currentPage = Math.floor(scrollPos / 2) + 1
+  displayView()
+  showIndicator()
+  prefetch()
+  savePositionDebounced()
+
+# Detect split points and capture attributes at each point (lazy approach)
+# Returns {splitPoints, splitAttrs, totalMeasures, parts}
+detectSplitPoints = (xmlString) ->
+  parser = new DOMParser()
+  doc = parser.parseFromString xmlString, "application/xml"
+
+  parts = doc.querySelectorAll("part")
+  unless parts.length > 0
+    return {splitPoints: [], splitAttrs: {}, totalMeasures: 0, parts: null}
+
+  firstPartMeasures = parts[0].querySelectorAll("measure")
+  totalMeasures = firstPartMeasures.length
+  MAX_MEASURES_PER_MOVEMENT = 50
+
+  splitPoints = []
+
+  # PHASE 1: Movement metadata
+  for measure, i in firstPartMeasures
+    mn = measure.querySelector("movement-number")
+    if mn and i > 0
+      splitPoints.push i
+      console.log "Mouvement déclaré à la mesure #{i}"
+
+  # PHASE 2: Split at double barlines if needed
+  if splitPoints.length is 0 and totalMeasures > MAX_MEASURES_PER_MOVEMENT
+    allDoubleBarlines = []
+    for measure, i in firstPartMeasures
+      continue if i is 0 or i >= totalMeasures - 2
+      barlines = measure.querySelectorAll('barline[location="right"]')
+      for barline in Array.from(barlines)
+        barStyle = barline.querySelector("bar-style")
+        if barStyle
+          style = barStyle.textContent.trim()
+          if style is "light-heavy"
+            hasDS = measure.querySelector('sound[dalsegno]')
+            hasDC = measure.querySelector('sound[dacapo]')
+            unless hasDS or hasDC
+              nextMeasure = firstPartMeasures[i + 1]
+              if nextMeasure and nextMeasure.querySelector("note")
+                allDoubleBarlines.push i + 1
+
+    prevSplit = 0
+    for sp in allDoubleBarlines
+      segmentSize = sp - prevSplit
+      if segmentSize >= MAX_MEASURES_PER_MOVEMENT
+        splitPoints.push sp
+        prevSplit = sp
+
+    lastSplit = if splitPoints.length > 0 then splitPoints[splitPoints.length - 1] else 0
+    remainingMeasures = totalMeasures - lastSplit
+
+    while remainingMeasures > MAX_MEASURES_PER_MOVEMENT
+      foundSplit = false
+      for sp in allDoubleBarlines
+        if sp > lastSplit and sp - lastSplit >= MAX_MEASURES_PER_MOVEMENT
+          splitPoints.push sp
+          lastSplit = sp
+          remainingMeasures = totalMeasures - lastSplit
+          foundSplit = true
+          break
+      break unless foundSplit
+
+    console.log "Double barres trouvées: #{allDoubleBarlines.join(', ')}" if allDoubleBarlines.length > 0
+
+  splitPoints = [...new Set(splitPoints)].sort((a, b) -> a - b)
+  console.log "Points de découpage: #{splitPoints.join(', ')}" if splitPoints.length > 0
+
+  # Capture attributes at each split point
+  splitAttrs = {}
+  for splitIndex in splitPoints
+    splitAttrs[splitIndex] = []
+    for part in parts
+      measures = part.querySelectorAll("measure")
+      currentClef = null
+      currentKey = null
+      currentTime = null
+      currentDivisions = null
+      currentTranspose = null
+      for m, i in measures when i < splitIndex
+        attrs = m.querySelector("attributes")
+        if attrs
+          clef = attrs.querySelector("clef")
+          currentClef = clef if clef
+          key = attrs.querySelector("key")
+          currentKey = key if key
+          time = attrs.querySelector("time")
+          currentTime = time if time
+          divisions = attrs.querySelector("divisions")
+          currentDivisions = divisions if divisions
+          transpose = attrs.querySelector("transpose")
+          currentTranspose = transpose if transpose
+      splitAttrs[splitIndex].push
+        clef: currentClef
+        key: currentKey
+        time: currentTime
+        divisions: currentDivisions
+        transpose: currentTranspose
+
+  {splitPoints, splitAttrs, totalMeasures, parts: Array.from(parts)}
+
+# Extract a single movement by index (lazy extraction)
+# movementIndex: 0-based, where 0 is first movement
+extractMovement = (xmlString, splitInfo, movementIndex) ->
+  {splitPoints, splitAttrs, totalMeasures} = splitInfo
+
+  # No splits: return whole document
+  if splitPoints.length is 0
+    return preprocessMusicXML(xmlString) if movementIndex is 0
+    return null
+
+  # Calculate start and end measure indices for this movement
+  allPoints = [0, ...splitPoints, totalMeasures]
+  startMeasure = allPoints[movementIndex]
+  endMeasure = allPoints[movementIndex + 1]
+
+  unless startMeasure? and endMeasure?
+    return null
+
+  parser = new DOMParser()
+  doc = parser.parseFromString xmlString, "application/xml"
+  partsPart = doc.querySelectorAll("part")
+  serializer = new XMLSerializer()
+
+  for part, pIdx in partsPart
+    measures = Array.from part.querySelectorAll("measure")
+
+    # Remove measures after this movement
+    for m, i in measures when i >= endMeasure
+      m.parentNode.removeChild(m)
+
+    # Remove measures before this movement
+    for m, i in measures when i < startMeasure
+      m.parentNode.removeChild(m) if m.parentNode
+
+    # Insert attributes at start if not first movement
+    if startMeasure > 0 and splitAttrs[startMeasure]?[pIdx]
+      attrs = splitAttrs[startMeasure][pIdx]
+      remainingMeasures = Array.from part.querySelectorAll("measure")
+      if remainingMeasures.length > 0
+        firstMeasure = remainingMeasures[0]
+        existingAttrs = firstMeasure.querySelector("attributes")
+
+        newAttrsEl = doc.createElement("attributes")
+        if attrs.divisions
+          newAttrsEl.appendChild attrs.divisions.cloneNode(true)
+        if attrs.key
+          newAttrsEl.appendChild attrs.key.cloneNode(true)
+        if attrs.time
+          newAttrsEl.appendChild attrs.time.cloneNode(true)
+        if attrs.clef
+          newAttrsEl.appendChild attrs.clef.cloneNode(true)
+        if attrs.transpose
+          newAttrsEl.appendChild attrs.transpose.cloneNode(true)
+
+        if existingAttrs
+          for child in Array.from(newAttrsEl.children)
+            unless existingAttrs.querySelector(child.tagName)
+              existingAttrs.insertBefore child.cloneNode(true), existingAttrs.firstChild
+        else if newAttrsEl.children.length > 0
+          firstMeasure.insertBefore newAttrsEl, firstMeasure.firstChild
+
+  preprocessMusicXML(serializer.serializeToString(doc))
+
 # Preprocess MusicXML: insert system breaks after double barlines
 preprocessMusicXML = (xmlString) ->
   parser = new DOMParser()
@@ -239,54 +642,128 @@ preprocessMusicXML = (xmlString) ->
   serializer = new XMLSerializer()
   serializer.serializeToString doc
 
-# Load a score into the worker
+# Load a score using the worker with lazy movement extraction
 loadXml = (xml, startPage = 1) ->
   currentXml = xml
-  processedXml = preprocessMusicXML xml
-  currentPage = startPage
-  scrollPos = (startPage - 1) * 2
-  pw = Math.round(window.innerWidth * 100 / currentScale)
-  ph = Math.round(window.innerHeight * 100 / currentScale)
+  currentPage = 1  # Always start at page 1 for immediate display
+  scrollPos = 0
   lastWidth = window.innerWidth
-  svgCache.clear()
+  memoryCache.clear()
+  pendingRenders.clear()
+  pendingMovementLoads.clear()
+  movements = []
+  targetPage = if startPage > 1 then startPage else null  # Navigate later if needed
   showLoading()
-  worker.postMessage { type: "load", xml: processedXml, pageWidth: pw, pageHeight: ph, scale: currentScale }
 
-# Worker message handler
-worker.onmessage = (e) ->
-  {type} = e.data
-  switch type
-    when "ready"
-      console.log "Verovio prêt"
-      verovioReady = true
-      hideLoading()
-      startApp()
+  # Try to get structure from cache first
+  loadStructure = ->
+    if currentFileId
+      svgStore.getStructure(currentFileId).then (cached) ->
+        if cached and cached.splitPoints
+          console.log "Structure en cache: #{cached.splitPoints.length} points de découpage"
+          # Recalculate splitAttrs from XML (can't cache DOM nodes)
+          splitInfo = detectSplitPoints xml
+          splitInfo.splitPoints = cached.splitPoints
+          splitInfo.totalMeasures = cached.totalMeasures
+          return splitInfo
+        # Not in cache, detect and store (only splitPoints and totalMeasures)
+        splitInfo = detectSplitPoints xml
+        svgStore.setStructure(currentFileId, {
+          splitPoints: splitInfo.splitPoints
+          totalMeasures: splitInfo.totalMeasures
+        })
+        splitInfo
+    else
+      Promise.resolve(detectSplitPoints xml)
 
-    when "loaded"
-      pageCount = e.data.pageCount
-      currentPage = Math.min(currentPage, pageCount) or 1
-      scrollPos = Math.min(scrollPos, maxScrollPos())
-      fileLoaded = true
-      hideLoading()
-      hideImport()
-      showLibraryBtn()
-      console.log "Partition chargée: #{pageCount} pages"
-      displayView()
-      showIndicator()
-      prefetch()
+  loadStructure().then (splitInfo) ->
+    currentSplitInfo = splitInfo
+    movementCount = currentSplitInfo.splitPoints.length + 1
+    console.log "Partition divisée en #{movementCount} mouvement(s)"
 
-    when "svg"
-      svgCache.set e.data.page, e.data.svg
-      # Re-render view if this page is currently visible
-      topPage = Math.floor(scrollPos / 2) + 1
-      bottomPage = topPage + 1
-      if e.data.page is topPage or e.data.page is bottomPage
-        displayView()
+    # Initialize movement tracking
+    for i in [0...movementCount]
+      movements.push {id: i + 1, pageCount: 0, loaded: false}
 
-    when "error"
-      console.error "Worker error:", e.data.message
-      hideLoading()
-      showError e.data.message
+    # Calculate dimensions
+    pageWidth = Math.round(window.innerWidth * 100 / currentScale)
+    pageHeight = Math.round(window.innerHeight * 100 / currentScale)
+
+    # Clear previous movements before loading new file
+    worker.postMessage { type: "clearMovements" }
+
+    # Extract and load first movement immediately
+    firstXml = extractMovement xml, currentSplitInfo, 0
+    worker.postMessage
+      type: "loadMovement"
+      movementId: 1
+      xmlString: firstXml
+      pageWidth: pageWidth
+      pageHeight: pageHeight
+      scale: currentScale
+
+    # Subsequent movements will be loaded after first movement is displayed
+    # (see movementLoaded handler)
+
+    fileLoaded = true
+    hideImport()
+    showLibraryBtn()
+
+# Load remaining movements sequentially after first page is displayed
+loadRemainingMovements = ->
+  return unless currentSplitInfo and movements.length > 1
+
+  # Show loading indicator while loading remaining movements
+  showLoadingIndicator()
+
+  # Process movements one by one sequentially
+  processNextMovement = (index) ->
+    if index >= movements.length
+      # All movements loaded, hide indicator
+      hideLoadingIndicator()
+      return
+    return unless currentXml and currentSplitInfo
+
+    movementId = index + 1
+    pageWidth = Math.round(window.innerWidth * 100 / currentScale)
+    pageHeight = Math.round(window.innerHeight * 100 / currentScale)
+
+    mvXml = extractMovement currentXml, currentSplitInfo, index
+    return processNextMovement(index + 1) unless mvXml
+
+    # Load movement and wait for it to be ready
+    loadMovementAndWait(movementId, mvXml, pageWidth, pageHeight).then ->
+      # Process first page (cache check, render if needed, store if needed)
+      requestPage(movementId, 1).then (svg) ->
+        console.log "Mouvement #{movementId} traité"
+        # Move to next movement
+        processNextMovement(index + 1)
+
+  # Start with movement 2 (index 1)
+  processNextMovement(1)
+
+# Load a movement in worker and return Promise that resolves when loaded
+loadMovementAndWait = (movementId, xmlString, pageWidth, pageHeight) ->
+  new Promise (resolve) ->
+    # Store resolver to be called when movementLoaded message arrives
+    pendingMovementLoads.set movementId, resolve
+
+    worker.postMessage
+      type: "loadMovement"
+      movementId: movementId
+      xmlString: xmlString
+      pageWidth: pageWidth
+      pageHeight: pageHeight
+      scale: currentScale
+
+# Loading indicator for background movement loading
+showLoadingIndicator = ->
+  el = $("loading-indicator")
+  el?.classList.remove "hidden"
+
+hideLoadingIndicator = ->
+  el = $("loading-indicator")
+  el?.classList.add "hidden"
 
 # Library overlay
 formatDate = (ts) ->
@@ -361,6 +838,20 @@ setupNavigation = ->
   $("tap-right").addEventListener "click", (e) ->
     e.preventDefault()
     goNext()
+
+  # Navigation buttons
+  for btn in document.querySelectorAll(".nav-btn")
+    do (btn) ->
+      btn.addEventListener "click", (e) ->
+        e.preventDefault()
+        action = btn.dataset.action
+        switch action
+          when "start" then goToStart()
+          when "end" then goToEnd()
+          when "prev-mov" then goToPrevMovement()
+          when "next-mov" then goToNextMovement()
+          when "prev-5" then goBack5()
+          when "next-5" then goForward5()
 
   # Keyboard navigation
   document.addEventListener "keydown", (e) ->
@@ -497,6 +988,5 @@ document.addEventListener "DOMContentLoaded", ->
   setupResize()
   # Vertical scroll alignment listener
   $("page-current").addEventListener "scroll", applyVerticalAlignment
-  # Init the Verovio worker
-  worker.postMessage { type: "init" }
-  console.log "Initialisation Verovio…"
+  # Worker will send "ready" when initialized
+  worker.postMessage {type: "init"}
