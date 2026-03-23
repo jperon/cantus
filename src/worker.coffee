@@ -47,6 +47,9 @@ loadMovement = (movementId, xmlString, pageWidth, pageHeight, scale = 40) ->
     pageWidth: pageWidth
     pageHeight: pageHeight
     scale: scale
+    condense: "none"
+    header: "none"
+    footer: "none"
   tk.setOptions options
   loaded = tk.loadData xmlString
   unless loaded

@@ -232,7 +232,7 @@ showIndicator = ->
   # Update page number in nav buttons
   pageNumberEl = $("page-number")
   if pageNumberEl
-    pageNumberEl.textContent = topPage
+    pageNumberEl.textContent = "#{topPage}/#{pageCount}"
   clearTimeout indicatorTimeout if indicatorTimeout
   indicatorTimeout = setTimeout ->
     el.classList.remove "visible"
@@ -522,7 +522,8 @@ detectSplitPoints = (xmlString) ->
     splitAttrs[splitIndex] = []
     for part in parts
       measures = part.querySelectorAll("measure")
-      currentClef = null
+      currentStaves = null
+      currentClefs = []
       currentKey = null
       currentTime = null
       currentDivisions = null
@@ -530,8 +531,10 @@ detectSplitPoints = (xmlString) ->
       for m, i in measures when i < splitIndex
         attrs = m.querySelector("attributes")
         if attrs
-          clef = attrs.querySelector("clef")
-          currentClef = clef if clef
+          staves = attrs.querySelector("staves")
+          currentStaves = staves if staves
+          clefs = attrs.querySelectorAll("clef")
+          currentClefs = Array.from(clefs) if clefs.length > 0
           key = attrs.querySelector("key")
           currentKey = key if key
           time = attrs.querySelector("time")
@@ -541,7 +544,8 @@ detectSplitPoints = (xmlString) ->
           transpose = attrs.querySelector("transpose")
           currentTranspose = transpose if transpose
       splitAttrs[splitIndex].push
-        clef: currentClef
+        staves: currentStaves
+        clefs: currentClefs
         key: currentKey
         time: currentTime
         divisions: currentDivisions
@@ -598,15 +602,27 @@ extractMovement = (xmlString, splitInfo, movementIndex) ->
           newAttrsEl.appendChild attrs.key.cloneNode(true)
         if attrs.time
           newAttrsEl.appendChild attrs.time.cloneNode(true)
-        if attrs.clef
-          newAttrsEl.appendChild attrs.clef.cloneNode(true)
+        if attrs.staves
+          newAttrsEl.appendChild attrs.staves.cloneNode(true)
+        for clef in attrs.clefs or []
+          newAttrsEl.appendChild clef.cloneNode(true)
         if attrs.transpose
           newAttrsEl.appendChild attrs.transpose.cloneNode(true)
 
         if existingAttrs
           for child in Array.from(newAttrsEl.children)
-            unless existingAttrs.querySelector(child.tagName)
-              existingAttrs.insertBefore child.cloneNode(true), existingAttrs.firstChild
+            # Pour les clefs, vérifier par numéro de portée
+            if child.tagName is "clef"
+              staffNum = child.getAttribute("number")
+              existingClef = existingAttrs.querySelector("clef[number=\"#{staffNum}\"]")
+              unless existingClef
+                existingAttrs.insertBefore child.cloneNode(true), existingAttrs.firstChild
+            else if child.tagName is "staves"
+              unless existingAttrs.querySelector("staves")
+                existingAttrs.insertBefore child.cloneNode(true), existingAttrs.firstChild
+            else
+              unless existingAttrs.querySelector(child.tagName)
+                existingAttrs.insertBefore child.cloneNode(true), existingAttrs.firstChild
         else if newAttrsEl.children.length > 0
           firstMeasure.insertBefore newAttrsEl, firstMeasure.firstChild
 
@@ -661,10 +677,47 @@ loadXml = (xml, startPage = 1) ->
       svgStore.getStructure(currentFileId).then (cached) ->
         if cached and cached.splitPoints
           console.log "Structure en cache: #{cached.splitPoints.length} points de découpage"
-          # Recalculate splitAttrs from XML (can't cache DOM nodes)
+          # Use cached splitPoints but recalculate splitAttrs for those exact points
           splitInfo = detectSplitPoints xml
+          # Restore cached splitPoints
           splitInfo.splitPoints = cached.splitPoints
           splitInfo.totalMeasures = cached.totalMeasures
+          # Recalculate splitAttrs for the cached splitPoints
+          parts = splitInfo.parts
+          splitAttrs = {}
+          for splitIndex in cached.splitPoints
+            splitAttrs[splitIndex] = []
+            for part in parts
+              measures = part.querySelectorAll("measure")
+              currentStaves = null
+              currentClefs = []
+              currentKey = null
+              currentTime = null
+              currentDivisions = null
+              currentTranspose = null
+              for m, i in measures when i < splitIndex
+                attrs = m.querySelector("attributes")
+                if attrs
+                  staves = attrs.querySelector("staves")
+                  currentStaves = staves if staves
+                  clefs = attrs.querySelectorAll("clef")
+                  currentClefs = Array.from(clefs) if clefs.length > 0
+                  key = attrs.querySelector("key")
+                  currentKey = key if key
+                  time = attrs.querySelector("time")
+                  currentTime = time if time
+                  divisions = attrs.querySelector("divisions")
+                  currentDivisions = divisions if divisions
+                  transpose = attrs.querySelector("transpose")
+                  currentTranspose = transpose if transpose
+              splitAttrs[splitIndex].push
+                staves: currentStaves
+                clefs: currentClefs
+                key: currentKey
+                time: currentTime
+                divisions: currentDivisions
+                transpose: currentTranspose
+          splitInfo.splitAttrs = splitAttrs
           return splitInfo
         # Not in cache, detect and store (only splitPoints and totalMeasures)
         splitInfo = detectSplitPoints xml
