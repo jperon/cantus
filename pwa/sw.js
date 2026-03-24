@@ -1,6 +1,6 @@
-const CACHE_NAME = 'musica-v2';
-const STATIC_CACHE = 'musica-static-v2';
-const DYNAMIC_CACHE = 'musica-dynamic-v2';
+const CACHE_NAME = 'musica-v3';
+const STATIC_CACHE = 'musica-static-v3';
+const DYNAMIC_CACHE = 'musica-dynamic-v3';
 
 // Assets essentiels pour le fonctionnement offline
 const STATIC_ASSETS = [
@@ -59,6 +59,15 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
+  // Ignorer les requêtes avec query params pour les assets statiques
+  if (url.search && isStaticAsset(url.pathname)) {
+    // Créer une requête sans query params pour le cache
+    const cleanUrl = url.origin + url.pathname;
+    const cleanRequest = new Request(cleanUrl, request);
+    event.respondWith(cacheFirstWithBackgroundUpdate(cleanRequest));
+    return;
+  }
+
   // Stratégie différente selon le type de ressource
   if (isStaticAsset(request.url)) {
     // Cache first avec mise à jour en arrière-plan pour les assets statiques
@@ -72,16 +81,17 @@ self.addEventListener('fetch', (event) => {
   }
 });
 
-// Vérifier si c'est un asset statique
-function isStaticAsset(url) {
-  return STATIC_ASSETS.some(asset => url.includes(asset)) ||
-         url.includes('/verovio') ||
-         url.includes('/icons/') ||
-         url.endsWith('.js') ||
-         url.endsWith('.css') ||
-         url.endsWith('.png') ||
-         url.endsWith('.ico') ||
-         url.endsWith('.svg');
+// Vérifier si c'est un asset statique (sur le pathname uniquement)
+function isStaticAsset(urlOrPath) {
+  const path = urlOrPath.startsWith('/') ? urlOrPath : new URL(urlOrPath, 'http://x').pathname;
+  return STATIC_ASSETS.some(asset => path === asset || path === asset + '/') ||
+         path.includes('/verovio') ||
+         path.includes('/icons/') ||
+         path.endsWith('.js') ||
+         path.endsWith('.css') ||
+         path.endsWith('.png') ||
+         path.endsWith('.ico') ||
+         path.endsWith('.svg');
 }
 
 // Vérifier si c'est une requête de navigation
