@@ -1,0 +1,82 @@
+doctype html
+html(lang="fr")
+  head
+    meta(charset="utf-8")
+    meta(name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no")
+    meta(name="mobile-web-app-capable" content="yes")
+    meta(name="apple-mobile-web-app-capable" content="yes")
+    meta(name="apple-mobile-web-app-status-bar-style" content="default")
+    meta(name="apple-mobile-web-app-title" content="Partitions")
+    meta(name="theme-color" content="#ffffff")
+    title Liseuse MusicXML
+    style !{css}
+  body
+    #reader
+      #score-container
+        #page-prev.svg-slot
+        #page-current.svg-slot
+        #page-next.svg-slot
+      #tap-left
+      #tap-right
+      #import-section
+        h1 Liseuse MusicXML
+        p Ouvrir un fichier MusicXML pour commencer
+        button#import-btn Ouvrir un fichier
+        input#file-input(type="file" accept=".xml,.musicxml,.mxl")
+    button#btn-library.hidden ☰
+    button#btn-settings.hidden ⚙
+    #overlay-loading
+      .spinner
+      p Chargement…
+    #overlay-error
+      p#error-message Une erreur est survenue.
+    #settings-overlay.hidden
+      #settings-header
+        h2 Réglages
+        button#settings-close ✕
+      .settings-group
+        label.settings-label Zoom
+        .settings-row
+          span#zoom-value 40
+          input#zoom-range(type="range" min="30" max="80" step="5" value="40")
+      .settings-group
+        label.settings-label Thème
+        .settings-row
+          button.theme-btn.active(data-theme="white") Blanc
+          button.theme-btn(data-theme="sepia") Sépia
+          button.theme-btn(data-theme="dark") Sombre
+      .settings-group
+        label.settings-label Zone de tap
+        .settings-row
+          button.tap-btn(data-size="20") Petite
+          button.tap-btn.active(data-size="30") Normale
+          button.tap-btn(data-size="40") Grande
+    #library-overlay.hidden
+      #library-header
+        h2 Bibliothèque
+        button#library-close ✕
+      #library-list
+      #library-actions
+        button#library-import-btn Ajouter un fichier
+        input#library-file-input(type="file" accept=".xml,.musicxml,.mxl")
+    #page-indicator
+    #loading-indicator.hidden
+      .spinner-small
+    #nav-buttons
+      button.nav-btn(data-action="start" title="Début") ⏮
+      button.nav-btn(data-action="prev-mov" title="Mouvement précédent") ◀◀
+      button.nav-btn(data-action="prev-5" title="5 pages avant") −5
+      span#page-number
+      button.nav-btn(data-action="next-5" title="5 pages après") +5
+      button.nav-btn(data-action="next-mov" title="Mouvement suivant") ▶▶
+      button.nav-btn(data-action="end" title="Fin") ⏭
+    #build-date
+    script.
+      window.__musicaBuildDate = "#{buildDate}"
+    script !{workerSetup}
+    script !{verovioSetup}
+    script !{fflateSetup}
+    script !{mxlJs}
+    script !{storageJs}
+    script !{svgCacheJs}
+    script !{appJs}

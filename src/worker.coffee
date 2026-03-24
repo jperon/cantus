@@ -4,6 +4,7 @@
 tk = null
 verovioLoaded = false
 verovioUrl = null
+verovioInline = false  # True when Verovio is inlined in SPA mode
 movements = {}  # movementId -> {pageCount, loaded, xml, options}
 currentMovement = null
 
@@ -16,29 +17,54 @@ clearMovements = ->
 loadVerovio = (url) ->
   new Promise (resolve, reject) ->
     try
+      # Check if it's a blob URL - use fetch+eval instead of importScripts
+      if url.startsWith('blob:')
+        fetch(url)
+          .then (response) -> response.text()
+          .then (code) ->
+            eval(code)
+            verovioLoaded = true
+            initVerovio(resolve, reject)
+          .catch reject
+        return
+
+      # Regular URL - use importScripts
       importScripts(url)
       verovioLoaded = true
-
-      mod = verovio.module
-      if mod.INITIAL_MEMORY?
-        mod.INITIAL_MEMORY = 8 * 1024 * 1024
-
-      verovioReady = new Promise (resolveInit) ->
-        if mod.calledRun
-          resolveInit()
-        else
-          prevCallback = mod.onRuntimeInitialized
-          mod.onRuntimeInitialized = ->
-            prevCallback?()
-            resolveInit()
-
-      verovioReady.then ->
-        tk = new verovio.toolkit()
-        resolve()
-      .catch (err) ->
-        reject(err)
+      initVerovio(resolve, reject)
     catch err
       reject(err)
+
+# Initialize Verovio after loading
+initVerovio = (resolve, reject) ->
+  mod = verovio.module
+  if mod.INITIAL_MEMORY?
+    mod.INITIAL_MEMORY = 8 * 1024 * 1024
+
+  verovioReady = new Promise (resolveInit) ->
+    if mod.calledRun
+      resolveInit()
+    else
+      prevCallback = mod.onRuntimeInitialized
+      mod.onRuntimeInitialized = ->
+        prevCallback?()
+        resolveInit()
+
+  verovioReady.then ->
+    tk = new verovio.toolkit()
+    resolve()
+  .catch (err) ->
+    reject(err)
+
+# Initialize inline Verovio (already loaded in worker code)
+initInlineVerovio = ->
+  return unless typeof verovio != 'undefined' and not verovioLoaded
+  verovioLoaded = true
+  verovioInline = true
+  initVerovio(
+    -> console.log 'Inline Verovio initialized'
+    (err) -> console.error 'Inline Verovio init failed:', err
+  )
 
 loadMovement = (movementId, xmlString, pageWidth, pageHeight, scale = 40) ->
   options =
@@ -91,6 +117,11 @@ self.onmessage = (e) ->
   {type} = e.data
   try
     switch type
+      when "verovioInline"
+        # Verovio is inlined in SPA mode - initialize it
+        initInlineVerovio()
+        self.postMessage { type: "ready" }
+
       when "setVerovioUrl"
         verovioUrl = e.data.url
         loadVerovio(verovioUrl)

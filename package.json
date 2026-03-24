@@ -5,6 +5,7 @@
   "private": true,
   "scripts": {
     "build": "node build.js",
+    "build-spa": "node build.js --spa",
     "watch": "node build.js --watch",
     "serve": "npx http-server dist -p 8443 --ssl --cert localhost.pem --key localhost-key.pem -c-1"
   },

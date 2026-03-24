@@ -124,6 +124,87 @@ function build() {
   console.log('Build complete.');
 }
 
+// Build SPA - single HTML file with everything inlined
+function buildSpa() {
+  console.time('build-spa');
+  ensureDir(DIST);
+
+  const buildDate = new Date().toISOString();
+
+  // 1. Read Verovio toolkit
+  console.log('  Reading Verovio toolkit...');
+  const partituraToolkit = path.join(__dirname, '..', 'partitura', 'verovio-toolkit-wasm.js');
+  if (!fs.existsSync(partituraToolkit)) {
+    throw new Error('Partitura verovio-toolkit-wasm.js not found.');
+  }
+  const verovioJs = fs.readFileSync(partituraToolkit, 'utf-8');
+
+  // 2. Read fflate
+  console.log('  Reading fflate...');
+  const fflateSrc = fs.readFileSync(path.join(__dirname, 'node_modules', 'fflate', 'umd', 'index.js'), 'utf-8');
+  const fflateSetup = `(function(){${fflateSrc}; window.__fflate = fflate;})()`;
+
+  // 3. Compile CoffeeScript files
+  console.log('  Compiling CoffeeScript files...');
+  const mxlJs = compileCoffee('mxl.coffee');
+  const storageJs = compileCoffee('storage.coffee');
+  const svgCacheJs = compileCoffee('svgCache.coffee');
+  const workerJs = compileCoffee('worker.coffee');
+  const appJs = compileCoffee('app.coffee');
+
+  // 4. Read CSS
+  const css = readSrc('styles.css');
+
+  // 5. Create worker with Verovio inlined (for SPA without blob: URL issues)
+  // Inject Verovio code directly into worker
+  const workerWithVerovio = `
+// Inline Verovio for SPA mode
+${verovioJs}
+
+// Worker code
+${workerJs}
+  `;
+
+  const workerSetup = `
+    (function() {
+      var workerCode = ${JSON.stringify(workerWithVerovio)};
+      var blob = new Blob([workerCode], {type: 'application/javascript'});
+      var workerUrl = URL.createObjectURL(blob);
+      var worker = new Worker(workerUrl);
+      window.__musicaWorker = worker;
+      window.__musicaWorkerUrl = workerUrl;
+
+      // Tell worker Verovio is already loaded (inline)
+      worker.postMessage({type: 'verovioInline'});
+    })();
+  `;
+
+  // 6. No separate Verovio setup needed - it's in the worker
+  const verovioSetup = '';
+
+  // 7. Compile Pug for SPA (no external references)
+  console.log('  Compiling spa.pug...');
+  const html = pug.renderFile(path.join(SRC, 'spa.pug'), {
+    css,
+    verovioSetup,
+    workerSetup,
+    fflateSetup,
+    mxlJs,
+    storageJs,
+    svgCacheJs,
+    appJs,
+    buildDate,
+  });
+
+  // 8. Write dist/spa.html
+  fs.writeFileSync(path.join(DIST, 'spa.html'), html);
+  const sizeMB = (fs.statSync(path.join(DIST, 'spa.html')).size / 1024 / 1024).toFixed(1);
+  console.log(`  -> dist/spa.html (${sizeMB} MB)`);
+
+  console.timeEnd('build-spa');
+  console.log('SPA build complete.');
+}
+
 // Watch mode
 if (process.argv.includes('--watch')) {
   const chokidar = require('chokidar');
@@ -137,6 +218,8 @@ if (process.argv.includes('--watch')) {
       console.error('Build error:', err.message);
     }
   });
+} else if (process.argv.includes('--spa')) {
+  buildSpa();
 } else {
   build();
 }
