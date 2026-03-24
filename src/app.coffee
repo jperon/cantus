@@ -17,6 +17,164 @@ document.addEventListener "DOMContentLoaded", ->
     catch
       buildDateEl.textContent = buildDate
 
+# Service Worker management - Local First PWA
+setupServiceWorker = ->
+  if 'serviceWorker' in navigator
+    navigator.serviceWorker.register('/sw.js')
+      .then (registration) ->
+        console.log "Service Worker enregistré:", registration.scope
+
+        # Écouter les mises à jour du service worker
+        registration.addEventListener 'updatefound', ->
+          newWorker = registration.installing
+          console.log "Nouveau Service Worker détecté"
+
+          newWorker.addEventListener 'statechange', ->
+            if newWorker.state is 'installed' and navigator.serviceWorker.controller
+              # Un nouveau SW est prêt et il y en a déjà un actif
+              showUpdateNotification()
+
+        # Écouter les messages du service worker
+        navigator.serviceWorker.addEventListener 'message', handleServiceWorkerMessage
+
+      .catch (error) ->
+        console.error "Erreur d'enregistrement du Service Worker:", error
+
+# Gérer les messages du service worker
+handleServiceWorkerMessage = (event) ->
+  {type, data, timestamp} = event.data
+
+  switch type
+    when 'update'
+      console.log "Mise à jour disponible:", data
+      showUpdateMessage(data.message)
+
+    when 'cache-updated'
+      console.log "Cache mis à jour:", data
+
+# Afficher une notification de mise à jour
+showUpdateNotification = ->
+  notification = document.createElement 'div'
+  notification.className = 'update-notification'
+  notification.innerHTML = '''
+    <div class="update-content">
+      <span>🔄 Une nouvelle version est disponible</span>
+      <button id="update-btn">Mettre à jour</button>
+      <button id="dismiss-btn">Plus tard</button>
+    </div>
+  '''
+
+  # Style de la notification
+  notification.style.cssText = '''
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: #4CAF50;
+    color: white;
+    padding: 15px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    z-index: 10000;
+    max-width: 300px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  '''
+
+  # Ajouter les styles pour les boutons
+  style = document.createElement 'style'
+  style.textContent = '''
+    .update-content {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .update-content button {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: background-color 0.2s;
+    }
+    #update-btn {
+      background: white;
+      color: #4CAF50;
+      font-weight: bold;
+    }
+    #update-btn:hover {
+      background: #f0f0f0;
+    }
+    #dismiss-btn {
+      background: transparent;
+      color: white;
+      border: 1px solid white;
+    }
+    #dismiss-btn:hover {
+      background: rgba(255,255,255,0.1);
+    }
+  '''
+
+  document.head.appendChild style
+  document.body.appendChild notification
+
+  # Gérer les clics
+  document.getElementById('update-btn').addEventListener 'click', ->
+    # Demander au nouveau service worker de s'activer
+    navigator.serviceWorker.getRegistration().then (registration) ->
+      if registration.waiting
+        registration.waiting.postMessage {type: 'SKIP_WAITING'}
+        # Recharger après un court délai
+        setTimeout ->
+          window.location.reload()
+        , 1000
+
+  document.getElementById('dismiss-btn').addEventListener 'click', ->
+    notification.remove()
+
+  # Auto-dismiss après 30 secondes
+  setTimeout ->
+    if notification.parentNode
+      notification.remove()
+  , 30000
+
+# Afficher un message de mise à jour simple
+showUpdateMessage = (message) ->
+  messageEl = document.createElement 'div'
+  messageEl.className = 'update-message'
+  messageEl.textContent = message
+  messageEl.style.cssText = '''
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #2196F3;
+    color: white;
+    padding: 10px 20px;
+    border-radius: 20px;
+    font-size: 14px;
+    z-index: 9999;
+    opacity: 0;
+    transition: opacity 0.3s;
+  '''
+
+  document.body.appendChild messageEl
+
+  # Animation d'apparition
+  setTimeout ->
+    messageEl.style.opacity = '1'
+  , 100
+
+  # Auto-disparition après 5 secondes
+  setTimeout ->
+    messageEl.style.opacity = '0'
+    setTimeout ->
+      if messageEl.parentNode
+        messageEl.remove()
+    , 300
+  , 5000
+
+# Initialiser le service worker
+setupServiceWorker()
+
 storage = window.__musicaStorage
 worker = window.__musicaWorker
 svgStore = window.__svgCache  # Persistent cache with compression
