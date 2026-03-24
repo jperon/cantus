@@ -195,6 +195,10 @@ verticalScrollRatio = 0
 currentPageWidth = 0
 currentPageHeight = 0
 
+# Scroll mode: "horizontal" (1 system) or "vertical" (2+ systems)
+scrollMode = null
+systemHeight = 0  # Height of a single system in vertical mode
+
 # Movement tracking
 movements = []  # [{id, pageCount, loaded}]
 pendingRenders = new Map()  # "movementId:page" -> resolve function
@@ -235,6 +239,8 @@ worker.onmessage = (e) ->
         if mvPages > 0
           # Request first pages immediately so displayView can show them
           requestPage(1, 1).then (svg) ->
+            # Detect scroll mode from first page before displaying
+            detectScrollMode(svg)
             displayView()
             # Now load subsequent movements after first page is displayed
             loadRemainingMovements()
@@ -402,13 +408,33 @@ showLibraryBtn = ->
 
 showIndicator = ->
   el = $("page-indicator")
-  topPage = Math.floor(scrollPos / 2) + 1
-  el.textContent = "#{topPage} / #{pageCount}"
+  if scrollMode is "vertical"
+    # In vertical mode, show the page visible at bottom of screen
+    slot = $("page-current")
+    scrollTop = slot.scrollTop
+    clientHeight = slot.clientHeight
+    pages = slot.querySelectorAll(".scroll-page")
+    # At top, always show page 1
+    if scrollTop <= 0
+      bottomPage = 1
+    else
+      bottomPage = 1
+      for page, i in pages
+        rect = page.getBoundingClientRect()
+        # Page is visible and crosses the bottom half of viewport
+        if rect.top < clientHeight and rect.bottom > clientHeight * 0.5
+          bottomPage = i + 1
+    el.textContent = "#{bottomPage} / #{pageCount}"
+    pageNumberEl = $("page-number")
+    if pageNumberEl
+      pageNumberEl.textContent = "#{bottomPage}/#{pageCount}"
+  else
+    topPage = Math.floor(scrollPos / 2) + 1
+    el.textContent = "#{topPage} / #{pageCount}"
+    pageNumberEl = $("page-number")
+    if pageNumberEl
+      pageNumberEl.textContent = "#{topPage}/#{pageCount}"
   el.classList.add "visible"
-  # Update page number in nav buttons
-  pageNumberEl = $("page-number")
-  if pageNumberEl
-    pageNumberEl.textContent = "#{topPage}/#{pageCount}"
   clearTimeout indicatorTimeout if indicatorTimeout
   indicatorTimeout = setTimeout ->
     el.classList.remove "visible"
@@ -432,6 +458,44 @@ renderPageAsync = (globalPage) ->
   {movement, localPage} = result
   requestPage(movement.id, localPage)
 
+# Detect scroll mode from SVG content
+# Count <g class="system"> elements to determine horizontal vs vertical scrolling
+detectScrollMode = (svgString) ->
+  return if scrollMode?  # Already detected
+  return unless svgString
+  # Parse SVG to count systems
+  parser = new DOMParser()
+  doc = parser.parseFromString svgString, "image/svg+xml"
+  systems = doc.querySelectorAll 'g.system'
+  systemCount = systems.length
+  console.log "Détection: #{systemCount} système(s) sur la première page"
+  if systemCount <= 1
+    scrollMode = "horizontal"
+    console.log "Mode défilement: horizontal"
+  else
+    scrollMode = "vertical"
+    # Calculate average system height from the SVG
+    svg = doc.querySelector "svg"
+    svgHeight = 0
+    # Try viewBox first
+    viewBoxStr = svg?.getAttribute("viewBox")
+    if viewBoxStr
+      viewBox = viewBoxStr.split(/\s+/).map(Number)
+      if viewBox.length >= 4 and viewBox[3] > 0
+        svgHeight = viewBox[3]
+    # Fallback: use height attribute (may include "px")
+    if svgHeight <= 0 and svg
+      heightAttr = svg.getAttribute("height")
+      if heightAttr
+        svgHeight = parseFloat(heightAttr)
+    # Calculate system height
+    if svgHeight > 0
+      systemHeight = svgHeight / systemCount
+    else
+      systemHeight = 1000  # Default fallback
+    console.log "Mode défilement: vertical (hauteur système: #{systemHeight.toFixed(1)})"
+  scrollMode
+
 displayView = ->
   slot = $("page-current")
   topPage = Math.floor(scrollPos / 2) + 1
@@ -442,35 +506,82 @@ displayView = ->
   slot.innerHTML = ""
   wrapper = document.createElement "div"
   wrapper.className = "scroll-wrapper"
-  wrapper.style.transform = "translateX(-#{offset}vw)"
+  if scrollMode is "vertical"
+    wrapper.classList.add "vertical"
+  else
+    wrapper.style.transform = "translateX(-#{offset}vw)"
 
   leftDiv = document.createElement "div"
   leftDiv.className = "scroll-page"
+  leftDiv.dataset.page = topPage  # Identify page by number
   leftDiv.innerHTML = '<div class="loading-placeholder">Chargement...</div>'
   wrapper.appendChild leftDiv
 
-  if bottomPage <= pageCount
+  # In vertical mode, we need multiple pages to fill the column
+  pagesToLoad = if scrollMode is "vertical" then Math.min(pageCount - topPage + 1, 10) else 1
+
+  if scrollMode is "horizontal" and bottomPage <= pageCount
     rightDiv = document.createElement "div"
     rightDiv.className = "scroll-page"
+    rightDiv.dataset.page = bottomPage  # Identify page by number
     rightDiv.innerHTML = '<div class="loading-placeholder">Chargement...</div>'
     wrapper.appendChild rightDiv
+
+  # In vertical mode, add more page containers
+  if scrollMode is "vertical"
+    for p in [topPage + 1 .. Math.min(topPage + pagesToLoad - 1, pageCount)]
+      div = document.createElement "div"
+      div.className = "scroll-page"
+      div.dataset.page = p  # Identify page by number
+      div.innerHTML = '<div class="loading-placeholder">Chargement...</div>'
+      wrapper.appendChild div
 
   slot.appendChild wrapper
 
   # Render pages asynchronously and update when ready
-  Promise.all([
-    renderPageAsync(topPage),
-    renderPageAsync(bottomPage) if bottomPage <= pageCount
-  ]).then ([leftSvg, rightSvg]) ->
-    # Update with actual content
-    leftDiv.innerHTML = leftSvg
-    if rightSvg
-      rightDiv.innerHTML = rightSvg
+  if scrollMode is "horizontal"
+    promises = [renderPageAsync(topPage)]
+    promises.push renderPageAsync(bottomPage) if bottomPage <= pageCount
+    Promise.all(promises).then ([leftSvg, rightSvg]) ->
+      # Find current DOM elements by data-page attribute
+      wrapper = slot.querySelector(".scroll-wrapper")
+      return unless wrapper  # Wrapper no longer exists
+      # Check if the wrapper still shows the pages we're updating
+      currentTop = parseInt(wrapper.querySelector(".scroll-page")?.dataset.page)
+      return unless currentTop is topPage  # Pages have changed, don't update
+      # Update by page number, not by index
+      if leftSvg
+        pageEl = wrapper.querySelector("[data-page='#{topPage}']")
+        if pageEl
+          pageEl.innerHTML = leftSvg
+      if rightSvg
+        pageEl = wrapper.querySelector("[data-page='#{bottomPage}']")
+        if pageEl
+          pageEl.innerHTML = rightSvg
 
-    requestAnimationFrame ->
-      if slot.scrollHeight > slot.clientHeight and verticalScrollRatio > 0
-        slot.scrollTop = verticalScrollRatio * (slot.scrollHeight - slot.clientHeight)
-      applyVerticalAlignment()
+      requestAnimationFrame ->
+        if slot.scrollHeight > slot.clientHeight and verticalScrollRatio > 0
+          slot.scrollTop = verticalScrollRatio * (slot.scrollHeight - slot.clientHeight)
+        applyVerticalAlignment()
+  else
+    # Vertical mode: render all pages in column
+    pagePromises = for p in [topPage .. Math.min(topPage + pagesToLoad - 1, pageCount)]
+      renderPageAsync(p)
+    Promise.all(pagePromises).then (svgs) ->
+      # Find current DOM elements
+      wrapper = slot.querySelector(".scroll-wrapper")
+      return unless wrapper  # Wrapper no longer exists
+      # Check if the wrapper still shows the pages we're updating
+      currentTop = parseInt(wrapper.querySelector(".scroll-page")?.dataset.page)
+      return unless currentTop is topPage  # Pages have changed, don't update
+      # Update by page number
+      for svg, i in svgs when svg
+        pageNum = topPage + i
+        pageEl = wrapper.querySelector("[data-page='#{pageNum}']")
+        if pageEl
+          pageEl.innerHTML = svg
+      requestAnimationFrame ->
+        applyVerticalAlignment()
 
 prefetch = ->
   topPage = Math.floor(scrollPos / 2) + 1
@@ -501,7 +612,9 @@ maxScrollPos = -> (pageCount * 2) - 2
 
 # Proportional vertical alignment: each page's SVG gets independent translateY
 # so pages with different heights stay aligned based on scroll ratio
+# Only used in horizontal mode - in vertical mode, native scroll works
 applyVerticalAlignment = ->
+  return if scrollMode is "vertical"  # Native scroll handles alignment
   slot = $("page-current")
   maxScroll = slot.scrollHeight - slot.clientHeight
   return unless maxScroll > 0
@@ -523,27 +636,74 @@ captureVerticalScroll = ->
   if maxScroll > 0
     verticalScrollRatio = slot.scrollTop / maxScroll
 
+# Vertical scroll position (in system height units)
+verticalPos = 0  # Current position in vertical mode
+
+# Check if we need to load more pages in vertical mode
+checkAndLoadMorePages = ->
+  return unless scrollMode is "vertical"
+  slot = $("page-current")
+  wrapper = slot.querySelector(".scroll-wrapper")
+  return unless wrapper
+  loadedPages = wrapper.querySelectorAll(".scroll-page").length
+  # If scrolled past 70% of loaded content, add more pages
+  scrollProgress = slot.scrollTop / (slot.scrollHeight - slot.clientHeight)
+  if scrollProgress > 0.7 and loadedPages < pageCount
+    # Add one more page
+    nextPage = loadedPages + 1
+    if nextPage <= pageCount
+      div = document.createElement "div"
+      div.className = "scroll-page"
+      div.innerHTML = '<div class="loading-placeholder">Chargement...</div>'
+      wrapper.appendChild div
+      renderPageAsync(nextPage).then (svg) ->
+        if svg
+          div.innerHTML = svg
+          requestAnimationFrame -> applyVerticalAlignment()
+
 goNext = ->
   return unless fileLoaded
-  return if scrollPos >= maxScrollPos()
-  captureVerticalScroll()
-  scrollPos++
-  currentPage = Math.floor(scrollPos / 2) + 1
-  displayView()
-  showIndicator()
-  prefetch()
-  savePositionDebounced()
+  if scrollMode is "vertical"
+    slot = $("page-current")
+    maxScroll = slot.scrollHeight - slot.clientHeight
+    return if slot.scrollTop >= maxScroll
+    viewHeight = window.innerHeight
+    scrollAmount = viewHeight * 0.5  # Scroll by 50% of view height
+    slot.scrollBy top: scrollAmount, behavior: "instant"
+    verticalPos++
+    checkAndLoadMorePages()
+    showIndicator()
+    savePositionDebounced()
+  else
+    return if scrollPos >= maxScrollPos()
+    captureVerticalScroll()
+    scrollPos++
+    currentPage = Math.floor(scrollPos / 2) + 1
+    displayView()
+    showIndicator()
+    prefetch()
+    savePositionDebounced()
 
 goPrev = ->
   return unless fileLoaded
-  return if scrollPos <= 0
-  captureVerticalScroll()
-  scrollPos--
-  currentPage = Math.floor(scrollPos / 2) + 1
-  displayView()
-  showIndicator()
-  prefetch()
-  savePositionDebounced()
+  if scrollMode is "vertical"
+    slot = $("page-current")
+    return if slot.scrollTop <= 0
+    viewHeight = window.innerHeight
+    scrollAmount = viewHeight * 0.5  # Scroll by 50% of view height
+    slot.scrollBy top: -scrollAmount, behavior: "instant"
+    verticalPos = Math.max(0, verticalPos - 1)
+    showIndicator()
+    savePositionDebounced()
+  else
+    return if scrollPos <= 0
+    captureVerticalScroll()
+    scrollPos--
+    currentPage = Math.floor(scrollPos / 2) + 1
+    displayView()
+    showIndicator()
+    prefetch()
+    savePositionDebounced()
 
 # Get current movement index from page
 getCurrentMovementIndex = ->
@@ -616,21 +776,40 @@ goToNextMovement = ->
 
 goBack5 = ->
   return unless fileLoaded
-  scrollPos = Math.max(0, scrollPos - 10)
-  currentPage = Math.floor(scrollPos / 2) + 1
-  displayView()
-  showIndicator()
-  prefetch()
-  savePositionDebounced()
+  if scrollMode is "vertical"
+    slot = $("page-current")
+    return if slot.scrollTop <= 0
+    viewHeight = window.innerHeight
+    scrollAmount = viewHeight * 0.5  # Scroll by 50% of view height
+    slot.scrollBy top: -scrollAmount * 5, behavior: "instant"
+    showIndicator()
+    savePositionDebounced()
+  else
+    scrollPos = Math.max(0, scrollPos - 10)
+    currentPage = Math.floor(scrollPos / 2) + 1
+    displayView()
+    showIndicator()
+    prefetch()
+    savePositionDebounced()
 
 goForward5 = ->
   return unless fileLoaded
-  scrollPos = Math.min(maxScrollPos(), scrollPos + 10)
-  currentPage = Math.floor(scrollPos / 2) + 1
-  displayView()
-  showIndicator()
-  prefetch()
-  savePositionDebounced()
+  if scrollMode is "vertical"
+    slot = $("page-current")
+    maxScroll = slot.scrollHeight - slot.clientHeight
+    return if slot.scrollTop >= maxScroll
+    viewHeight = window.innerHeight
+    scrollAmount = viewHeight * 0.5  # Scroll by 50% of view height
+    slot.scrollBy top: scrollAmount * 5, behavior: "instant"
+    showIndicator()
+    savePositionDebounced()
+  else
+    scrollPos = Math.min(maxScrollPos(), scrollPos + 10)
+    currentPage = Math.floor(scrollPos / 2) + 1
+    displayView()
+    showIndicator()
+    prefetch()
+    savePositionDebounced()
 
 # Detect split points and capture attributes at each point (lazy approach)
 # Returns {splitPoints, splitAttrs, totalMeasures, parts}
@@ -916,6 +1095,11 @@ loadXml = (xml, startPage = 1) ->
     currentSplitInfo = splitInfo
     movementCount = currentSplitInfo.splitPoints.length + 1
     console.log "Partition divisée en #{movementCount} mouvement(s)"
+
+    # Reset scroll mode for new file
+    scrollMode = null
+    systemHeight = 0
+    verticalPos = 0
 
     # Initialize movement tracking
     for i in [0...movementCount]
@@ -1226,7 +1410,10 @@ document.addEventListener "DOMContentLoaded", ->
   setupLibrary()
   setupSettings()
   setupResize()
-  # Vertical scroll alignment listener
-  $("page-current").addEventListener "scroll", applyVerticalAlignment
+  # Vertical scroll listener for alignment and page indicator
+  $("page-current").addEventListener "scroll", ->
+    applyVerticalAlignment()
+    if scrollMode is "vertical"
+      showIndicator()
   # Worker will send "ready" when initialized
   worker.postMessage {type: "init"}
