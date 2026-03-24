@@ -182,6 +182,7 @@ currentPage = 1
 scrollPos = 0
 pageCount = 0
 memoryCache = new Map()  # In-memory cache for current session
+pendingRequests = new Map()  # Pending page requests for deduplication
 fileLoaded = false
 indicatorTimeout = null
 currentXml = null
@@ -302,17 +303,28 @@ requestPage = (movementId, localPage) ->
   if memoryCache.has(globalPage)
     return Promise.resolve(memoryCache.get(globalPage))
 
+  # Check if request already pending - reuse promise to avoid duplicate requests
+  pendingKey = "page:#{globalPage}"
+  if pendingRequests.has(pendingKey)
+    return pendingRequests.get(pendingKey)
+
   # Check persistent cache if fileId available
   if currentFileId and currentPageWidth and currentPageHeight
-    return svgStore.get(currentFileId, globalPage, currentPageWidth, currentPageHeight).then (svg) ->
+    promise = svgStore.get(currentFileId, globalPage, currentPageWidth, currentPageHeight).then (svg) ->
+      pendingRequests.delete pendingKey
       if svg
         memoryCache.set(globalPage, svg)
         return svg
       # Not in cache, request from worker
       return requestFromWorker(movementId, localPage)
+    pendingRequests.set pendingKey, promise
+    return promise
 
   # No fileId, request from worker
-  requestFromWorker(movementId, localPage)
+  promise = requestFromWorker(movementId, localPage)
+  pendingRequests.set pendingKey, promise
+  promise.then -> pendingRequests.delete pendingKey
+  promise
 
 # Actually request from worker
 requestFromWorker = (movementId, localPage) ->
@@ -595,9 +607,9 @@ prefetch = ->
 
 purgeCacheFarPages = ->
   topPage = Math.floor(scrollPos / 2) + 1
-  return if memoryCache.size <= 7
+  return if memoryCache.size <= 20
   for key from memoryCache.keys()
-    if Math.abs(key - topPage) > 3
+    if Math.abs(key - topPage) > 10
       memoryCache.delete key
 
 savePositionDebounced = ->
