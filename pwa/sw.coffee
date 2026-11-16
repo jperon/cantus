@@ -117,9 +117,10 @@ networkFirst = (request) ->
       await cache.put request, responseClone
     return response
   catch error
-    cached = await cache.match request
-    if cached
-      return cached
+    # networkFirst ne sert que la navigation : en dernier recours, la page
+    # d'accueil précachée dans STATIC_CACHE permet le premier lancement hors ligne.
+    cached = (await caches.match request) or (await caches.match './index.html')
+    return cached if cached
     throw error
 
 # Stale While Revalidate for dynamic resources
