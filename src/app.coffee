@@ -367,6 +367,7 @@ pushedPages = {}  # movementId -> last page sent by the worker (pages arrive in 
 pendingMovementLoads = new Map()  # movementId -> resolve function
 targetPage = null  # Page to navigate to once all movements are loaded
 currentSplitInfo = null  # Split info for lazy extraction
+splitXml = null  # XML string the split info was computed from
 
 # Worker message handler
 worker.onmessage = (e) ->
@@ -1044,15 +1045,51 @@ goForward5 = ->
   else
     setScrollPos Math.min(maxScrollPos(), scrollPos + 10)
 
+# Capture the attributes in effect at each split point, in one pass per part
+# Returns {splitIndex: [attributes per part]}
+captureSplitAttrs = (parts, splitPoints) ->
+  splitAttrs = {}
+  for splitIndex in splitPoints
+    splitAttrs[splitIndex] = []
+  for part in parts
+    state =
+      staves: null
+      clefs: []
+      key: null
+      time: null
+      divisions: null
+      transpose: null
+    for measure, i in part.querySelectorAll("measure")
+      # Snapshot the state before this measure, i.e. as it starts
+      splitAttrs[i].push Object.assign({}, state) if splitAttrs[i]?
+      attrs = measure.querySelector("attributes")
+      if attrs
+        staves = attrs.querySelector("staves")
+        state.staves = staves if staves
+        clefs = attrs.querySelectorAll("clef")
+        state.clefs = Array.from(clefs) if clefs.length > 0
+        key = attrs.querySelector("key")
+        state.key = key if key
+        time = attrs.querySelector("time")
+        state.time = time if time
+        divisions = attrs.querySelector("divisions")
+        state.divisions = divisions if divisions
+        transpose = attrs.querySelector("transpose")
+        state.transpose = transpose if transpose
+  splitAttrs
+
 # Detect split points and capture attributes at each point (lazy approach)
-# Returns {splitPoints, splitAttrs, totalMeasures, parts}
+# Returns {doc, splitPoints, splitAttrs, totalMeasures}
 detectSplitPoints = (xmlString) ->
-  parser = new DOMParser()
-  doc = parser.parseFromString xmlString, "application/xml"
+  doc = new DOMParser().parseFromString xmlString, "application/xml"
+
+  # Insert system breaks once, in place: preprocessMusicXML only adds <print>
+  # elements, which neither detection below nor the measure list observe.
+  preprocessMusicXML doc
 
   parts = doc.querySelectorAll("part")
   unless parts.length > 0
-    return {splitPoints: [], splitAttrs: {}, totalMeasures: 0, parts: null}
+    return {doc, splitPoints: [], splitAttrs: {}, totalMeasures: 0}
 
   firstPartMeasures = parts[0].querySelectorAll("measure")
   totalMeasures = firstPartMeasures.length
@@ -1112,50 +1149,19 @@ detectSplitPoints = (xmlString) ->
   console.log "Points de découpage: #{splitPoints.join(', ')}" if splitPoints.length > 0
 
   # Capture attributes at each split point
-  splitAttrs = {}
-  for splitIndex in splitPoints
-    splitAttrs[splitIndex] = []
-    for part in parts
-      measures = part.querySelectorAll("measure")
-      currentStaves = null
-      currentClefs = []
-      currentKey = null
-      currentTime = null
-      currentDivisions = null
-      currentTranspose = null
-      for m, i in measures when i < splitIndex
-        attrs = m.querySelector("attributes")
-        if attrs
-          staves = attrs.querySelector("staves")
-          currentStaves = staves if staves
-          clefs = attrs.querySelectorAll("clef")
-          currentClefs = Array.from(clefs) if clefs.length > 0
-          key = attrs.querySelector("key")
-          currentKey = key if key
-          time = attrs.querySelector("time")
-          currentTime = time if time
-          divisions = attrs.querySelector("divisions")
-          currentDivisions = divisions if divisions
-          transpose = attrs.querySelector("transpose")
-          currentTranspose = transpose if transpose
-      splitAttrs[splitIndex].push
-        staves: currentStaves
-        clefs: currentClefs
-        key: currentKey
-        time: currentTime
-        divisions: currentDivisions
-        transpose: currentTranspose
+  splitAttrs = captureSplitAttrs parts, splitPoints
 
-  {splitPoints, splitAttrs, totalMeasures, parts: Array.from(parts)}
+  {doc, splitPoints, splitAttrs, totalMeasures}
 
 # Extract a single movement by index (lazy extraction)
 # movementIndex: 0-based, where 0 is first movement
-extractMovement = (xmlString, splitInfo, movementIndex) ->
-  {splitPoints, splitAttrs, totalMeasures} = splitInfo
+extractMovement = (splitInfo, movementIndex) ->
+  {doc, splitPoints, splitAttrs, totalMeasures} = splitInfo
+  serializer = new XMLSerializer()
 
-  # No splits: return whole document
+  # No splits: the whole document is movement 0
   if splitPoints.length is 0
-    return preprocessMusicXML(xmlString) if movementIndex is 0
+    return serializer.serializeToString(doc) if movementIndex is 0
     return null
 
   # Calculate start and end measure indices for this movement
@@ -1166,31 +1172,22 @@ extractMovement = (xmlString, splitInfo, movementIndex) ->
   unless startMeasure? and endMeasure?
     return null
 
-  parser = new DOMParser()
-  doc = parser.parseFromString xmlString, "application/xml"
-  partsPart = doc.querySelectorAll("part")
-  serializer = new XMLSerializer()
+  # Work on a copy: the split document stays intact for the other movements
+  clone = doc.cloneNode true
 
-  for part, pIdx in partsPart
-    measures = Array.from part.querySelectorAll("measure")
-
-    # Remove measures after this movement
-    for m, i in measures when i >= endMeasure
-      m.parentNode.removeChild(m)
-
-    # Remove measures before this movement
-    for m, i in measures when i < startMeasure
-      m.parentNode.removeChild(m) if m.parentNode
+  for part, pIdx in clone.querySelectorAll("part")
+    # Remove measures outside this movement
+    for measure, i in Array.from(part.querySelectorAll("measure")) when i < startMeasure or i >= endMeasure
+      measure.parentNode.removeChild measure
 
     # Insert attributes at start if not first movement
     if startMeasure > 0 and splitAttrs[startMeasure]?[pIdx]
       attrs = splitAttrs[startMeasure][pIdx]
-      remainingMeasures = Array.from part.querySelectorAll("measure")
-      if remainingMeasures.length > 0
-        firstMeasure = remainingMeasures[0]
+      firstMeasure = part.querySelector("measure")
+      if firstMeasure
         existingAttrs = firstMeasure.querySelector("attributes")
 
-        newAttrsEl = doc.createElement("attributes")
+        newAttrsEl = clone.createElement("attributes")
         if attrs.divisions
           newAttrsEl.appendChild attrs.divisions.cloneNode(true)
         if attrs.key
@@ -1221,12 +1218,10 @@ extractMovement = (xmlString, splitInfo, movementIndex) ->
         else if newAttrsEl.children.length > 0
           firstMeasure.insertBefore newAttrsEl, firstMeasure.firstChild
 
-  preprocessMusicXML(serializer.serializeToString(doc))
+  serializer.serializeToString clone
 
-# Preprocess MusicXML: insert system breaks after double barlines
-preprocessMusicXML = (xmlString) ->
-  parser = new DOMParser()
-  doc = parser.parseFromString xmlString, "application/xml"
+# Preprocess MusicXML: insert system breaks after double barlines (in place)
+preprocessMusicXML = (doc) ->
   measures = Array.from doc.querySelectorAll("measure")
   for measure, i in measures
     barlines = measure.querySelectorAll('barline[location="right"]')
@@ -1250,8 +1245,7 @@ preprocessMusicXML = (xmlString) ->
         )
         printEl.setAttribute "new-system", "yes"
         nextMeasure.insertBefore printEl, nextMeasure.firstChild
-  serializer = new XMLSerializer()
-  serializer.serializeToString doc
+  doc
 
 # Load a score using the worker with lazy movement extraction
 loadXml = (xml, startPage = 1) ->
@@ -1268,103 +1262,49 @@ loadXml = (xml, startPage = 1) ->
   targetPage = if startPage > 1 then startPage else null  # Navigate later if needed
   showLoading()
 
-  # Try to get structure from cache first
-  loadStructure = ->
-    if currentFileId
-      svgStore.getStructure(currentFileId).then (cached) ->
-        if cached and cached.splitPoints
-          console.log "Structure en cache: #{cached.splitPoints.length} points de découpage"
-          # Use cached splitPoints but recalculate splitAttrs for those exact points
-          splitInfo = detectSplitPoints xml
-          # Restore cached splitPoints
-          splitInfo.splitPoints = cached.splitPoints
-          splitInfo.totalMeasures = cached.totalMeasures
-          # Recalculate splitAttrs for the cached splitPoints
-          parts = splitInfo.parts
-          splitAttrs = {}
-          for splitIndex in cached.splitPoints
-            splitAttrs[splitIndex] = []
-            for part in parts
-              measures = part.querySelectorAll("measure")
-              currentStaves = null
-              currentClefs = []
-              currentKey = null
-              currentTime = null
-              currentDivisions = null
-              currentTranspose = null
-              for m, i in measures when i < splitIndex
-                attrs = m.querySelector("attributes")
-                if attrs
-                  staves = attrs.querySelector("staves")
-                  currentStaves = staves if staves
-                  clefs = attrs.querySelectorAll("clef")
-                  currentClefs = Array.from(clefs) if clefs.length > 0
-                  key = attrs.querySelector("key")
-                  currentKey = key if key
-                  time = attrs.querySelector("time")
-                  currentTime = time if time
-                  divisions = attrs.querySelector("divisions")
-                  currentDivisions = divisions if divisions
-                  transpose = attrs.querySelector("transpose")
-                  currentTranspose = transpose if transpose
-              splitAttrs[splitIndex].push
-                staves: currentStaves
-                clefs: currentClefs
-                key: currentKey
-                time: currentTime
-                divisions: currentDivisions
-                transpose: currentTranspose
-          splitInfo.splitAttrs = splitAttrs
-          return splitInfo
-        # Not in cache, detect and store (only splitPoints and totalMeasures)
-        splitInfo = detectSplitPoints xml
-        svgStore.setStructure(currentFileId, {
-          splitPoints: splitInfo.splitPoints
-          totalMeasures: splitInfo.totalMeasures
-        })
-        splitInfo
-    else
-      Promise.resolve(detectSplitPoints xml)
+  # Splitting only depends on the XML: reuse it when the same XML is loaded
+  # again (resize, zoom)
+  unless splitXml is xml and currentSplitInfo
+    currentSplitInfo = detectSplitPoints xml
+    splitXml = xml
 
-  loadStructure().then (splitInfo) ->
-    currentSplitInfo = splitInfo
-    movementCount = currentSplitInfo.splitPoints.length + 1
-    console.log "Partition divisée en #{movementCount} mouvement(s)"
+  movementCount = currentSplitInfo.splitPoints.length + 1
+  console.log "Partition divisée en #{movementCount} mouvement(s)"
 
-    # Reset scroll mode for new file
-    scrollMode = null
-    systemHeight = 0
-    verticalPos = 0
+  # Reset scroll mode for new file
+  scrollMode = null
+  systemHeight = 0
+  verticalPos = 0
 
-    # Initialize movement tracking
-    for i in [0...movementCount]
-      movements.push {id: i + 1, pageCount: 0, loaded: false}
+  # Initialize movement tracking
+  for i in [0...movementCount]
+    movements.push {id: i + 1, pageCount: 0, loaded: false}
 
-    # Calculate and store dimensions
-    currentPageWidth = Math.round(window.innerWidth * 100 / currentScale)
-    currentPageHeight = Math.round(window.innerHeight * 100 / currentScale)
-    pageWidth = currentPageWidth
-    pageHeight = currentPageHeight
+  # Calculate and store dimensions
+  currentPageWidth = Math.round(window.innerWidth * 100 / currentScale)
+  currentPageHeight = Math.round(window.innerHeight * 100 / currentScale)
+  pageWidth = currentPageWidth
+  pageHeight = currentPageHeight
 
-    # Clear previous movements before loading new file
-    worker.postMessage { type: "clearMovements" }
+  # Clear previous movements before loading new file
+  worker.postMessage { type: "clearMovements" }
 
-    # Extract and load first movement immediately
-    firstXml = extractMovement xml, currentSplitInfo, 0
-    worker.postMessage
-      type: "loadMovement"
-      movementId: 1
-      xmlString: firstXml
-      pageWidth: pageWidth
-      pageHeight: pageHeight
-      scale: currentScale
+  # Extract and load first movement immediately
+  firstXml = extractMovement currentSplitInfo, 0
+  worker.postMessage
+    type: "loadMovement"
+    movementId: 1
+    xmlString: firstXml
+    pageWidth: pageWidth
+    pageHeight: pageHeight
+    scale: currentScale
 
-    # Subsequent movements will be loaded after first movement is displayed
-    # (see movementLoaded handler)
+  # Subsequent movements will be loaded after first movement is displayed
+  # (see movementLoaded handler)
 
-    fileLoaded = true
-    hideImport()
-    showLibraryBtn()
+  fileLoaded = true
+  hideImport()
+  showLibraryBtn()
 
 # Load remaining movements sequentially after first page is displayed
 loadRemainingMovements = ->
@@ -1387,7 +1327,7 @@ loadRemainingMovements = ->
     pageWidth = currentPageWidth
     pageHeight = currentPageHeight
 
-    mvXml = extractMovement currentXml, currentSplitInfo, index
+    mvXml = extractMovement currentSplitInfo, index
     return processNextMovement(index + 1) unless mvXml
 
     # Load movement and wait for it to be ready
