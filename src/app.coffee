@@ -1319,6 +1319,7 @@ preprocessMusicXML = (doc) ->
 # Load a score using the worker with lazy movement extraction
 loadXml = (xml, startPage = 1) ->
   currentXml = xml
+  partsChanged = false
   loadHiddenParts()
   currentPage = 1  # Always start at page 1 for immediate display
   scrollPos = 0
