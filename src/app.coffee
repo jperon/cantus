@@ -406,6 +406,7 @@ worker.onmessage = (e) ->
             # Detect scroll mode from first page before displaying
             detectScrollMode(svg)
             displayView()
+            prefetch()
             # Now load subsequent movements after first page is displayed
             loadRemainingMovements()
       # Navigate to target page if all movements are loaded
@@ -705,8 +706,8 @@ displayView = ->
   refreshVerticalLayout()
 
 prefetch = ->
-  topPage = Math.floor(scrollPos / 2) + 1
-  for p in [topPage + 1, topPage + 2, topPage + 3, topPage + 4, topPage + 5]
+  page = displayedPage()
+  for p in [page + 1, page + 2, page + 3, page + 4, page + 5]
     if p <= pageCount and not memoryCache.has(p)
       result = getMovementForPage(p)
       if result
@@ -786,6 +787,7 @@ checkAndLoadMorePages = ->
         if svg and div.isConnected
           div.innerHTML = svg
           requestAnimationFrame -> applyVerticalAlignment()
+  prefetch()
 
 # Find the last completely visible SVG in vertical mode
 findLastCompleteSvg = ->
@@ -1008,6 +1010,7 @@ jumpVertical = (direction) ->
 
   checkAndLoadMorePages() if direction > 0
   showIndicator()
+  prefetch()
   savePositionDebounced()
 
 goBack5 = ->
@@ -1796,5 +1799,6 @@ document.addEventListener "DOMContentLoaded", ->
       applyVerticalAlignment()
       if scrollMode is "vertical"
         showIndicator()
+        prefetch()
   # Worker will send "ready" when initialized
   worker.postMessage {type: "init"}
