@@ -557,10 +557,6 @@ showLoading = ->
 hideLoading = ->
   $("overlay-loading").classList.add "hidden"
 
-showError = (msg) ->
-  $("error-message").textContent = msg
-  $("overlay-error").classList.add "visible"
-
 hideError = ->
   $("overlay-error").classList.remove "visible"
 
