@@ -357,6 +357,10 @@ verticalScrollRatio = 0
 currentPageWidth = 0
 currentPageHeight = 0
 
+# Pages pre-rendered around the displayed one
+PREFETCH_AHEAD = 6
+PREFETCH_BEHIND = 1
+
 # Scroll mode: "horizontal" (1 system) or "vertical" (2+ systems)
 scrollMode = null
 systemHeight = 0  # Height of a single system in vertical mode
@@ -707,20 +711,22 @@ displayView = ->
 
 prefetch = ->
   page = displayedPage()
-  for p in [page + 1, page + 2, page + 3, page + 4, page + 5]
-    if p <= pageCount and not memoryCache.has(p)
-      result = getMovementForPage(p)
-      if result
-        {movement, localPage} = result
-        requestPage(movement.id, localPage)
-  purgeCacheFarPages()
+  for p in [page - PREFETCH_BEHIND .. page + PREFETCH_AHEAD]
+    continue unless p >= 1 and p <= pageCount
+    continue if memoryCache.has(p)
+    result = getMovementForPage(p)
+    # Skip pages of a movement that is not loaded yet
+    continue unless result and getGlobalPage(result.movement.id, result.localPage) is p
+    {movement, localPage} = result
+    requestPage(movement.id, localPage)
+  purgeCacheFarPages(page)
 
-purgeCacheFarPages = ->
-  topPage = Math.floor(scrollPos / 2) + 1
-  return if memoryCache.size <= 20
+purgeCacheFarPages = (page) ->
+  first = page - PREFETCH_BEHIND
+  last = page + PREFETCH_AHEAD
+  # Never drop a page of the prefetch window: it would be requested again
   for key from memoryCache.keys()
-    if Math.abs(key - topPage) > 10
-      memoryCache.delete key
+    memoryCache.delete key if key < first or key > last
 
 savePositionDebounced = ->
   return unless currentFileId
