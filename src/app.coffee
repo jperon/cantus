@@ -358,6 +358,7 @@ currentPageWidth = 0
 currentPageHeight = 0
 hiddenParts = new Set()  # Ids des parties masquées pour le fichier courant
 partSizes = {}  # Id de partie -> taille en % (100 = taille normale)
+partsChanged = false  # Réglages de voix modifiés, à appliquer à la fermeture
 
 # Pages pre-rendered around the displayed one
 PREFETCH_AHEAD = 6
@@ -1318,6 +1319,7 @@ preprocessMusicXML = (doc) ->
 # Load a score using the worker with lazy movement extraction
 loadXml = (xml, startPage = 1) ->
   currentXml = xml
+  partsChanged = false
   loadHiddenParts()
   currentPage = 1  # Always start at page 1 for immediate display
   scrollPos = 0
@@ -1643,15 +1645,17 @@ renderPartsList = ->
         sizeSel.disabled = not box.checked
         saveHiddenParts()
         updatePartsDisabled()
-        # Recharger comme le fait le zoom, avec la nouvelle sélection
-        loadXml currentXml, currentPage if fileLoaded and currentXml
+        # Recalcul différé à la fermeture des réglages
+        partsChanged = true
       sizeSel.addEventListener "change", ->
         pct = parseInt sizeSel.value
         if pct is 100 then delete partSizes[id] else partSizes[id] = pct
         saveHiddenParts()
-        loadXml currentXml, currentPage if fileLoaded and currentXml
+        updatePartsSizesReset()
+        partsChanged = true
       list.appendChild label
   updatePartsDisabled()
+  updatePartsSizesReset()
 
 # Au moins une partie reste affichée : on désactive la dernière cochée
 updatePartsDisabled = ->
@@ -1661,6 +1665,19 @@ updatePartsDisabled = ->
   checked = boxes.filter (box) -> box.checked
   for box in boxes
     box.disabled = checked.length is 1 and box.checked
+
+# Bouton « Toutes les voix à 100 % » : actif dès qu'une taille diffère de 100
+updatePartsSizesReset = ->
+  btn = $("parts-sizes-reset")
+  return unless btn
+  btn.disabled = Object.keys(partSizes).every (id) -> partSizes[id] is 100
+
+# Fermer les réglages : applique en une seule fois les changements de voix
+closeSettings = ->
+  $("settings-overlay").classList.add "hidden"
+  if partsChanged
+    partsChanged = false
+    loadXml currentXml, currentPage if fileLoaded and currentXml
 
 # Settings overlay controls
 setupSettings = ->
@@ -1688,8 +1705,15 @@ setupSettings = ->
     renderPartsList()
     updateStorageInfo()
 
-  $("settings-close").addEventListener "click", ->
-    $("settings-overlay").classList.add "hidden"
+  $("settings-close").addEventListener "click", closeSettings
+
+  # Remet toutes les tailles de voix à 100 % (les voix masquées sont conservées)
+  $("parts-sizes-reset").addEventListener "click", ->
+    changed = Object.keys(partSizes).some (id) -> partSizes[id] isnt 100
+    partSizes = {}
+    saveHiddenParts()
+    renderPartsList()
+    partsChanged = true if changed
 
   # Zoom slider: live label, apply on release
   $("zoom-range").addEventListener "input", (e) ->
