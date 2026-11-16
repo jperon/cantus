@@ -1584,6 +1584,8 @@ renderPartsList = ->
         if box.checked then hiddenParts.delete id else hiddenParts.add id
         saveHiddenParts()
         updatePartsDisabled()
+        # Recharger comme le fait le zoom, avec la nouvelle sélection
+        loadXml currentXml, currentPage if fileLoaded and currentXml
       list.appendChild label
   updatePartsDisabled()
 
