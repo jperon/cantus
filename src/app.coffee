@@ -650,87 +650,66 @@ displayView = ->
   topPage = Math.floor(scrollPos / 2) + 1
   bottomPage = topPage + 1
   offset = (scrollPos % 2) * 50
+  vertical = scrollMode is "vertical"
 
-  # Show loading placeholder immediately
-  slot.innerHTML = ""
-  wrapper = document.createElement "div"
-  wrapper.className = "scroll-wrapper"
-  if scrollMode is "vertical"
-    wrapper.classList.add "vertical"
+  # Pages to show: the current system (and the next one if any) horizontally,
+  # up to 10 pages of systems vertically
+  wanted = if vertical
+    pagesToLoad = Math.min(pageCount - topPage + 1, 10)
+    [topPage .. Math.min(topPage + pagesToLoad - 1, pageCount)]
   else
+    if bottomPage <= pageCount then [topPage, bottomPage] else [topPage]
+
+  # Reuse the existing wrapper so its pages keep their parsed SVG
+  wrapper = slot.querySelector ".scroll-wrapper"
+  unless wrapper
+    slot.innerHTML = ""
+    wrapper = document.createElement "div"
+    wrapper.className = "scroll-wrapper"
+    slot.appendChild wrapper
+
+  # Restore the vertical scroll position and alignment once pages are in place
+  refreshVerticalLayout = ->
+    requestAnimationFrame ->
+      if not vertical and slot.scrollHeight > slot.clientHeight and verticalScrollRatio > 0
+        slot.scrollTop = verticalScrollRatio * (slot.scrollHeight - slot.clientHeight)
+      applyVerticalAlignment()
+
+  # Create a page container, filled asynchronously
+  newPage = (page) ->
+    div = document.createElement "div"
+    div.className = "scroll-page"
+    div.dataset.page = page  # Identify page by number
+    div.innerHTML = '<div class="loading-placeholder">Chargement...</div>'
+    renderPageAsync(page).then (svg) ->
+      return unless svg and div.isConnected  # Page was removed meanwhile
+      div.innerHTML = svg
+      refreshVerticalLayout()
+    div
+
+  # Index the pages already displayed, drop those no longer wanted
+  existing = {}
+  for div in Array.from(wrapper.querySelectorAll ".scroll-page")
+    page = parseInt div.dataset.page
+    if page in wanted and not existing[page]
+      existing[page] = div
+    else
+      wrapper.removeChild div
+
+  # Create missing pages and put them all in order: appendChild moves an
+  # existing node without re-parsing its SVG
+  for page in wanted
+    div = existing[page] or newPage(page)
+    wrapper.appendChild div
+
+  if vertical
+    wrapper.classList.add "vertical"
+    wrapper.style.transform = ""
+  else
+    wrapper.classList.remove "vertical"
     wrapper.style.transform = "translateX(-#{offset}vw)"
 
-  leftDiv = document.createElement "div"
-  leftDiv.className = "scroll-page"
-  leftDiv.dataset.page = topPage  # Identify page by number
-  leftDiv.innerHTML = '<div class="loading-placeholder">Chargement...</div>'
-  wrapper.appendChild leftDiv
-
-  # In vertical mode, we need multiple pages to fill the column
-  pagesToLoad = if scrollMode is "vertical" then Math.min(pageCount - topPage + 1, 10) else 1
-
-  if scrollMode is "horizontal" and bottomPage <= pageCount
-    rightDiv = document.createElement "div"
-    rightDiv.className = "scroll-page"
-    rightDiv.dataset.page = bottomPage  # Identify page by number
-    rightDiv.innerHTML = '<div class="loading-placeholder">Chargement...</div>'
-    wrapper.appendChild rightDiv
-
-  # In vertical mode, add more page containers
-  if scrollMode is "vertical"
-    for p in [topPage + 1 .. Math.min(topPage + pagesToLoad - 1, pageCount)]
-      div = document.createElement "div"
-      div.className = "scroll-page"
-      div.dataset.page = p  # Identify page by number
-      div.innerHTML = '<div class="loading-placeholder">Chargement...</div>'
-      wrapper.appendChild div
-
-  slot.appendChild wrapper
-
-  # Render pages asynchronously and update when ready
-  if scrollMode is "horizontal"
-    promises = [renderPageAsync(topPage)]
-    promises.push renderPageAsync(bottomPage) if bottomPage <= pageCount
-    Promise.all(promises).then ([leftSvg, rightSvg]) ->
-      # Find current DOM elements by data-page attribute
-      wrapper = slot.querySelector(".scroll-wrapper")
-      return unless wrapper  # Wrapper no longer exists
-      # Check if the wrapper still shows the pages we're updating
-      currentTop = parseInt(wrapper.querySelector(".scroll-page")?.dataset.page)
-      return unless currentTop is topPage  # Pages have changed, don't update
-      # Update by page number, not by index
-      if leftSvg
-        pageEl = wrapper.querySelector("[data-page='#{topPage}']")
-        if pageEl
-          pageEl.innerHTML = leftSvg
-      if rightSvg
-        pageEl = wrapper.querySelector("[data-page='#{bottomPage}']")
-        if pageEl
-          pageEl.innerHTML = rightSvg
-
-      requestAnimationFrame ->
-        if slot.scrollHeight > slot.clientHeight and verticalScrollRatio > 0
-          slot.scrollTop = verticalScrollRatio * (slot.scrollHeight - slot.clientHeight)
-        applyVerticalAlignment()
-  else
-    # Vertical mode: render all pages in column
-    pagePromises = for p in [topPage .. Math.min(topPage + pagesToLoad - 1, pageCount)]
-      renderPageAsync(p)
-    Promise.all(pagePromises).then (svgs) ->
-      # Find current DOM elements
-      wrapper = slot.querySelector(".scroll-wrapper")
-      return unless wrapper  # Wrapper no longer exists
-      # Check if the wrapper still shows the pages we're updating
-      currentTop = parseInt(wrapper.querySelector(".scroll-page")?.dataset.page)
-      return unless currentTop is topPage  # Pages have changed, don't update
-      # Update by page number
-      for svg, i in svgs when svg
-        pageNum = topPage + i
-        pageEl = wrapper.querySelector("[data-page='#{pageNum}']")
-        if pageEl
-          pageEl.innerHTML = svg
-      requestAnimationFrame ->
-        applyVerticalAlignment()
+  refreshVerticalLayout()
 
 prefetch = ->
   topPage = Math.floor(scrollPos / 2) + 1
