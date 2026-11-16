@@ -1188,7 +1188,8 @@ removeHiddenParts = (doc, hidden) ->
   doc
 
 # Taille des voix : <staff-details><staff-size>N</staff-size></staff-details>
-# dans les <attributes> de la première mesure (une par portée si la partie en a plusieurs)
+# Réutilise les staff-details existants (un par portée, ou un seul sans number
+# qui vaut pour toutes les portées) : Verovio ignore un second staff-details.
 applyPartSizes = (doc) ->
   return doc if Object.keys(partSizes).length is 0
   for part in Array.from doc.querySelectorAll "part"
@@ -1202,6 +1203,11 @@ applyPartSizes = (doc) ->
       measure.insertBefore attrs, measure.firstChild
     staves = parseInt attrs.querySelector("staves")?.textContent ? "1"
     staves = 1 unless staves > 1
+    # staff-details sans number : toutes les portées ; avec number : une portée
+    existing = Array.from part.querySelectorAll "staff-details"
+    covers = (details, n) ->
+      num = details.getAttribute "number"
+      not num? or parseInt(num) is n
     # staff-details se place après les clefs, avant transpose et suivants
     anchor = null
     for child in attrs.children
@@ -1209,12 +1215,19 @@ applyPartSizes = (doc) ->
         anchor = child
         break
     for n in [1..staves]
-      details = doc.createElement "staff-details"
-      details.setAttribute "number", String(n) if staves > 1
-      sizeEl = doc.createElement "staff-size"
-      sizeEl.textContent = String size
-      details.appendChild sizeEl
-      attrs.insertBefore details, anchor
+      covering = (el for el in existing when covers el, n)
+      unless covering.length
+        details = doc.createElement "staff-details"
+        details.setAttribute "number", String(n) if staves > 1
+        attrs.insertBefore details, anchor
+        covering = [details]
+      for details in covering
+        sizeEl = details.querySelector "staff-size"
+        unless sizeEl
+          sizeEl = doc.createElement "staff-size"
+        # staff-size est le dernier enfant prévu par le schéma
+        details.appendChild sizeEl
+        sizeEl.textContent = String size
   doc
 
 # Extract a single movement by index (lazy extraction)
