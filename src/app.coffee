@@ -1188,8 +1188,9 @@ removeHiddenParts = (doc, hidden) ->
   doc
 
 # Taille des voix : <staff-details><staff-size>N</staff-size></staff-details>
-# Réutilise les staff-details existants (un par portée, ou un seul sans number
-# qui vaut pour toutes les portées) : Verovio ignore un second staff-details.
+# Réutilise (et met à l'échelle) les staff-details existants de la partie :
+# Verovio ignore un second staff-details. La taille choisie est relative à
+# leur staff-size d'origine (100 s'il est absent).
 applyPartSizes = (doc) ->
   return doc if Object.keys(partSizes).length is 0
   for part in Array.from doc.querySelectorAll "part"
@@ -1214,20 +1215,24 @@ applyPartSizes = (doc) ->
       if child.tagName in ["transpose", "for-part", "directive", "measure-style"]
         anchor = child
         break
+    # Taille relative à la valeur d'origine de chaque staff-details
+    setSize = (details) ->
+      sizeEl = details.querySelector "staff-size"
+      origin = if sizeEl then parseFloat(sizeEl.textContent) else 100
+      unless sizeEl
+        sizeEl = doc.createElement "staff-size"
+      # staff-size est le dernier enfant prévu par le schéma
+      details.appendChild sizeEl
+      sizeEl.textContent = String Math.round(origin * size) / 100
+    # Tous les staff-details de la partie, quelle que soit la mesure
+    setSize details for details in existing
+    # Portée sans staff-details : en créer un dans la première mesure
     for n in [1..staves]
-      covering = (el for el in existing when covers el, n)
-      unless covering.length
-        details = doc.createElement "staff-details"
-        details.setAttribute "number", String(n) if staves > 1
-        attrs.insertBefore details, anchor
-        covering = [details]
-      for details in covering
-        sizeEl = details.querySelector "staff-size"
-        unless sizeEl
-          sizeEl = doc.createElement "staff-size"
-        # staff-size est le dernier enfant prévu par le schéma
-        details.appendChild sizeEl
-        sizeEl.textContent = String size
+      continue if existing.some (el) -> covers el, n
+      details = doc.createElement "staff-details"
+      details.setAttribute "number", String(n) if staves > 1
+      attrs.insertBefore details, anchor
+      setSize details
   doc
 
 # Extract a single movement by index (lazy extraction)
