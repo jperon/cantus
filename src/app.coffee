@@ -745,19 +745,23 @@ maxScrollPos = -> (pageCount * 2) - 2
 applyVerticalAlignment = ->
   return if scrollMode is "vertical"  # Native scroll handles alignment
   slot = $("page-current")
+  scrollTop = slot.scrollTop
   maxScroll = slot.scrollHeight - slot.clientHeight
   return unless maxScroll > 0
-  ratio = slot.scrollTop / maxScroll
+  ratio = scrollTop / maxScroll
   viewH = slot.clientHeight
-  pages = slot.querySelectorAll(".scroll-page")
-  for page in pages
+  # Read every height first, then write every transform: interleaving the two
+  # would force a layout at each iteration
+  svgs = []
+  heights = []
+  for page in slot.querySelectorAll(".scroll-page")
     svg = page.querySelector("svg")
     continue unless svg
-    svgH = svg.getBoundingClientRect().height
-    idealY = ratio * Math.max(0, svgH - viewH)
-    actualY = slot.scrollTop
-    compensation = actualY - idealY
-    svg.style.transform = "translateY(#{compensation}px)"
+    svgs.push svg
+    heights.push svg.getBoundingClientRect().height
+  for svg, i in svgs
+    idealY = ratio * Math.max(0, heights[i] - viewH)
+    svg.style.transform = "translateY(#{scrollTop - idealY}px)"
 
 captureVerticalScroll = ->
   slot = $("page-current")
