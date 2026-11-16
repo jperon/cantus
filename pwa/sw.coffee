@@ -29,13 +29,21 @@ self.addEventListener 'install', (event) ->
         cache.addAll STATIC_ASSETS.map((u) -> new Request(u, cache: 'reload'))
   )
 
+# Un cache est ancien s'il appartient à ce service worker mais pas à cette
+# version. Les caches de rendus (musica-svg-cache-v1, musica-structure-cache-v1)
+# contiennent les documents de l'utilisateur et sont préservés.
+isOldCache = (name) ->
+  name is 'musica-v3' or
+         (name isnt STATIC_CACHE and name.startsWith('musica-static-')) or
+         (name isnt DYNAMIC_CACHE and name.startsWith('musica-dynamic-'))
+
 # Activation - clean up old caches
 self.addEventListener 'activate', (event) ->
   console.log 'SW: Activation started'
   event.waitUntil(
     caches.keys().then (keys) ->
       Promise.all(
-        keys.filter((k) -> k isnt STATIC_CACHE and k isnt DYNAMIC_CACHE)
+        keys.filter(isOldCache)
           .map (k) ->
             console.log 'SW: Deleting old cache', k
             caches.delete k
