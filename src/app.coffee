@@ -1663,6 +1663,13 @@ updatePartsDisabled = ->
   for box in boxes
     box.disabled = checked.length is 1 and box.checked
 
+# Fermer les réglages : applique en une seule fois les changements de voix
+closeSettings = ->
+  $("settings-overlay").classList.add "hidden"
+  if partsChanged
+    partsChanged = false
+    loadXml currentXml, currentPage if fileLoaded and currentXml
+
 # Settings overlay controls
 setupSettings = ->
   # Show current storage usage
@@ -1689,8 +1696,7 @@ setupSettings = ->
     renderPartsList()
     updateStorageInfo()
 
-  $("settings-close").addEventListener "click", ->
-    $("settings-overlay").classList.add "hidden"
+  $("settings-close").addEventListener "click", closeSettings
 
   # Zoom slider: live label, apply on release
   $("zoom-range").addEventListener "input", (e) ->
