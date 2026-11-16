@@ -570,34 +570,28 @@ showLibraryBtn = ->
   $("btn-library").classList.remove "hidden"
   $("btn-settings").classList.remove "hidden"
 
+# Page shown in the indicator: in vertical mode, the page crossing the bottom
+# half of the viewport (1 at the top of the scroll)
+displayedPage = ->
+  return Math.floor(scrollPos / 2) + 1 unless scrollMode is "vertical"
+  slot = $("page-current")
+  return 1 if slot.scrollTop <= 0
+  clientHeight = slot.clientHeight
+  page = 1
+  for div, i in slot.querySelectorAll(".scroll-page")
+    rect = div.getBoundingClientRect()
+    # The following pages are lower: no need to measure them
+    break if rect.top >= clientHeight
+    page = i + 1 if rect.bottom > clientHeight * 0.5
+  page
+
 showIndicator = ->
   el = $("page-indicator")
-  if scrollMode is "vertical"
-    # In vertical mode, show the page visible at bottom of screen
-    slot = $("page-current")
-    scrollTop = slot.scrollTop
-    clientHeight = slot.clientHeight
-    pages = slot.querySelectorAll(".scroll-page")
-    # At top, always show page 1
-    if scrollTop <= 0
-      bottomPage = 1
-    else
-      bottomPage = 1
-      for page, i in pages
-        rect = page.getBoundingClientRect()
-        # Page is visible and crosses the bottom half of viewport
-        if rect.top < clientHeight and rect.bottom > clientHeight * 0.5
-          bottomPage = i + 1
-    el.textContent = "#{bottomPage} / #{pageCount}"
-    pageNumberEl = $("page-number")
-    if pageNumberEl
-      pageNumberEl.textContent = "#{bottomPage}/#{pageCount}"
-  else
-    topPage = Math.floor(scrollPos / 2) + 1
-    el.textContent = "#{topPage} / #{pageCount}"
-    pageNumberEl = $("page-number")
-    if pageNumberEl
-      pageNumberEl.textContent = "#{topPage}/#{pageCount}"
+  page = displayedPage()
+  el.textContent = "#{page} / #{pageCount}"
+  pageNumberEl = $("page-number")
+  if pageNumberEl
+    pageNumberEl.textContent = "#{page}/#{pageCount}"
   el.classList.add "visible"
   clearTimeout indicatorTimeout if indicatorTimeout
   indicatorTimeout = setTimeout ->
