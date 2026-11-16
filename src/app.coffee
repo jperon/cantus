@@ -356,6 +356,7 @@ currentScale = 40
 verticalScrollRatio = 0
 currentPageWidth = 0
 currentPageHeight = 0
+hiddenParts = new Set()  # Ids des parties masquées pour le fichier courant
 
 # Pages pre-rendered around the displayed one
 PREFETCH_AHEAD = 6
@@ -371,12 +372,19 @@ pendingRenders = new Map()  # "movementId:page" -> resolve function
 pushedPages = {}  # movementId -> last page of the initial push received (in order)
 pendingMovementLoads = new Map()  # movementId -> resolve function
 targetPage = null  # Page to navigate to once all movements are loaded
+awaitingLoad = false  # A new load is posted: ignore the previous render's replies
 currentSplitInfo = null  # Split info for lazy extraction
 splitXml = null  # XML string the split info was computed from
 
 # Worker message handler
 worker.onmessage = (e) ->
   {type} = e.data
+  # Replies still in flight from the previous render would be mapped onto the
+  # movements just reset (page counts at 0) and shown in its place: drop them
+  # until the new first movement is loaded.
+  if awaitingLoad
+    return if type is "svg"
+    return if type is "movementLoaded" and e.data.movementId isnt 1
   switch type
     when "ready"
       console.log "Worker Verovio prêt"
@@ -385,6 +393,7 @@ worker.onmessage = (e) ->
       startApp()
 
     when "movementLoaded"
+      awaitingLoad = false
       {movementId, pageCount: mvPages, pushed} = e.data
       mv = movements.find (m) -> m.id is movementId
       if mv
@@ -429,7 +438,7 @@ worker.onmessage = (e) ->
       pushedPages[movementId] = page if page > (pushedPages[movementId] or 0)
       # Store in persistent cache (async, non-blocking)
       if currentFileId and currentPageWidth and currentPageHeight
-        svgStore.set(currentFileId, globalPage, svg, currentPageWidth, currentPageHeight).catch (err) ->
+        svgStore.set(currentFileId, globalPage, svg, currentPageWidth, currentPageHeight, partsVariant()).catch (err) ->
           console.error "Erreur stockage SVG:", err
       # Resolve pending render if any
       key = "#{movementId}:#{page}"
@@ -471,7 +480,7 @@ requestPage = (movementId, localPage) ->
   pendingKey = "page:#{globalPage}"
   return pendingRequests.get(pendingKey) if pendingRequests.has(pendingKey)
 
-  promise = svgStore.get(currentFileId, globalPage, currentPageWidth, currentPageHeight).then (svg) ->
+  promise = svgStore.get(currentFileId, globalPage, currentPageWidth, currentPageHeight, partsVariant()).then (svg) ->
     if svg
       memoryCache.set(globalPage, svg)
       return svg
@@ -550,6 +559,26 @@ applyAllSettings = ->
   applyTheme settings.theme
   applyTapSize settings.tapSize
   applyZoom settings.zoom
+
+# Parties masquées, propres à chaque fichier
+loadHiddenParts = ->
+  hiddenParts = new Set()
+  return unless currentFileId
+  try
+    saved = localStorage.getItem "musica-hidden-parts-#{currentFileId}"
+    hiddenParts = new Set JSON.parse(saved) if saved
+  catch
+    # localStorage unavailable (file:// on some browsers)
+
+saveHiddenParts = ->
+  return unless currentFileId
+  try
+    localStorage.setItem "musica-hidden-parts-#{currentFileId}", JSON.stringify(Array.from hiddenParts)
+  catch
+    # localStorage unavailable (file:// on some browsers)
+
+# Suffixe de clé du cache SVG : une page rendue avec une autre sélection diffère
+partsVariant = -> Array.from(hiddenParts).sort().join ","
 
 # DOM refs
 $ = (id) -> document.getElementById id
@@ -1144,6 +1173,13 @@ detectSplitPoints = (xmlString) ->
 
   {doc, splitPoints, splitAttrs, totalMeasures}
 
+# Retire d'un document les parties masquées et leur entrée de <part-list>
+removeHiddenParts = (doc, hidden) ->
+  return doc unless hidden.size > 0
+  for el in Array.from doc.querySelectorAll("part, score-part")
+    el.parentNode.removeChild el if hidden.has el.getAttribute("id")
+  doc
+
 # Extract a single movement by index (lazy extraction)
 # movementIndex: 0-based, where 0 is first movement
 extractMovement = (splitInfo, movementIndex) ->
@@ -1152,8 +1188,9 @@ extractMovement = (splitInfo, movementIndex) ->
 
   # No splits: the whole document is movement 0
   if splitPoints.length is 0
-    return serializer.serializeToString(doc) if movementIndex is 0
-    return null
+    return null unless movementIndex is 0
+    return serializer.serializeToString(doc) if hiddenParts.size is 0
+    return serializer.serializeToString(removeHiddenParts(doc.cloneNode(true), hiddenParts))
 
   # Calculate start and end measure indices for this movement
   allPoints = [0, ...splitPoints, totalMeasures]
@@ -1209,6 +1246,7 @@ extractMovement = (splitInfo, movementIndex) ->
         else if newAttrsEl.children.length > 0
           firstMeasure.insertBefore newAttrsEl, firstMeasure.firstChild
 
+  removeHiddenParts clone, hiddenParts
   serializer.serializeToString clone
 
 # Preprocess MusicXML: insert system breaks after double barlines (in place)
@@ -1241,6 +1279,7 @@ preprocessMusicXML = (doc) ->
 # Load a score using the worker with lazy movement extraction
 loadXml = (xml, startPage = 1) ->
   currentXml = xml
+  loadHiddenParts()
   currentPage = 1  # Always start at page 1 for immediate display
   scrollPos = 0
   lastWidth = window.innerWidth
@@ -1252,6 +1291,7 @@ loadXml = (xml, startPage = 1) ->
   pendingMovementLoads.clear()
   pushedPages = {}
   movements = []
+  awaitingLoad = true
   targetPage = if startPage > 1 then startPage else null  # Navigate later if needed
   showLoading()
 
@@ -1527,6 +1567,46 @@ setupResize = ->
       loadXml currentXml, currentPage
     , 300
 
+# Remplit la liste des voix depuis le document déjà analysé (pas de re-parse)
+renderPartsList = ->
+  group = $("parts-group")
+  list = $("parts-list")
+  return unless group and list
+  doc = currentSplitInfo?.doc if fileLoaded
+  parts = if doc then Array.from(doc.querySelectorAll "score-part") else []
+  group.classList.toggle "hidden", parts.length < 2
+  list.innerHTML = ""
+  for part in parts
+    do (part) ->
+      id = part.getAttribute "id"
+      name = part.querySelector("part-name")?.textContent.trim()
+      name = part.querySelector("part-abbreviation")?.textContent.trim() if not name
+      label = document.createElement "label"
+      box = document.createElement "input"
+      box.type = "checkbox"
+      box.checked = not hiddenParts.has id
+      nameEl = document.createElement "span"
+      nameEl.textContent = name or id
+      label.appendChild box
+      label.appendChild nameEl
+      box.addEventListener "change", ->
+        if box.checked then hiddenParts.delete id else hiddenParts.add id
+        saveHiddenParts()
+        updatePartsDisabled()
+        # Recharger comme le fait le zoom, avec la nouvelle sélection
+        loadXml currentXml, currentPage if fileLoaded and currentXml
+      list.appendChild label
+  updatePartsDisabled()
+
+# Au moins une partie reste affichée : on désactive la dernière cochée
+updatePartsDisabled = ->
+  list = $("parts-list")
+  return unless list
+  boxes = Array.from list.querySelectorAll "input"
+  checked = boxes.filter (box) -> box.checked
+  for box in boxes
+    box.disabled = checked.length is 1 and box.checked
+
 # Settings overlay controls
 setupSettings = ->
   # Show current storage usage
@@ -1550,6 +1630,7 @@ setupSettings = ->
 
   $("btn-settings").addEventListener "click", ->
     $("settings-overlay").classList.remove "hidden"
+    renderPartsList()
     updateStorageInfo()
 
   $("settings-close").addEventListener "click", ->
