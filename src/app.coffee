@@ -610,27 +610,25 @@ renderPageAsync = (globalPage) ->
 detectScrollMode = (svgString) ->
   return if scrollMode?  # Already detected
   return unless svgString
-  # Parse SVG to count systems
-  parser = new DOMParser()
-  doc = parser.parseFromString svgString, "image/svg+xml"
-  systems = doc.querySelectorAll 'g.system'
-  systemCount = systems.length
+  # Verovio writes systems as <g id="…" class="system">: no need to parse the
+  # whole SVG to count them
+  systemCount = (svgString.match(/<g\b[^>]*class="system"/g) or []).length
   if systemCount <= 1
     scrollMode = "horizontal"
   else
     scrollMode = "vertical"
     # Calculate average system height from the SVG
-    svg = doc.querySelector "svg"
+    svgTag = svgString.match(/<svg\b[^>]*>/)?[0] or ""
     svgHeight = 0
     # Try viewBox first
-    viewBoxStr = svg?.getAttribute("viewBox")
+    viewBoxStr = svgTag.match(/viewBox="([^"]*)"/)?[1]
     if viewBoxStr
       viewBox = viewBoxStr.split(/\s+/).map(Number)
       if viewBox.length >= 4 and viewBox[3] > 0
         svgHeight = viewBox[3]
     # Fallback: use height attribute (may include "px")
-    if svgHeight <= 0 and svg
-      heightAttr = svg.getAttribute("height")
+    if svgHeight <= 0
+      heightAttr = svgTag.match(/height="([^"]*)"/)?[1]
       if heightAttr
         svgHeight = parseFloat(heightAttr)
     # Calculate system height
