@@ -361,6 +361,7 @@ systemHeight = 0  # Height of a single system in vertical mode
 # Movement tracking
 movements = []  # [{id, pageCount, loaded}]
 pendingRenders = new Map()  # "movementId:page" -> resolve function
+pushedPages = {}  # movementId -> last page sent by the worker (pages arrive in order)
 pendingMovementLoads = new Map()  # movementId -> resolve function
 targetPage = null  # Page to navigate to once all movements are loaded
 currentSplitInfo = null  # Split info for lazy extraction
@@ -391,23 +392,17 @@ worker.onmessage = (e) ->
       if pendingMovementLoads?.has(movementId)
         pendingMovementLoads.get(movementId)()
         pendingMovementLoads.delete(movementId)
-      # Hide loading overlay and render first pages once first movement is ready
+      # Hide loading overlay and show the first page as soon as it arrives
       if movementId is 1
         hideLoading()
         if mvPages > 0
-          # Request first pages immediately so displayView can show them
+          # Page 1 is part of the pushed pages: display it on arrival
           requestPage(1, 1).then (svg) ->
             # Detect scroll mode from first page before displaying
             detectScrollMode(svg)
             displayView()
             # Now load subsequent movements after first page is displayed
             loadRemainingMovements()
-          if mvPages > 1
-            requestPage(1, 2)
-          prefetch()
-          # Check if all pages are already cached (from persistent cache)
-          if memoryCache.size >= pageCount and pageCount > 0
-            hideLoadingIndicator()
       # Navigate to target page if all movements are loaded
       if targetPage and movements.every((m) -> m.loaded)
         goToPage targetPage
@@ -420,6 +415,8 @@ worker.onmessage = (e) ->
       for m in movements when m.id < movementId
         globalPage += m.pageCount or 0
       memoryCache.set globalPage, svg
+      # Pushes arrive in page order: remember how far the worker got
+      pushedPages[movementId] = page if page > (pushedPages[movementId] or 0)
       # Store in persistent cache (async, non-blocking)
       if currentFileId and currentPageWidth and currentPageHeight
         svgStore.set(currentFileId, globalPage, svg, currentPageWidth, currentPageHeight).catch (err) ->
@@ -452,7 +449,7 @@ getGlobalPage = (movementId, localPage) ->
   offset + localPage
 
 # Request SVG from worker, returns Promise
-# Checks persistent cache first if fileId is available
+# Checks caches first
 requestPage = (movementId, localPage) ->
   globalPage = getGlobalPage(movementId, localPage)
 
@@ -460,25 +457,17 @@ requestPage = (movementId, localPage) ->
   if memoryCache.has(globalPage)
     return Promise.resolve(memoryCache.get(globalPage))
 
-  # Check if request already pending - reuse promise to avoid duplicate requests
+  # Reuse the pending promise to avoid duplicate work
   pendingKey = "page:#{globalPage}"
-  if pendingRequests.has(pendingKey)
-    return pendingRequests.get(pendingKey)
+  return pendingRequests.get(pendingKey) if pendingRequests.has(pendingKey)
 
-  # Check persistent cache if fileId available
-  if currentFileId and currentPageWidth and currentPageHeight
-    promise = svgStore.get(currentFileId, globalPage, currentPageWidth, currentPageHeight).then (svg) ->
-      pendingRequests.delete pendingKey
-      if svg
-        memoryCache.set(globalPage, svg)
-        return svg
-      # Not in cache, request from worker
-      return requestFromWorker(movementId, localPage)
-    pendingRequests.set pendingKey, promise
-    return promise
-
-  # No fileId, request from worker
-  promise = requestFromWorker(movementId, localPage)
+  promise = svgStore.get(currentFileId, globalPage, currentPageWidth, currentPageHeight).then (svg) ->
+    if svg
+      memoryCache.set(globalPage, svg)
+      return svg
+    # The worker may have pushed this page while the lookup was in flight
+    return memoryCache.get(globalPage) if memoryCache.has(globalPage)
+    requestFromWorker(movementId, localPage)
   pendingRequests.set pendingKey, promise
   promise.then -> pendingRequests.delete pendingKey
   promise
@@ -488,6 +477,10 @@ requestFromWorker = (movementId, localPage) ->
   new Promise (resolve) ->
     key = "#{movementId}:#{localPage}"
     pendingRenders.set key, resolve
+    # The worker sends every page of a loaded movement, in page order: if this
+    # page is not sent yet, wait for it instead of asking for a second render
+    mv = movements.find (m) -> m.id is movementId
+    return if mv?.pageCount and localPage > (pushedPages[movementId] or 0)
     worker.postMessage
       type: "renderMovementPage"
       movementId: movementId
@@ -604,17 +597,6 @@ showIndicator = ->
   indicatorTimeout = setTimeout ->
     el.classList.remove "visible"
   , 1500
-
-# Render two pages side by side with horizontal offset (50% scroll)
-renderPageSync = (globalPage) ->
-  return memoryCache.get(globalPage) if memoryCache.has(globalPage)
-  # Request from worker (requestPage checks persistent cache first)
-  result = getMovementForPage(globalPage)
-  return "" unless result
-  {movement, localPage} = result
-  requestPage(movement.id, localPage)
-  # Return loading placeholder while waiting for worker
-  '<div class="loading-placeholder">Chargement...</div>'
 
 renderPageAsync = (globalPage) ->
   return Promise.resolve(memoryCache.get(globalPage)) if memoryCache.has(globalPage)
@@ -1276,8 +1258,10 @@ loadXml = (xml, startPage = 1) ->
   scrollPos = 0
   lastWidth = window.innerWidth
   memoryCache.clear()
+  pendingRequests.clear()
   pendingRenders.clear()
   pendingMovementLoads.clear()
+  pushedPages = {}
   movements = []
   targetPage = if startPage > 1 then startPage else null  # Navigate later if needed
   showLoading()
@@ -1406,11 +1390,8 @@ loadRemainingMovements = ->
 
     # Load movement and wait for it to be ready
     loadMovementAndWait(movementId, mvXml, pageWidth, pageHeight).then ->
-      # Process first page (cache check, render if needed, store if needed)
-      requestPage(movementId, 1).then (svg) ->
-        console.log "Mouvement #{movementId} traité"
-        # Move to next movement
-        processNextMovement(index + 1)
+      # Pages are pushed by the worker, go on with the next movement
+      processNextMovement(index + 1)
 
   # Start with movement 2 (index 1)
   processNextMovement(1)
