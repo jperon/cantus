@@ -1076,14 +1076,17 @@ captureSplitAttrs = (parts, splitPoints) ->
   splitAttrs
 
 # Detect split points and capture attributes at each point (lazy approach)
-# Returns {splitPoints, splitAttrs, totalMeasures, parts}
+# Returns {doc, splitPoints, splitAttrs, totalMeasures}
 detectSplitPoints = (xmlString) ->
-  parser = new DOMParser()
-  doc = parser.parseFromString xmlString, "application/xml"
+  doc = new DOMParser().parseFromString xmlString, "application/xml"
+
+  # Insert system breaks once, in place: preprocessMusicXML only adds <print>
+  # elements, which neither detection below nor the measure list observe.
+  preprocessMusicXML doc
 
   parts = doc.querySelectorAll("part")
   unless parts.length > 0
-    return {splitPoints: [], splitAttrs: {}, totalMeasures: 0, parts: null}
+    return {doc, splitPoints: [], splitAttrs: {}, totalMeasures: 0}
 
   firstPartMeasures = parts[0].querySelectorAll("measure")
   totalMeasures = firstPartMeasures.length
@@ -1145,7 +1148,7 @@ detectSplitPoints = (xmlString) ->
   # Capture attributes at each split point
   splitAttrs = captureSplitAttrs parts, splitPoints
 
-  {splitPoints, splitAttrs, totalMeasures, parts: Array.from(parts)}
+  {doc, splitPoints, splitAttrs, totalMeasures}
 
 # Extract a single movement by index (lazy extraction)
 # movementIndex: 0-based, where 0 is first movement
@@ -1277,7 +1280,7 @@ loadXml = (xml, startPage = 1) ->
           splitInfo.splitPoints = cached.splitPoints
           splitInfo.totalMeasures = cached.totalMeasures
           # Recalculate splitAttrs for the cached splitPoints
-          splitInfo.splitAttrs = captureSplitAttrs splitInfo.parts, cached.splitPoints
+          splitInfo.splitAttrs = captureSplitAttrs splitInfo.doc.querySelectorAll("part"), cached.splitPoints
           return splitInfo
         # Not in cache, detect and store (only splitPoints and totalMeasures)
         splitInfo = detectSplitPoints xml
