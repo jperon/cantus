@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Liseuse MusicXML PWA — lecteur de partitions pour liseuse Android",
   "private": true,
+  "license": "GPL-3.0-or-later",
   "scripts": {
     "build": "node build.js",
     "build-spa": "node build.js --spa",
