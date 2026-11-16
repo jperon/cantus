@@ -365,6 +365,7 @@ pushedPages = {}  # movementId -> last page sent by the worker (pages arrive in 
 pendingMovementLoads = new Map()  # movementId -> resolve function
 targetPage = null  # Page to navigate to once all movements are loaded
 currentSplitInfo = null  # Split info for lazy extraction
+splitXml = null  # XML string the split info was computed from
 
 # Worker message handler
 worker.onmessage = (e) ->
@@ -1259,7 +1260,12 @@ loadXml = (xml, startPage = 1) ->
   targetPage = if startPage > 1 then startPage else null  # Navigate later if needed
   showLoading()
 
-  currentSplitInfo = detectSplitPoints xml
+  # Splitting only depends on the XML: reuse it when the same XML is loaded
+  # again (resize, zoom)
+  unless splitXml is xml and currentSplitInfo
+    currentSplitInfo = detectSplitPoints xml
+    splitXml = xml
+
   movementCount = currentSplitInfo.splitPoints.length + 1
   console.log "Partition divisée en #{movementCount} mouvement(s)"
 
