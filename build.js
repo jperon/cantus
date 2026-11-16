@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const pug = require('pug');
 const CoffeeScript = require('coffeescript');
+const { generateScreenshots } = require('./tools/screenshots');
 
 const SRC = path.join(__dirname, 'src');
 const PWA = path.join(__dirname, 'pwa');
@@ -20,10 +21,11 @@ function compileCoffee(file) {
   return CoffeeScript.compile(src, { bare: true });
 }
 
-function build() {
+async function build() {
   console.time('build');
   ensureDir(DIST);
   ensureDir(path.join(DIST, 'icons'));
+  ensureDir(path.join(DIST, 'screenshots'));
 
   const buildDate = new Date().toISOString();
 
@@ -71,7 +73,23 @@ function build() {
     (function() {
       var worker = new Worker('worker.js');
       window.__musicaWorker = worker;
-      worker.postMessage({type: 'setVerovioUrl', url: 'verovio-toolkit-wasm.js'});
+
+      // Check if Verovio is already loaded globally to avoid double loading
+      if (typeof verovio !== 'undefined') {
+        console.log("Main: Verovio already loaded, notifying worker");
+        // Let worker know Verovio is available (but worker will still load its own copy)
+        worker.postMessage({
+          type: 'setVerovioUrl',
+          url: 'verovio-toolkit-wasm.js',
+          verovioAvailable: true
+        });
+      } else {
+        console.log("Main: Verovio not loaded yet, worker will load it");
+        worker.postMessage({
+          type: 'setVerovioUrl',
+          url: 'verovio-toolkit-wasm.js'
+        });
+      }
     })();
   `;
 
@@ -97,11 +115,14 @@ function build() {
   console.log('  Copying PWA files...');
   fs.copyFileSync(path.join(PWA, 'manifest.json'), path.join(DIST, 'manifest.json'));
 
+  // Compile service worker CoffeeScript to JavaScript
+  console.log('  Compiling sw.coffee...');
+  const swJs = CoffeeScript.compile(fs.readFileSync(path.join(PWA, 'sw.coffee'), 'utf-8'), { bare: true });
+
   // Inject build date as cache version to force cache invalidation on updates
-  const swSrc = fs.readFileSync(path.join(PWA, 'sw.js'), 'utf-8');
-  const swWithVersion = swSrc.replace(
-    "const CACHE_NAME = 'musica-v1';",
-    `const CACHE_NAME = 'musica-${buildDate}';`
+  const swWithVersion = swJs.replace(
+    "CACHE_NAME = 'musica-v3'",
+    `CACHE_NAME = 'musica-${buildDate}'`
   );
   fs.writeFileSync(path.join(DIST, 'sw.js'), swWithVersion);
   const faviconSrc = path.join(PWA, 'favicon.ico');
@@ -120,14 +141,42 @@ function build() {
     }
   }
 
+  // Copy screenshots if they exist
+  const screenshotsDir = path.join(PWA, 'screenshots');
+  if (fs.existsSync(screenshotsDir)) {
+    console.log('  Copying screenshots...');
+    for (const file of fs.readdirSync(screenshotsDir)) {
+      if (file.endsWith('.png') || file.endsWith('.jpg') || file.endsWith('.jpeg')) {
+        fs.copyFileSync(path.join(screenshotsDir, file), path.join(DIST, 'screenshots', file));
+        console.log(`    -> dist/screenshots/${file}`);
+      }
+    }
+  }
+
+  // Generate screenshots if they don't exist (only if --screenshots flag is passed)
+  if (process.argv.includes('--screenshots')) {
+    await generateScreenshots();
+
+    // Copy newly generated screenshots
+    console.log('  Copying newly generated screenshots...');
+    for (const file of fs.readdirSync(screenshotsDir)) {
+      if (file.endsWith('.png') || file.endsWith('.jpg') || file.endsWith('.jpeg')) {
+        fs.copyFileSync(path.join(screenshotsDir, file), path.join(DIST, 'screenshots', file));
+        console.log(`    -> dist/screenshots/${file}`);
+      }
+    }
+  }
+
   console.timeEnd('build');
   console.log('Build complete.');
 }
 
 // Build SPA - single HTML file with everything inlined
-function buildSpa() {
+async function buildSpa() {
   console.time('build-spa');
   ensureDir(DIST);
+  ensureDir(path.join(DIST, 'icons'));
+  ensureDir(path.join(DIST, 'screenshots'));
 
   const buildDate = new Date().toISOString();
 
@@ -201,6 +250,48 @@ ${workerJs}
   const sizeMB = (fs.statSync(path.join(DIST, 'spa.html')).size / 1024 / 1024).toFixed(1);
   console.log(`  -> dist/spa.html (${sizeMB} MB)`);
 
+  // Compile and copy service worker for SPA
+  console.log('  Compiling sw.coffee for SPA...');
+  const swJs = CoffeeScript.compile(fs.readFileSync(path.join(PWA, 'sw.coffee'), 'utf-8'), { bare: true });
+
+  // Inject build date as cache version to force cache invalidation on updates
+  const swWithVersion = swJs.replace(
+    "CACHE_NAME = 'musica-v3'",
+    `CACHE_NAME = 'musica-${buildDate}'`
+  );
+  fs.writeFileSync(path.join(DIST, 'sw.js'), swWithVersion);
+
+  // Copy other PWA files for SPA
+  fs.copyFileSync(path.join(PWA, 'manifest.json'), path.join(DIST, 'manifest.json'));
+  const faviconSrc = path.join(PWA, 'favicon.ico');
+  if (fs.existsSync(faviconSrc)) {
+    fs.copyFileSync(faviconSrc, path.join(DIST, 'favicon.ico'));
+  }
+
+  const iconsDir = path.join(PWA, 'icons');
+  if (fs.existsSync(iconsDir)) {
+    ensureDir(path.join(DIST, 'icons'));
+    for (const file of fs.readdirSync(iconsDir)) {
+      if (file === 'favicon.ico') {
+        fs.copyFileSync(path.join(iconsDir, file), path.join(DIST, file));
+      } else {
+        fs.copyFileSync(path.join(iconsDir, file), path.join(DIST, 'icons', file));
+      }
+    }
+  }
+
+  // Copy screenshots if they exist
+  const screenshotsDir = path.join(PWA, 'screenshots');
+  if (fs.existsSync(screenshotsDir)) {
+    console.log('  Copying screenshots for SPA...');
+    for (const file of fs.readdirSync(screenshotsDir)) {
+      if (file.endsWith('.png') || file.endsWith('.jpg') || file.endsWith('.jpeg')) {
+        fs.copyFileSync(path.join(screenshotsDir, file), path.join(DIST, 'screenshots', file));
+        console.log(`    -> dist/screenshots/${file}`);
+      }
+    }
+  }
+
   console.timeEnd('build-spa');
   console.log('SPA build complete.');
 }
@@ -208,18 +299,18 @@ ${workerJs}
 // Watch mode
 if (process.argv.includes('--watch')) {
   const chokidar = require('chokidar');
-  build();
+  build().catch(console.error);
   console.log('\nWatching for changes...');
   chokidar.watch([SRC, PWA], { ignoreInitial: true }).on('all', (event, filePath) => {
     console.log(`\n[${event}] ${path.relative(__dirname, filePath)}`);
     try {
-      build();
+      build().catch(console.error);
     } catch (err) {
       console.error('Build error:', err.message);
     }
   });
 } else if (process.argv.includes('--spa')) {
-  buildSpa();
+  buildSpa().catch(console.error);
 } else {
-  build();
+  build().catch(console.error);
 }

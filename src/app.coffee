@@ -5,8 +5,162 @@ buildDate = window.__musicaBuildDate ? "(non défini)"
 console.log "Musica — Liseuse MusicXML"
 console.log "Date de build : #{buildDate}"
 
+# PWA Installation Management - CRITICAL: Must be attached immediately!
+deferredPrompt = null
+installButton = null
+
+# Handle beforeinstallprompt event - MUST be attached before any other code
+window.addEventListener 'beforeinstallprompt', (e) ->
+  console.log "PWA: Installation prompt available"
+  e.preventDefault()
+  deferredPrompt = e
+  console.log "PWA: Prompt event stored for later use"
+
+# Check if we missed the event (for debugging)
+setTimeout ->
+  unless deferredPrompt
+    console.log "PWA: No prompt event received yet - may need more visits"
+  else
+    console.log "PWA: Prompt event available for use"
+, 1000
+
+# Show install button when PWA installation is possible
+showInstallButton = ->
+  installSection = $("install-section")
+  installButton = $("btn-install")
+
+  if installSection and installButton
+    installSection.classList.remove "hidden"
+    installButton.addEventListener "click", installPWA
+    console.log "PWA: Install button shown"
+
+# Show install button immediately on first visit
+showInstallButtonFirst = ->
+  installSection = $("install-section")
+  installButton = $("btn-install")
+
+  if installSection and installButton
+    installSection.classList.remove "hidden"
+    installButton.addEventListener "click", installPWA
+    console.log "PWA: Install button shown on first visit"
+
+# Install PWA when button is clicked
+installPWA = ->
+  if deferredPrompt
+    # Use the deferred prompt if available
+    console.log "PWA: Showing install prompt"
+
+    deferredPrompt.prompt()
+      .then (result) ->
+        {outcome} = result
+        console.log "PWA: Install outcome - #{outcome}"
+
+        if outcome is 'accepted'
+          console.log "PWA: User accepted installation"
+          showInstallMessage "Installation en cours...", "success"
+        else
+          console.log "PWA: User dismissed installation"
+          showInstallMessage "Installation annulée", "info"
+
+        # Hide install button regardless of outcome
+        hideInstallButton()
+        deferredPrompt = null
+
+      .catch (error) ->
+        console.error "PWA: Install prompt error:", error
+        showInstallMessage "Erreur lors de l'installation", "error"
+  else
+    # No prompt available yet, show detailed instructions
+    console.log "PWA: No install prompt available yet"
+
+    # Check browser and provide specific instructions
+    userAgent = navigator.userAgent.toLowerCase()
+
+    if userAgent.includes('chrome') and not userAgent.includes('edg')
+      # Chrome/Chromium
+      showInstallMessage "Chrome: Revenez après quelques visites pour installer", "info"
+      console.log "PWA: Chrome detected - prompt needs multiple visits"
+
+    else if userAgent.includes('firefox')
+      # Firefox
+      showInstallMessage "Firefox: Appuyez sur l'icône d'installation dans la barre d'adresse", "info"
+      console.log "PWA: Firefox detected - manual installation required"
+
+    else if userAgent.includes('safari') and not userAgent.includes('chrome')
+      # Safari
+      showInstallMessage "Safari: Appuyez sur Partager > Ajouter à l'écran d'accueil", "info"
+      console.log "PWA: Safari detected - manual installation required"
+
+    else if userAgent.includes('edg')
+      # Edge
+      showInstallMessage "Edge: Revenez après quelques visites pour installer", "info"
+      console.log "PWA: Edge detected - prompt needs multiple visits"
+
+    else
+      # Other browsers
+      showInstallMessage "Utilisez le menu du navigateur pour installer", "info"
+      console.log "PWA: Unknown browser - generic instructions"
+
+# Hide install button
+hideInstallButton = ->
+  installSection = $("install-section")
+  if installSection
+    installSection.classList.add "hidden"
+
+# Show install-related messages
+showInstallMessage = (message, type = 'info') ->
+  messageEl = document.getElementById 'install-message'
+  unless messageEl
+    messageEl = document.createElement 'div'
+    messageEl.id = 'install-message'
+    messageEl.style.cssText = '''
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #2196f3;
+      color: white;
+      padding: 12px 24px;
+      border-radius: 8px;
+      z-index: 10000;
+      font-size: 14px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    '''
+    document.body.appendChild messageEl
+
+  # Set colors based on type
+  colors =
+    success: '#4caf50'
+    error: '#f44336'
+    info: '#2196f3'
+    warning: '#ff9800'
+
+  messageEl.style.background = colors[type] or colors.info
+  messageEl.textContent = message
+  messageEl.style.display = 'block'
+
+  # Auto-hide after 3 seconds
+  setTimeout ->
+    messageEl.style.display = 'none'
+  , 3000
+
+# Check if app is already installed
+checkIfInstalled = ->
+  if 'standalone' in window.navigator and window.navigator.standalone
+    console.log "PWA: App is already installed (iOS)"
+    hideInstallButton()
+  else if window.matchMedia('(display-mode: standalone)').matches
+    console.log "PWA: App is already installed (PWA)"
+    hideInstallButton()
+  else
+    # Not installed, show install button immediately
+    showInstallButtonFirst()
+
 # Display build date in bottom-left corner
 document.addEventListener "DOMContentLoaded", ->
+  # Check if PWA is already installed and show button if not
+  checkIfInstalled()
+
   buildDateEl = document.getElementById("build-date")
   if buildDateEl
     # Format: "2026-03-23T15:25:45.733Z" -> "Build: 23/03 17:25"
@@ -20,7 +174,7 @@ document.addEventListener "DOMContentLoaded", ->
 # Service Worker management - Local First PWA
 setupServiceWorker = ->
   if 'serviceWorker' in navigator
-    navigator.serviceWorker.register('/sw.js')
+    navigator.serviceWorker.register('./sw.js')
       .then (registration) ->
         console.log "Service Worker enregistré:", registration.scope
 
@@ -673,15 +827,79 @@ checkAndLoadMorePages = ->
           div.innerHTML = svg
           requestAnimationFrame -> applyVerticalAlignment()
 
+# Find the last completely visible SVG in vertical mode
+findLastCompleteSvg = ->
+  return null unless scrollMode is "vertical"
+
+  slot = $("page-current")
+  wrapper = slot.querySelector(".scroll-wrapper")
+  return null unless wrapper
+
+  svgs = wrapper.querySelectorAll("svg")
+  return null if svgs.length is 0
+
+  slotRect = slot.getBoundingClientRect()
+  viewBottom = slotRect.bottom
+
+  lastCompleteSvg = null
+  for svg in svgs
+    svgRect = svg.getBoundingClientRect()
+    svgBottom = svgRect.bottom
+
+    # Check if SVG is completely visible
+    if svgBottom <= viewBottom
+      lastCompleteSvg = svg
+    else
+      break  # Stop as soon as we find a partially visible SVG
+
+  return lastCompleteSvg
+
 goNext = ->
   return unless fileLoaded
   if scrollMode is "vertical"
     slot = $("page-current")
     maxScroll = slot.scrollHeight - slot.clientHeight
     return if slot.scrollTop >= maxScroll
-    viewHeight = window.innerHeight
-    scrollAmount = viewHeight * 0.5  # Scroll by 50% of view height
-    slot.scrollBy top: scrollAmount, behavior: "instant"
+
+    # Find last complete SVG and get the NEXT one
+    lastCompleteSvg = findLastCompleteSvg()
+    if lastCompleteSvg
+      # Get the next SVG after the last complete one
+      wrapper = slot.querySelector(".scroll-wrapper")
+      svgs = wrapper.querySelectorAll("svg")
+      lastCompleteIndex = Array.from(svgs).indexOf(lastCompleteSvg)
+
+      # Use the next SVG if available, otherwise fallback
+      targetSvg = if lastCompleteIndex < svgs.length - 1
+        svgs[lastCompleteIndex + 1]
+      else
+        # No next SVG, use fallback
+        null
+
+      if targetSvg
+        svgRect = targetSvg.getBoundingClientRect()
+        slotRect = slot.getBoundingClientRect()
+        targetScroll = slot.scrollTop + (svgRect.top - slotRect.top)
+
+        # Only scroll if it would actually move us forward
+        if targetScroll > slot.scrollTop + 10  # Small threshold to avoid micro-scrolls
+          slot.scrollTo top: targetScroll, behavior: "instant"
+        else
+          # Fallback if target is too close
+          viewHeight = window.innerHeight
+          scrollAmount = viewHeight * 0.5
+          slot.scrollBy top: scrollAmount, behavior: "instant"
+      else
+        # Fallback to 50% scroll if no next SVG found
+        viewHeight = window.innerHeight
+        scrollAmount = viewHeight * 0.5
+        slot.scrollBy top: scrollAmount, behavior: "instant"
+    else
+      # Fallback to 50% scroll if no SVG found
+      viewHeight = window.innerHeight
+      scrollAmount = viewHeight * 0.5
+      slot.scrollBy top: scrollAmount, behavior: "instant"
+
     verticalPos++
     checkAndLoadMorePages()
     showIndicator()
@@ -701,9 +919,45 @@ goPrev = ->
   if scrollMode is "vertical"
     slot = $("page-current")
     return if slot.scrollTop <= 0
-    viewHeight = window.innerHeight
-    scrollAmount = viewHeight * 0.5  # Scroll by 50% of view height
-    slot.scrollBy top: -scrollAmount, behavior: "instant"
+
+    # Find first SVG that will become completely visible after scrolling back
+    slotRect = slot.getBoundingClientRect()
+    viewTop = slotRect.top
+    wrapper = slot.querySelector(".scroll-wrapper")
+    return unless wrapper
+
+    svgs = wrapper.querySelectorAll("svg")
+    return if svgs.length is 0
+
+    targetSvg = null
+    for svg in svgs
+      svgRect = svg.getBoundingClientRect()
+      svgTop = svgRect.top
+
+      # Find the first SVG that's above the current view
+      if svgTop < viewTop - 10  # Small margin
+        targetSvg = svg
+      else if svgTop >= viewTop
+        break
+
+    if targetSvg
+      svgRect = targetSvg.getBoundingClientRect()
+      targetScroll = slot.scrollTop + (svgRect.top - slotRect.top)
+
+      # Only scroll if it would actually move us backward
+      if targetScroll < slot.scrollTop - 10  # Small threshold to avoid micro-scrolls
+        slot.scrollTo top: targetScroll, behavior: "instant"
+      else
+        # Fallback if target is too close
+        viewHeight = window.innerHeight
+        scrollAmount = viewHeight * 0.5
+        slot.scrollBy top: -scrollAmount, behavior: "instant"
+    else
+      # Fallback to 50% scroll back
+      viewHeight = window.innerHeight
+      scrollAmount = viewHeight * 0.5
+      slot.scrollBy top: -scrollAmount, behavior: "instant"
+
     verticalPos = Math.max(0, verticalPos - 1)
     showIndicator()
     savePositionDebounced()
@@ -791,9 +1045,36 @@ goBack5 = ->
   if scrollMode is "vertical"
     slot = $("page-current")
     return if slot.scrollTop <= 0
-    viewHeight = window.innerHeight
-    scrollAmount = viewHeight * 0.5  # Scroll by 50% of view height
-    slot.scrollBy top: -scrollAmount * 5, behavior: "instant"
+
+    # Find SVG that's approximately 5 view heights back
+    targetScroll = Math.max(0, slot.scrollTop - (window.innerHeight * 2.5))  # 5 * 0.5 view heights
+
+    # Find the SVG closest to target position
+    wrapper = slot.querySelector(".scroll-wrapper")
+    if wrapper
+      svgs = wrapper.querySelectorAll("svg")
+      closestSvg = null
+      closestDistance = Infinity
+
+      for svg in svgs
+        svgRect = svg.getBoundingClientRect()
+        slotRect = slot.getBoundingClientRect()
+        svgScrollPos = slot.scrollTop + (svgRect.top - slotRect.top)
+        distance = Math.abs(svgScrollPos - targetScroll)
+
+        if distance < closestDistance
+          closestDistance = distance
+          closestSvg = svg
+
+      if closestSvg
+        svgRect = closestSvg.getBoundingClientRect()
+        finalScroll = slot.scrollTop + (svgRect.top - slotRect.top)
+        slot.scrollTo top: finalScroll, behavior: "instant"
+      else
+        slot.scrollTo top: targetScroll, behavior: "instant"
+    else
+      slot.scrollTo top: targetScroll, behavior: "instant"
+
     showIndicator()
     savePositionDebounced()
   else
@@ -810,9 +1091,37 @@ goForward5 = ->
     slot = $("page-current")
     maxScroll = slot.scrollHeight - slot.clientHeight
     return if slot.scrollTop >= maxScroll
-    viewHeight = window.innerHeight
-    scrollAmount = viewHeight * 0.5  # Scroll by 50% of view height
-    slot.scrollBy top: scrollAmount * 5, behavior: "instant"
+
+    # Find SVG that's approximately 5 view heights forward
+    targetScroll = Math.min(maxScroll, slot.scrollTop + (window.innerHeight * 2.5))  # 5 * 0.5 view heights
+
+    # Find the SVG closest to target position
+    wrapper = slot.querySelector(".scroll-wrapper")
+    if wrapper
+      svgs = wrapper.querySelectorAll("svg")
+      closestSvg = null
+      closestDistance = Infinity
+
+      for svg in svgs
+        svgRect = svg.getBoundingClientRect()
+        slotRect = slot.getBoundingClientRect()
+        svgScrollPos = slot.scrollTop + (svgRect.top - slotRect.top)
+        distance = Math.abs(svgScrollPos - targetScroll)
+
+        if distance < closestDistance
+          closestDistance = distance
+          closestSvg = svg
+
+      if closestSvg
+        svgRect = closestSvg.getBoundingClientRect()
+        finalScroll = slot.scrollTop + (svgRect.top - slotRect.top)
+        slot.scrollTo top: finalScroll, behavior: "instant"
+      else
+        slot.scrollTo top: targetScroll, behavior: "instant"
+    else
+      slot.scrollTo top: targetScroll, behavior: "instant"
+
+    checkAndLoadMorePages()
     showIndicator()
     savePositionDebounced()
   else
@@ -1414,6 +1723,224 @@ setupSettings = ->
         settings.tapSize = size
         saveSettings settings
 
+  # Storage management button
+  storageBtn = $("btn-storage")
+  if storageBtn
+    storageBtn.addEventListener "click", ->
+      requestStorageQuota()
+
+  # Show current storage usage
+  updateStorageInfo = ->
+    if 'storage' in navigator and 'estimate' in navigator.storage
+      navigator.storage.estimate().then (estimate) ->
+        usageMB = (estimate.usage / 1024 / 1024).toFixed(2)
+        quotaMB = (estimate.quota / 1024 / 1024).toFixed(0)
+        storageInfo = $("storage-info")
+        if storageInfo
+          storageInfo.textContent = "#{usageMB}MB / #{quotaMB}MB"
+
+          # Change color based on usage
+          usagePercent = (estimate.usage / estimate.quota) * 100
+          if usagePercent > 80
+            storageInfo.style.color = '#f44336'  # Red
+          else if usagePercent > 60
+            storageInfo.style.color = '#ff9800'  # Orange
+          else
+            storageInfo.style.color = '#4caf50'  # Green
+
+  # Update storage info periodically
+  updateStorageInfo()
+  setInterval updateStorageInfo, 5000  # Update every 5 seconds
+
+# Request increased storage quota for MusicXML files
+requestStorageQuota = ->
+  if 'storage' in navigator and 'estimate' in navigator.storage
+    # Check current usage
+    navigator.storage.estimate().then (estimate) ->
+      console.log "Storage usage: #{(estimate.usage / 1024 / 1024).toFixed(2)}MB / #{(estimate.quota / 1024 / 1024).toFixed(2)}MB"
+
+      # Request more storage if needed (limit to 200MB)
+      if estimate.quota < 200 * 1024 * 1024 # 200MB
+        if 'persist' in navigator.storage
+          navigator.storage.persist().then (persistent) ->
+            if persistent
+              console.log "✅ Storage persistence granted - extended quota available"
+              showStorageMessage "Stockage étendu à 200MB activé", "success"
+            else
+              console.log "⚠️ Storage persistence denied"
+              currentQuotaMB = (estimate.quota / 1024 / 1024).toFixed(0)
+              showStorageMessage "Stockage limité à #{currentQuotaMB}MB", "warning"
+        else
+          console.log "Storage persistence not supported"
+      else
+        console.log "✅ Sufficient storage quota available (200MB or more)"
+
+# Show storage-related messages
+showStorageMessage = (message, type = 'info') ->
+  messageEl = document.getElementById 'storage-message'
+  unless messageEl
+    messageEl = document.createElement 'div'
+    messageEl.id = 'storage-message'
+    messageEl.style.cssText = '''
+      position: fixed;
+      bottom: 60px;
+      right: 20px;
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-size: 14px;
+      z-index: 1000;
+      max-width: 300px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    '''
+    document.body.appendChild messageEl
+
+  # Set colors based on type
+  colors =
+    success: '#4caf50'
+    warning: '#ff9800'
+    error: '#f44336'
+    info: '#2196f3'
+
+  messageEl.style.background = colors[type] or colors.info
+  messageEl.style.color = 'white'
+  messageEl.textContent = message
+  messageEl.style.display = 'block'
+
+  # Auto-hide after 4 seconds
+  setTimeout ->
+    messageEl.style.display = 'none'
+  , 4000
+
+# Handle protocol handlers and URL parameters
+handleProtocolParameters = ->
+  urlParams = new URLSearchParams window.location.search
+
+  # Handle file parameter from protocol handlers or share target
+  fileParam = urlParams.get('file')
+  if fileParam
+    console.log "Protocol handler: Opening file #{fileParam}"
+
+    # Handle different URL schemes
+    if fileParam.startsWith('http://') or fileParam.startsWith('https://')
+      # Remote file - fetch and load
+      fetchFileFromUrl fileParam
+    else if fileParam.startsWith('file://')
+      # Local file (limited browser support)
+      console.warn "Local file protocol not supported in browsers"
+    else
+      # Direct file path or base64 data
+      loadFileFromParameter fileParam
+
+  # Handle shared files via Web Share API
+  sharedFile = urlParams.get('shared')
+  if sharedFile
+    console.log "Shared file detected"
+    loadFileFromParameter sharedFile
+
+# Fetch file from remote URL
+fetchFileFromUrl = (url) ->
+  console.log "Fetching remote file: #{url}"
+  fetch url
+    .then (response) ->
+      if response.ok
+        response.text()
+      else
+        throw new Error "HTTP #{response.status}: #{response.statusText}"
+    .then (xmlContent) ->
+      # Load the fetched MusicXML content
+      loadMusicXMLContent xmlContent, url
+    .catch (error) ->
+      console.error "Failed to fetch remote file:", error
+      showError "Impossible de charger le fichier distant: #{error.message}"
+
+# Load file from URL parameter
+loadFileFromParameter = (fileData) ->
+  try
+    if fileData.startsWith('data:') or fileData.startsWith('blob:')
+      # Data URL or Blob URL
+      loadFileFromDataUrl fileData
+    else if fileData.includes('<') and fileData.includes('musicxml')
+      # Direct XML content
+      loadMusicXMLContent fileData, 'protocol-handler'
+    else
+      # Assume it's a filename that needs to be resolved
+      console.warn "Unsupported file format in protocol handler"
+  catch error
+    console.error "Error loading file from parameter:", error
+    showError "Erreur lors du chargement du fichier: #{error.message}"
+
+# Load file from Data URL
+loadFileFromDataUrl = (dataUrl) ->
+  try
+    # Extract base64 content from data URL
+    matches = dataUrl.match(/^data:([^;]+);base64,(.+)$/)
+    if matches and matches[2]
+      decodedContent = atob matches[2]
+      loadMusicXMLContent decodedContent, 'data-url'
+    else
+      throw new Error "Invalid data URL format"
+  catch error
+    console.error "Error parsing data URL:", error
+    showError "Format de fichier invalide"
+
+# Load MusicXML content into the app
+loadMusicXMLContent = (xmlContent, source = 'unknown') ->
+  console.log "Loading MusicXML content from #{source}"
+
+  # Create a temporary File object for the import system
+  try
+    # Parse XML to validate it's MusicXML
+    parser = new DOMParser()
+    xmlDoc = parser.parseFromString xmlContent, 'text/xml'
+
+    if xmlDoc.getElementsByTagName('parsererror').length > 0
+      throw new Error "Invalid XML format"
+
+    # Check if it's MusicXML
+    rootElement = xmlDoc.documentElement
+    unless rootElement.tagName in ['score-partwise', 'score-timewise']
+      throw new Error "Not a valid MusicXML file"
+
+    # Create a File-like object
+    filename = if source.includes('url') then 'remote.musicxml' else 'protocol-handler.musicxml'
+    file = new File [xmlContent], filename, { type: 'application/vnd.recordare.musicxml+xml' }
+
+    # Use existing import system
+    handleFileImport file
+
+  catch error
+    console.error "Error processing MusicXML:", error
+    showError "Fichier MusicXML invalide: #{error.message}"
+
+# Show error message to user
+showError = (message) ->
+  # Create or update error notification
+  errorEl = document.getElementById 'protocol-error'
+  unless errorEl
+    errorEl = document.createElement 'div'
+    errorEl.id = 'protocol-error'
+    errorEl.style.cssText = '''
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: #f44336;
+      color: white;
+      padding: 12px 20px;
+      border-radius: 8px;
+      z-index: 10000;
+      max-width: 300px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    '''
+    document.body.appendChild errorEl
+
+  errorEl.textContent = message
+  errorEl.style.display = 'block'
+
+  # Auto-hide after 5 seconds
+  setTimeout ->
+    errorEl.style.display = 'none'
+  , 5000
+
 # Init
 document.addEventListener "DOMContentLoaded", ->
   applyAllSettings()
@@ -1422,6 +1949,13 @@ document.addEventListener "DOMContentLoaded", ->
   setupLibrary()
   setupSettings()
   setupResize()
+
+  # Request increased storage quota for MusicXML files
+  requestStorageQuota()
+
+  # Handle protocol handlers and file parameters
+  handleProtocolParameters()
+
   # Vertical scroll listener for alignment and page indicator
   $("page-current").addEventListener "scroll", ->
     applyVerticalAlignment()

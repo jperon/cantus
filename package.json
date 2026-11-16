@@ -6,6 +6,7 @@
   "scripts": {
     "build": "node build.js",
     "build-spa": "node build.js --spa",
+    "build-with-screenshots": "node build.js --screenshots",
     "watch": "node build.js --watch",
     "serve": "npx http-server dist -p 8443 --ssl --cert localhost.pem --key localhost-key.pem -c-1"
   },
@@ -13,6 +14,7 @@
     "chokidar": "^3.6.0",
     "coffeescript": "^2.7.0",
     "pug": "^3.0.3",
+    "playwright": "^1.48.0",
     "verovio": "^4.4.0"
   },
   "dependencies": {
