@@ -3,8 +3,6 @@
 
 tk = null
 verovioLoaded = false
-verovioUrl = null
-verovioInline = false  # True when Verovio is inlined in SPA mode
 movements = {}  # movementId -> {pageCount, loaded, xml, options}
 currentMovement = null
 
@@ -12,36 +10,6 @@ currentMovement = null
 clearMovements = ->
   movements = {}
   currentMovement = null
-
-# Initialize Verovio from global scope (received from main thread)
-initVerovioFromGlobal = (verovioGlobal) ->
-  try
-    # Make Verovio available in worker scope
-    self.verovio = verovioGlobal
-    verovioLoaded = true
-
-    # Initialize toolkit
-    mod = verovioGlobal.module
-    if mod.INITIAL_MEMORY?
-      mod.INITIAL_MEMORY = 8 * 1024 * 1024
-
-    verovioReady = new Promise (resolveInit) ->
-      if mod.calledRun
-        resolveInit()
-      else
-        prevCallback = mod.onRuntimeInitialized
-        mod.onRuntimeInitialized = ->
-          prevCallback?()
-          resolveInit()
-
-    verovioReady.then ->
-      tk = new verovioGlobal.toolkit()
-      console.log "Worker: Verovio initialized from global scope"
-    .catch (err) ->
-      console.error "Worker: Verovio initialization failed:", err
-
-  catch err
-    console.error "Worker: Failed to initialize Verovio from global:", err
 
 # Load Verovio dynamically and initialize
 loadVerovio = (url) ->
@@ -100,8 +68,6 @@ loadVerovio = (url) ->
 # Initialize Verovio after loading
 initVerovio = (resolve, reject) ->
   mod = verovio.module
-  if mod.INITIAL_MEMORY?
-    mod.INITIAL_MEMORY = 8 * 1024 * 1024
 
   verovioReady = new Promise (resolveInit) ->
     if mod.calledRun
@@ -117,16 +83,6 @@ initVerovio = (resolve, reject) ->
     resolve()
   .catch (err) ->
     reject(err)
-
-# Initialize inline Verovio (already loaded in worker code)
-initInlineVerovio = ->
-  return unless typeof verovio != 'undefined' and not verovioLoaded
-  verovioLoaded = true
-  verovioInline = true
-  initVerovio(
-    -> console.log 'Inline Verovio initialized'
-    (err) -> console.error 'Inline Verovio init failed:', err
-  )
 
 loadMovement = (movementId, xmlString, pageWidth, pageHeight, scale = 40) ->
   options = {
@@ -169,7 +125,6 @@ switchToMovement = (movementId) ->
   unless mv?.loaded
     return false
   # Reload the movement data only if movement changed
-  console.log "Switching to movement #{movementId}"
   tk.setOptions mv.options
   loaded = tk.loadData mv.xml
   unless loaded
@@ -179,7 +134,6 @@ switchToMovement = (movementId) ->
 
 renderMovementPage = (movementId, pageNumber) ->
   # Switch to the requested movement
-  console.log "Rendering page #{pageNumber} for movement #{movementId}"
   unless switchToMovement(movementId)
     self.postMessage {
       type: "error"
@@ -188,9 +142,7 @@ renderMovementPage = (movementId, pageNumber) ->
     }
     return
 
-  console.log "Calling tk.renderToSVG for page #{pageNumber}"
   svg = tk.renderToSVG pageNumber
-  console.log "SVG generated for page #{pageNumber}, size: #{svg.length}"
   self.postMessage {
     type: "svg"
     movementId
@@ -204,39 +156,27 @@ self.onmessage = (e) ->
     switch type
       when "verovioInline"
         # Verovio is inlined in SPA mode - initialize it
-        self.postMessage {
-          type: "ready"
-        }
+        verovioLoaded = true
+        initVerovio(
+          -> self.postMessage {type: "ready"}
+          (err) ->
+            self.postMessage {
+              type: "error"
+              message: "Failed to initialize Verovio: #{err.message or String(err)}"
+            }
+        )
 
       when "setVerovioUrl"
-        verovioUrl = e.data.url
-        verovioAvailable = e.data.verovioAvailable
-
-        if verovioAvailable
-          console.log "Worker: Verovio available in main thread, loading optimized"
-          # Verovio is cached by SW, load should be fast
-          loadVerovio(verovioUrl)
-            .then ->
-              self.postMessage {
-                type: "ready"
-              }
-            .catch (err) ->
-              self.postMessage {
-                type: "error"
-                message: "Failed to load Verovio: #{err.message or String(err)}"
-              }
-        else
-          console.log "Worker: Verovio not in main thread, loading normally"
-          loadVerovio(verovioUrl)
-            .then ->
-              self.postMessage {
-                type: "ready"
-              }
-            .catch (err) ->
-              self.postMessage {
-                type: "error"
-                message: "Failed to load Verovio: #{err.message or String(err)}"
-              }
+        loadVerovio(e.data.url)
+          .then ->
+            self.postMessage {
+              type: "ready"
+            }
+          .catch (err) ->
+            self.postMessage {
+              type: "error"
+              message: "Failed to load Verovio: #{err.message or String(err)}"
+            }
 
       when "init"
         if tk
