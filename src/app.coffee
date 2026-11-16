@@ -377,7 +377,6 @@ worker.onmessage = (e) ->
 
     when "movementLoaded"
       {movementId, pageCount: mvPages} = e.data
-      console.log "Mouvement #{movementId} chargé: #{mvPages} pages"
       mv = movements.find (m) -> m.id is movementId
       if mv
         mv.pageCount = mvPages
@@ -634,10 +633,8 @@ detectScrollMode = (svgString) ->
   doc = parser.parseFromString svgString, "image/svg+xml"
   systems = doc.querySelectorAll 'g.system'
   systemCount = systems.length
-  console.log "Détection: #{systemCount} système(s) sur la première page"
   if systemCount <= 1
     scrollMode = "horizontal"
-    console.log "Mode défilement: horizontal"
   else
     scrollMode = "vertical"
     # Calculate average system height from the SVG
@@ -659,7 +656,6 @@ detectScrollMode = (svgString) ->
       systemHeight = svgHeight / systemCount
     else
       systemHeight = 1000  # Default fallback
-    console.log "Mode défilement: vertical (hauteur système: #{systemHeight.toFixed(1)})"
   scrollMode
 
 displayView = ->
