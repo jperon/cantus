@@ -18,19 +18,15 @@ STATIC_ASSETS = [
 ]
 
 # Installation - cache static assets
+# Le nouveau SW reste en attente : app.coffee propose la mise à jour,
+# puis envoie SKIP_WAITING quand l'utilisateur l'accepte.
 self.addEventListener 'install', (event) ->
   console.log 'SW: Installation started'
   event.waitUntil(
     caches.open(STATIC_CACHE)
       .then (cache) ->
         console.log 'SW: Caching static assets'
-        cache.addAll STATIC_ASSETS
-      .then ->
-        console.log 'SW: Static assets cached successfully'
-        self.skipWaiting()
-      .catch (err) ->
-        console.error 'SW: Install failed', err
-        Promise.resolve()
+        cache.addAll STATIC_ASSETS.map((u) -> new Request(u, cache: 'reload'))
   )
 
 # Activation - clean up old caches
