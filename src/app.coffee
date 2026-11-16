@@ -358,6 +358,7 @@ currentPageWidth = 0
 currentPageHeight = 0
 hiddenParts = new Set()  # Ids des parties masquées pour le fichier courant
 partSizes = {}  # Id de partie -> taille en % (100 = taille normale)
+partsChanged = false  # Réglages de voix modifiés, à appliquer à la fermeture
 
 # Pages pre-rendered around the displayed one
 PREFETCH_AHEAD = 6
@@ -1643,13 +1644,13 @@ renderPartsList = ->
         sizeSel.disabled = not box.checked
         saveHiddenParts()
         updatePartsDisabled()
-        # Recharger comme le fait le zoom, avec la nouvelle sélection
-        loadXml currentXml, currentPage if fileLoaded and currentXml
+        # Recalcul différé à la fermeture des réglages
+        partsChanged = true
       sizeSel.addEventListener "change", ->
         pct = parseInt sizeSel.value
         if pct is 100 then delete partSizes[id] else partSizes[id] = pct
         saveHiddenParts()
-        loadXml currentXml, currentPage if fileLoaded and currentXml
+        partsChanged = true
       list.appendChild label
   updatePartsDisabled()
 
