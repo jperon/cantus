@@ -430,7 +430,7 @@ worker.onmessage = (e) ->
       pushedPages[movementId] = page if page > (pushedPages[movementId] or 0)
       # Store in persistent cache (async, non-blocking)
       if currentFileId and currentPageWidth and currentPageHeight
-        svgStore.set(currentFileId, globalPage, svg, currentPageWidth, currentPageHeight).catch (err) ->
+        svgStore.set(currentFileId, globalPage, svg, currentPageWidth, currentPageHeight, partsVariant()).catch (err) ->
           console.error "Erreur stockage SVG:", err
       # Resolve pending render if any
       key = "#{movementId}:#{page}"
@@ -472,7 +472,7 @@ requestPage = (movementId, localPage) ->
   pendingKey = "page:#{globalPage}"
   return pendingRequests.get(pendingKey) if pendingRequests.has(pendingKey)
 
-  promise = svgStore.get(currentFileId, globalPage, currentPageWidth, currentPageHeight).then (svg) ->
+  promise = svgStore.get(currentFileId, globalPage, currentPageWidth, currentPageHeight, partsVariant()).then (svg) ->
     if svg
       memoryCache.set(globalPage, svg)
       return svg
