@@ -103,17 +103,12 @@ networkFirst = (request) ->
   cache = await caches.open DYNAMIC_CACHE
 
   try
-    console.log 'SW: Trying network first', request.url
     response = await fetch request
-
     if response.ok
       responseClone = response.clone()
       await cache.put request, responseClone
-      console.log 'SW: Network success, cached', request.url
-
     return response
   catch error
-    console.log 'SW: Network failed, trying cache', request.url
     cached = await cache.match request
     if cached
       return cached
@@ -129,18 +124,12 @@ staleWhileRevalidate = (request) ->
     if response.ok
       responseClone = response.clone()
       await cache.put request, responseClone
-      console.log 'SW: Updated in cache', request.url
     return response
   .catch (error) ->
     console.error 'SW: Background update failed', request.url, error
 
   # Return cache if available, otherwise wait for network
-  if cached
-    console.log 'SW: Serving stale, updating in background', request.url
-    return cached
-
-  console.log 'SW: Not in cache, waiting for network', request.url
-  return fetchPromise
+  return cached or fetchPromise
 
 # Listen for messages from clients
 self.addEventListener 'message', (event) ->
