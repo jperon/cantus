@@ -2,12 +2,15 @@ doctype html
 html(lang="fr")
   head
     meta(charset="utf-8")
-    meta(name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no")
+    meta(name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5")
+    meta(name="description" content="Cantus est une liseuse MusicXML hors-ligne. Ouvrez et visualisez vos partitions musicales au format MusicXML et MXL avec une interface intuitive et un rendu haute qualité.")
     meta(name="mobile-web-app-capable" content="yes")
     meta(name="apple-mobile-web-app-capable" content="yes")
     meta(name="apple-mobile-web-app-status-bar-style" content="default")
     meta(name="apple-mobile-web-app-title" content="Partitions")
     meta(name="theme-color" content="#ffffff")
+    meta(name="keywords" content="MusicXML, partitions, musique, liseuse, offline, PWA, cantus, score, sheet music")
+    meta(name="author" content="Cantus")
     link(rel="manifest" href="manifest.json")
     link(rel="icon" href="favicon.ico" type="image/x-icon")
     link(rel="apple-touch-icon" href="icons/icon-192.png")
@@ -26,6 +29,9 @@ html(lang="fr")
         p Ouvrir un fichier MusicXML pour commencer
         button#import-btn Ouvrir un fichier
         input#file-input(type="file" accept=".xml,.musicxml,.mxl")
+        #install-section.hidden
+          button#btn-install Installer Cantus
+          p.install-subtitle Transformez Cantus en application native
     button#btn-library.hidden ☰
     button#btn-settings.hidden ⚙
     #overlay-loading
@@ -42,6 +48,9 @@ html(lang="fr")
         .settings-row
           span#zoom-value 40
           input#zoom-range(type="range" min="30" max="80" step="5" value="40")
+      #parts-group.settings-group.hidden
+        label.settings-label Voix
+        #parts-list
       .settings-group
         label.settings-label Thème
         .settings-row
@@ -54,6 +63,31 @@ html(lang="fr")
           button.tap-btn(data-size="20") Petite
           button.tap-btn.active(data-size="30") Normale
           button.tap-btn(data-size="40") Grande
+      .settings-group
+        label.settings-label Défilement
+        .settings-row
+          button.scroll-unit-btn.active(data-unit="page") Par page
+          button.scroll-unit-btn(data-unit="system") Par système
+        .settings-row#overlap-row
+          span Recouvrement
+          select#overlap-select
+            option(value="0") 0 %
+            option(value="10") 10 %
+            option(value="20") 20 %
+            option(value="30") 30 %
+            option(value="40") 40 %
+            option(value="50") 50 %
+      .settings-group
+        label.settings-label Stockage
+        .settings-row
+          span#storage-info 0MB / 16MB
+          button#btn-storage Demander plus
+      .settings-group
+        label.settings-label À propos
+        .settings-row
+          span Cantus v1.0 - Liseuse MusicXML
+        .settings-row
+          span#build-date
     #library-overlay.hidden
       #library-header
         h2 Bibliothèque
@@ -73,8 +107,6 @@ html(lang="fr")
       button.nav-btn(data-action="next-5" title="5 pages après") +5
       button.nav-btn(data-action="next-mov" title="Mouvement suivant") ▶▶
       button.nav-btn(data-action="end" title="Fin") ⏭
-    #build-date
-    script(src="verovio-toolkit-wasm.js")
     script.
       window.__musicaBuildDate = "#{buildDate}"
     script !{workerSetup}
@@ -83,11 +115,3 @@ html(lang="fr")
     script !{storageJs}
     script !{svgCacheJs}
     script !{appJs}
-    script.
-      if ('serviceWorker' in navigator) {
-        var isLocalhost = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
-        var isSecure = location.protocol === 'https:' || isLocalhost;
-        if (isSecure) {
-          navigator.serviceWorker.register('./sw.js');
-        }
-      }

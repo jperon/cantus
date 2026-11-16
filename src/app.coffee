@@ -5,22 +5,178 @@ buildDate = window.__musicaBuildDate ? "(non défini)"
 console.log "Musica — Liseuse MusicXML"
 console.log "Date de build : #{buildDate}"
 
+# PWA Installation Management - CRITICAL: Must be attached immediately!
+deferredPrompt = null
+installButton = null
+
+# Handle beforeinstallprompt event - MUST be attached before any other code
+window.addEventListener 'beforeinstallprompt', (e) ->
+  console.log "PWA: Installation prompt available"
+  e.preventDefault()
+  deferredPrompt = e
+  console.log "PWA: Prompt event stored for later use"
+
+# Check if we missed the event (for debugging)
+setTimeout ->
+  unless deferredPrompt
+    console.log "PWA: No prompt event received yet - may need more visits"
+  else
+    console.log "PWA: Prompt event available for use"
+, 1000
+
+# Show install button when PWA installation is possible
+showInstallButton = ->
+  installSection = $("install-section")
+  installButton = $("btn-install")
+
+  if installSection and installButton
+    installSection.classList.remove "hidden"
+    installButton.addEventListener "click", installPWA
+    console.log "PWA: Install button shown"
+
+# Show install button immediately on first visit
+showInstallButtonFirst = ->
+  installSection = $("install-section")
+  installButton = $("btn-install")
+
+  if installSection and installButton
+    installSection.classList.remove "hidden"
+    installButton.addEventListener "click", installPWA
+    console.log "PWA: Install button shown on first visit"
+
+# Install PWA when button is clicked
+installPWA = ->
+  if deferredPrompt
+    # Use the deferred prompt if available
+    console.log "PWA: Showing install prompt"
+
+    deferredPrompt.prompt()
+      .then (result) ->
+        {outcome} = result
+        console.log "PWA: Install outcome - #{outcome}"
+
+        if outcome is 'accepted'
+          console.log "PWA: User accepted installation"
+          showInstallMessage "Installation en cours...", "success"
+        else
+          console.log "PWA: User dismissed installation"
+          showInstallMessage "Installation annulée", "info"
+
+        # Hide install button regardless of outcome
+        hideInstallButton()
+        deferredPrompt = null
+
+      .catch (error) ->
+        console.error "PWA: Install prompt error:", error
+        showInstallMessage "Erreur lors de l'installation", "error"
+  else
+    # No prompt available yet, show detailed instructions
+    console.log "PWA: No install prompt available yet"
+
+    # Check browser and provide specific instructions
+    userAgent = navigator.userAgent.toLowerCase()
+
+    if userAgent.includes('chrome') and not userAgent.includes('edg')
+      # Chrome/Chromium
+      showInstallMessage "Chrome: Revenez après quelques visites pour installer", "info"
+      console.log "PWA: Chrome detected - prompt needs multiple visits"
+
+    else if userAgent.includes('firefox')
+      # Firefox
+      showInstallMessage "Firefox: Appuyez sur l'icône d'installation dans la barre d'adresse", "info"
+      console.log "PWA: Firefox detected - manual installation required"
+
+    else if userAgent.includes('safari') and not userAgent.includes('chrome')
+      # Safari
+      showInstallMessage "Safari: Appuyez sur Partager > Ajouter à l'écran d'accueil", "info"
+      console.log "PWA: Safari detected - manual installation required"
+
+    else if userAgent.includes('edg')
+      # Edge
+      showInstallMessage "Edge: Revenez après quelques visites pour installer", "info"
+      console.log "PWA: Edge detected - prompt needs multiple visits"
+
+    else
+      # Other browsers
+      showInstallMessage "Utilisez le menu du navigateur pour installer", "info"
+      console.log "PWA: Unknown browser - generic instructions"
+
+# Hide install button
+hideInstallButton = ->
+  installSection = $("install-section")
+  if installSection
+    installSection.classList.add "hidden"
+
+# Show install-related messages
+showInstallMessage = (message, type = 'info') ->
+  messageEl = document.getElementById 'install-message'
+  unless messageEl
+    messageEl = document.createElement 'div'
+    messageEl.id = 'install-message'
+    messageEl.style.cssText = '''
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #2196f3;
+      color: white;
+      padding: 12px 24px;
+      border-radius: 8px;
+      z-index: 10000;
+      font-size: 14px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    '''
+    document.body.appendChild messageEl
+
+  # Set colors based on type
+  colors =
+    success: '#4caf50'
+    error: '#f44336'
+    info: '#2196f3'
+    warning: '#ff9800'
+
+  messageEl.style.background = colors[type] or colors.info
+  messageEl.textContent = message
+  messageEl.style.display = 'block'
+
+  # Auto-hide after 3 seconds
+  setTimeout ->
+    messageEl.style.display = 'none'
+  , 3000
+
+# Check if app is already installed
+checkIfInstalled = ->
+  if 'standalone' in window.navigator and window.navigator.standalone
+    console.log "PWA: App is already installed (iOS)"
+    hideInstallButton()
+  else if window.matchMedia('(display-mode: standalone)').matches
+    console.log "PWA: App is already installed (PWA)"
+    hideInstallButton()
+  else
+    # Not installed, show install button immediately
+    showInstallButtonFirst()
+
 # Display build date in bottom-left corner
 document.addEventListener "DOMContentLoaded", ->
+  # Check if PWA is already installed and show button if not
+  checkIfInstalled()
+
   buildDateEl = document.getElementById("build-date")
   if buildDateEl
-    # Format: "2026-03-23T15:25:45.733Z" -> "Build: 23/03 17:25"
+    # Format: "2026-03-23T15:25:45.733Z" -> "Version du 23/03/2026 à 17:25"
+    buildDateEl.title = buildDate
     try
       date = new Date(buildDate)
-      formatted = "Build: #{date.toLocaleDateString('fr-FR', {day: '2-digit', month: '2-digit'})} #{date.toLocaleTimeString('fr-FR', {hour: '2-digit', minute: '2-digit'})}"
-      buildDateEl.textContent = formatted
+      day = date.toLocaleDateString('fr-FR', {day: '2-digit', month: '2-digit', year: 'numeric'})
+      time = date.toLocaleTimeString('fr-FR', {hour: '2-digit', minute: '2-digit'})
+      buildDateEl.textContent = "Version du #{day} à #{time}"
     catch
       buildDateEl.textContent = buildDate
 
 # Service Worker management - Local First PWA
 setupServiceWorker = ->
   if 'serviceWorker' in navigator
-    navigator.serviceWorker.register('/sw.js')
+    navigator.serviceWorker.register('./sw.js')
       .then (registration) ->
         console.log "Service Worker enregistré:", registration.scope
 
@@ -36,6 +192,10 @@ setupServiceWorker = ->
 
         # Écouter les messages du service worker
         navigator.serviceWorker.addEventListener 'message', handleServiceWorkerMessage
+
+        # Vérifier les mises à jour quand l'application redevient visible
+        document.addEventListener 'visibilitychange', ->
+          registration.update() if document.visibilityState is 'visible'
 
       .catch (error) ->
         console.error "Erreur d'enregistrement du Service Worker:", error
@@ -185,6 +345,7 @@ memoryCache = new Map()  # In-memory cache for current session
 pendingRequests = new Map()  # Pending page requests for deduplication
 fileLoaded = false
 indicatorTimeout = null
+scrollScheduled = false  # Scroll events are handled once per frame
 currentXml = null
 currentFileId = null
 lastWidth = window.innerWidth
@@ -195,21 +356,36 @@ currentScale = 40
 verticalScrollRatio = 0
 currentPageWidth = 0
 currentPageHeight = 0
+hiddenParts = new Set()  # Ids des parties masquées pour le fichier courant
+partSizes = {}  # Id de partie -> taille en % (100 = taille normale)
+
+# Pages pre-rendered around the displayed one
+PREFETCH_AHEAD = 6
+PREFETCH_BEHIND = 1
 
 # Scroll mode: "horizontal" (1 system) or "vertical" (2+ systems)
 scrollMode = null
 systemHeight = 0  # Height of a single system in vertical mode
 
 # Movement tracking
-movements = []  # [{id, pageCount, loaded}]
+movements = []  # [{id, pageCount, pushed, loaded}]
 pendingRenders = new Map()  # "movementId:page" -> resolve function
+pushedPages = {}  # movementId -> last page of the initial push received (in order)
 pendingMovementLoads = new Map()  # movementId -> resolve function
 targetPage = null  # Page to navigate to once all movements are loaded
+awaitingLoad = false  # A new load is posted: ignore the previous render's replies
 currentSplitInfo = null  # Split info for lazy extraction
+splitXml = null  # XML string the split info was computed from
 
 # Worker message handler
 worker.onmessage = (e) ->
   {type} = e.data
+  # Replies still in flight from the previous render would be mapped onto the
+  # movements just reset (page counts at 0) and shown in its place: drop them
+  # until the new first movement is loaded.
+  if awaitingLoad
+    return if type is "svg"
+    return if type is "movementLoaded" and e.data.movementId isnt 1
   switch type
     when "ready"
       console.log "Worker Verovio prêt"
@@ -218,12 +394,13 @@ worker.onmessage = (e) ->
       startApp()
 
     when "movementLoaded"
-      {movementId, pageCount: mvPages} = e.data
-      console.log "Mouvement #{movementId} chargé: #{mvPages} pages"
+      awaitingLoad = false
+      {movementId, pageCount: mvPages, pushed} = e.data
       mv = movements.find (m) -> m.id is movementId
       if mv
         mv.pageCount = mvPages
         mv.loaded = true
+        mv.pushed = pushed
       # Update total page count
       pageCount = movements.reduce (sum, m) ->
         sum + (m.pageCount or 0)
@@ -234,23 +411,18 @@ worker.onmessage = (e) ->
       if pendingMovementLoads?.has(movementId)
         pendingMovementLoads.get(movementId)()
         pendingMovementLoads.delete(movementId)
-      # Hide loading overlay and render first pages once first movement is ready
+      # Hide loading overlay and show the first page as soon as it arrives
       if movementId is 1
         hideLoading()
         if mvPages > 0
-          # Request first pages immediately so displayView can show them
+          # Page 1 is part of the pushed pages: display it on arrival
           requestPage(1, 1).then (svg) ->
             # Detect scroll mode from first page before displaying
             detectScrollMode(svg)
             displayView()
+            prefetch()
             # Now load subsequent movements after first page is displayed
             loadRemainingMovements()
-          if mvPages > 1
-            requestPage(1, 2)
-          prefetch()
-          # Check if all pages are already cached (from persistent cache)
-          if memoryCache.size >= pageCount and pageCount > 0
-            hideLoadingIndicator()
       # Navigate to target page if all movements are loaded
       if targetPage and movements.every((m) -> m.loaded)
         goToPage targetPage
@@ -263,9 +435,11 @@ worker.onmessage = (e) ->
       for m in movements when m.id < movementId
         globalPage += m.pageCount or 0
       memoryCache.set globalPage, svg
+      # Pushes arrive in page order: remember how far the worker got
+      pushedPages[movementId] = page if page > (pushedPages[movementId] or 0)
       # Store in persistent cache (async, non-blocking)
       if currentFileId and currentPageWidth and currentPageHeight
-        svgStore.set(currentFileId, globalPage, svg, currentPageWidth, currentPageHeight).catch (err) ->
+        svgStore.set(currentFileId, globalPage, svg, currentPageWidth, currentPageHeight, partsVariant()).catch (err) ->
           console.error "Erreur stockage SVG:", err
       # Resolve pending render if any
       key = "#{movementId}:#{page}"
@@ -295,7 +469,7 @@ getGlobalPage = (movementId, localPage) ->
   offset + localPage
 
 # Request SVG from worker, returns Promise
-# Checks persistent cache first if fileId is available
+# Checks caches first
 requestPage = (movementId, localPage) ->
   globalPage = getGlobalPage(movementId, localPage)
 
@@ -303,25 +477,17 @@ requestPage = (movementId, localPage) ->
   if memoryCache.has(globalPage)
     return Promise.resolve(memoryCache.get(globalPage))
 
-  # Check if request already pending - reuse promise to avoid duplicate requests
+  # Reuse the pending promise to avoid duplicate work
   pendingKey = "page:#{globalPage}"
-  if pendingRequests.has(pendingKey)
-    return pendingRequests.get(pendingKey)
+  return pendingRequests.get(pendingKey) if pendingRequests.has(pendingKey)
 
-  # Check persistent cache if fileId available
-  if currentFileId and currentPageWidth and currentPageHeight
-    promise = svgStore.get(currentFileId, globalPage, currentPageWidth, currentPageHeight).then (svg) ->
-      pendingRequests.delete pendingKey
-      if svg
-        memoryCache.set(globalPage, svg)
-        return svg
-      # Not in cache, request from worker
-      return requestFromWorker(movementId, localPage)
-    pendingRequests.set pendingKey, promise
-    return promise
-
-  # No fileId, request from worker
-  promise = requestFromWorker(movementId, localPage)
+  promise = svgStore.get(currentFileId, globalPage, currentPageWidth, currentPageHeight, partsVariant()).then (svg) ->
+    if svg
+      memoryCache.set(globalPage, svg)
+      return svg
+    # The worker may have pushed this page while the lookup was in flight
+    return memoryCache.get(globalPage) if memoryCache.has(globalPage)
+    requestFromWorker(movementId, localPage)
   pendingRequests.set pendingKey, promise
   promise.then -> pendingRequests.delete pendingKey
   promise
@@ -331,6 +497,11 @@ requestFromWorker = (movementId, localPage) ->
   new Promise (resolve) ->
     key = "#{movementId}:#{localPage}"
     pendingRenders.set key, resolve
+    # The pages pushed at load arrive in order: wait for the one we are missing
+    # instead of asking for a second render. Any other page is rendered here.
+    mv = movements.find (m) -> m.id is movementId
+    if localPage <= (mv?.pushed or 0) and localPage > (pushedPages[movementId] or 0)
+      return
     worker.postMessage
       type: "renderMovementPage"
       movementId: movementId
@@ -351,7 +522,7 @@ getMovementForPage = (globalPage) ->
   null
 
 # Settings defaults
-defaultSettings = { zoom: 40, theme: "white", tapSize: 30 }
+defaultSettings = { zoom: 40, theme: "white", tapSize: 30, scrollUnit: "page", overlap: 0 }
 
 loadSettings = ->
   try
@@ -384,11 +555,51 @@ applyZoom = (zoom) ->
   $("zoom-range").value = zoom
   $("zoom-value").textContent = zoom
 
+applyScrollSettings = (unit, overlap) ->
+  for btn in document.querySelectorAll ".scroll-unit-btn"
+    btn.classList.toggle "active", btn.dataset.unit is unit
+  $("overlap-select").value = String overlap
+  $("overlap-row").classList.toggle "hidden", unit isnt "page"
+
 applyAllSettings = ->
   settings = loadSettings()
   applyTheme settings.theme
   applyTapSize settings.tapSize
   applyZoom settings.zoom
+  applyScrollSettings settings.scrollUnit or "page", settings.overlap or 0
+
+# Parties masquées et leurs tailles, propres à chaque fichier
+loadHiddenParts = ->
+  hiddenParts = new Set()
+  partSizes = {}
+  return unless currentFileId
+  try
+    saved = localStorage.getItem "musica-hidden-parts-#{currentFileId}"
+    return unless saved
+    data = JSON.parse saved
+    if Array.isArray data
+      hiddenParts = new Set data  # ancien format : tableau des ids masqués
+    else
+      hiddenParts = new Set data.hidden or []
+      partSizes = data.sizes or {}
+  catch
+    # localStorage unavailable (file:// on some browsers)
+
+saveHiddenParts = ->
+  return unless currentFileId
+  try
+    data = {hidden: Array.from(hiddenParts), sizes: partSizes}
+    localStorage.setItem "musica-hidden-parts-#{currentFileId}", JSON.stringify(data)
+  catch
+    # localStorage unavailable (file:// on some browsers)
+
+# Suffixe de clé du cache SVG : une page rendue avec une autre sélection diffère
+partsVariant = ->
+  hidden = Array.from(hiddenParts).sort().join ","
+  sizes = (for id in Object.keys(partSizes).sort() when partSizes[id] isnt 100
+    "#{id}=#{partSizes[id]}")
+  return hidden if sizes.length is 0  # clé inchangée quand toutes les voix sont à 100 %
+  "#{hidden}|#{sizes.join ','}"
 
 # DOM refs
 $ = (id) -> document.getElementById id
@@ -398,10 +609,6 @@ showLoading = ->
 
 hideLoading = ->
   $("overlay-loading").classList.add "hidden"
-
-showError = (msg) ->
-  $("error-message").textContent = msg
-  $("overlay-error").classList.add "visible"
 
 hideError = ->
   $("overlay-error").classList.remove "visible"
@@ -418,50 +625,33 @@ showLibraryBtn = ->
   $("btn-library").classList.remove "hidden"
   $("btn-settings").classList.remove "hidden"
 
+# Page shown in the indicator: in vertical mode, the page crossing the bottom
+# half of the viewport (1 at the top of the scroll)
+displayedPage = ->
+  return Math.floor(scrollPos / 2) + 1 unless scrollMode is "vertical"
+  slot = $("page-current")
+  return 1 if slot.scrollTop <= 0
+  clientHeight = slot.clientHeight
+  page = 1
+  for div, i in slot.querySelectorAll(".scroll-page")
+    rect = div.getBoundingClientRect()
+    # The following pages are lower: no need to measure them
+    break if rect.top >= clientHeight
+    page = i + 1 if rect.bottom > clientHeight * 0.5
+  page
+
 showIndicator = ->
   el = $("page-indicator")
-  if scrollMode is "vertical"
-    # In vertical mode, show the page visible at bottom of screen
-    slot = $("page-current")
-    scrollTop = slot.scrollTop
-    clientHeight = slot.clientHeight
-    pages = slot.querySelectorAll(".scroll-page")
-    # At top, always show page 1
-    if scrollTop <= 0
-      bottomPage = 1
-    else
-      bottomPage = 1
-      for page, i in pages
-        rect = page.getBoundingClientRect()
-        # Page is visible and crosses the bottom half of viewport
-        if rect.top < clientHeight and rect.bottom > clientHeight * 0.5
-          bottomPage = i + 1
-    el.textContent = "#{bottomPage} / #{pageCount}"
-    pageNumberEl = $("page-number")
-    if pageNumberEl
-      pageNumberEl.textContent = "#{bottomPage}/#{pageCount}"
-  else
-    topPage = Math.floor(scrollPos / 2) + 1
-    el.textContent = "#{topPage} / #{pageCount}"
-    pageNumberEl = $("page-number")
-    if pageNumberEl
-      pageNumberEl.textContent = "#{topPage}/#{pageCount}"
+  page = displayedPage()
+  el.textContent = "#{page} / #{pageCount}"
+  pageNumberEl = $("page-number")
+  if pageNumberEl
+    pageNumberEl.textContent = "#{page}/#{pageCount}"
   el.classList.add "visible"
   clearTimeout indicatorTimeout if indicatorTimeout
   indicatorTimeout = setTimeout ->
     el.classList.remove "visible"
   , 1500
-
-# Render two pages side by side with horizontal offset (50% scroll)
-renderPageSync = (globalPage) ->
-  return memoryCache.get(globalPage) if memoryCache.has(globalPage)
-  # Request from worker (requestPage checks persistent cache first)
-  result = getMovementForPage(globalPage)
-  return "" unless result
-  {movement, localPage} = result
-  requestPage(movement.id, localPage)
-  # Return loading placeholder while waiting for worker
-  '<div class="loading-placeholder">Chargement...</div>'
 
 renderPageAsync = (globalPage) ->
   return Promise.resolve(memoryCache.get(globalPage)) if memoryCache.has(globalPage)
@@ -475,29 +665,25 @@ renderPageAsync = (globalPage) ->
 detectScrollMode = (svgString) ->
   return if scrollMode?  # Already detected
   return unless svgString
-  # Parse SVG to count systems
-  parser = new DOMParser()
-  doc = parser.parseFromString svgString, "image/svg+xml"
-  systems = doc.querySelectorAll 'g.system'
-  systemCount = systems.length
-  console.log "Détection: #{systemCount} système(s) sur la première page"
+  # Verovio writes systems as <g id="…" class="system">: no need to parse the
+  # whole SVG to count them
+  systemCount = (svgString.match(/<g\b[^>]*class="system"/g) or []).length
   if systemCount <= 1
     scrollMode = "horizontal"
-    console.log "Mode défilement: horizontal"
   else
     scrollMode = "vertical"
     # Calculate average system height from the SVG
-    svg = doc.querySelector "svg"
+    svgTag = svgString.match(/<svg\b[^>]*>/)?[0] or ""
     svgHeight = 0
     # Try viewBox first
-    viewBoxStr = svg?.getAttribute("viewBox")
+    viewBoxStr = svgTag.match(/viewBox="([^"]*)"/)?[1]
     if viewBoxStr
       viewBox = viewBoxStr.split(/\s+/).map(Number)
       if viewBox.length >= 4 and viewBox[3] > 0
         svgHeight = viewBox[3]
     # Fallback: use height attribute (may include "px")
-    if svgHeight <= 0 and svg
-      heightAttr = svg.getAttribute("height")
+    if svgHeight <= 0
+      heightAttr = svgTag.match(/height="([^"]*)"/)?[1]
       if heightAttr
         svgHeight = parseFloat(heightAttr)
     # Calculate system height
@@ -505,7 +691,6 @@ detectScrollMode = (svgString) ->
       systemHeight = svgHeight / systemCount
     else
       systemHeight = 1000  # Default fallback
-    console.log "Mode défilement: vertical (hauteur système: #{systemHeight.toFixed(1)})"
   scrollMode
 
 displayView = ->
@@ -513,104 +698,88 @@ displayView = ->
   topPage = Math.floor(scrollPos / 2) + 1
   bottomPage = topPage + 1
   offset = (scrollPos % 2) * 50
+  vertical = scrollMode is "vertical"
 
-  # Show loading placeholder immediately
-  slot.innerHTML = ""
-  wrapper = document.createElement "div"
-  wrapper.className = "scroll-wrapper"
-  if scrollMode is "vertical"
-    wrapper.classList.add "vertical"
+  # Pages to show: the current system (and the next one if any) horizontally,
+  # up to 10 pages of systems vertically
+  wanted = if vertical
+    pagesToLoad = Math.min(pageCount - topPage + 1, 10)
+    [topPage .. Math.min(topPage + pagesToLoad - 1, pageCount)]
   else
+    if bottomPage <= pageCount then [topPage, bottomPage] else [topPage]
+
+  # Reuse the existing wrapper so its pages keep their parsed SVG
+  wrapper = slot.querySelector ".scroll-wrapper"
+  unless wrapper
+    slot.innerHTML = ""
+    wrapper = document.createElement "div"
+    wrapper.className = "scroll-wrapper"
+    slot.appendChild wrapper
+
+  # Restore the vertical scroll position and alignment once pages are in place
+  refreshVerticalLayout = ->
+    requestAnimationFrame ->
+      if not vertical and slot.scrollHeight > slot.clientHeight and verticalScrollRatio > 0
+        slot.scrollTop = verticalScrollRatio * (slot.scrollHeight - slot.clientHeight)
+      applyVerticalAlignment()
+
+  # Create a page container, filled asynchronously
+  newPage = (page) ->
+    div = document.createElement "div"
+    div.className = "scroll-page"
+    div.dataset.page = page  # Identify page by number
+    div.innerHTML = '<div class="loading-placeholder">Chargement...</div>'
+    renderPageAsync(page).then (svg) ->
+      return unless svg and div.isConnected  # Page was removed meanwhile
+      div.innerHTML = svg
+      refreshVerticalLayout()
+    div
+
+  # Index the pages already displayed, drop those no longer wanted
+  existing = {}
+  for div in Array.from(wrapper.querySelectorAll ".scroll-page")
+    page = parseInt div.dataset.page
+    if page in wanted and not existing[page]
+      existing[page] = div
+    else
+      wrapper.removeChild div
+
+  # Create missing pages and put them all in order: appendChild moves an
+  # existing node without re-parsing its SVG
+  for page in wanted
+    div = existing[page] or newPage(page)
+    wrapper.appendChild div
+
+  if vertical
+    wrapper.classList.add "vertical"
+    wrapper.style.transform = ""
+  else
+    wrapper.classList.remove "vertical"
     wrapper.style.transform = "translateX(-#{offset}vw)"
 
-  leftDiv = document.createElement "div"
-  leftDiv.className = "scroll-page"
-  leftDiv.dataset.page = topPage  # Identify page by number
-  leftDiv.innerHTML = '<div class="loading-placeholder">Chargement...</div>'
-  wrapper.appendChild leftDiv
-
-  # In vertical mode, we need multiple pages to fill the column
-  pagesToLoad = if scrollMode is "vertical" then Math.min(pageCount - topPage + 1, 10) else 1
-
-  if scrollMode is "horizontal" and bottomPage <= pageCount
-    rightDiv = document.createElement "div"
-    rightDiv.className = "scroll-page"
-    rightDiv.dataset.page = bottomPage  # Identify page by number
-    rightDiv.innerHTML = '<div class="loading-placeholder">Chargement...</div>'
-    wrapper.appendChild rightDiv
-
-  # In vertical mode, add more page containers
-  if scrollMode is "vertical"
-    for p in [topPage + 1 .. Math.min(topPage + pagesToLoad - 1, pageCount)]
-      div = document.createElement "div"
-      div.className = "scroll-page"
-      div.dataset.page = p  # Identify page by number
-      div.innerHTML = '<div class="loading-placeholder">Chargement...</div>'
-      wrapper.appendChild div
-
-  slot.appendChild wrapper
-
-  # Render pages asynchronously and update when ready
-  if scrollMode is "horizontal"
-    promises = [renderPageAsync(topPage)]
-    promises.push renderPageAsync(bottomPage) if bottomPage <= pageCount
-    Promise.all(promises).then ([leftSvg, rightSvg]) ->
-      # Find current DOM elements by data-page attribute
-      wrapper = slot.querySelector(".scroll-wrapper")
-      return unless wrapper  # Wrapper no longer exists
-      # Check if the wrapper still shows the pages we're updating
-      currentTop = parseInt(wrapper.querySelector(".scroll-page")?.dataset.page)
-      return unless currentTop is topPage  # Pages have changed, don't update
-      # Update by page number, not by index
-      if leftSvg
-        pageEl = wrapper.querySelector("[data-page='#{topPage}']")
-        if pageEl
-          pageEl.innerHTML = leftSvg
-      if rightSvg
-        pageEl = wrapper.querySelector("[data-page='#{bottomPage}']")
-        if pageEl
-          pageEl.innerHTML = rightSvg
-
-      requestAnimationFrame ->
-        if slot.scrollHeight > slot.clientHeight and verticalScrollRatio > 0
-          slot.scrollTop = verticalScrollRatio * (slot.scrollHeight - slot.clientHeight)
-        applyVerticalAlignment()
-  else
-    # Vertical mode: render all pages in column
-    pagePromises = for p in [topPage .. Math.min(topPage + pagesToLoad - 1, pageCount)]
-      renderPageAsync(p)
-    Promise.all(pagePromises).then (svgs) ->
-      # Find current DOM elements
-      wrapper = slot.querySelector(".scroll-wrapper")
-      return unless wrapper  # Wrapper no longer exists
-      # Check if the wrapper still shows the pages we're updating
-      currentTop = parseInt(wrapper.querySelector(".scroll-page")?.dataset.page)
-      return unless currentTop is topPage  # Pages have changed, don't update
-      # Update by page number
-      for svg, i in svgs when svg
-        pageNum = topPage + i
-        pageEl = wrapper.querySelector("[data-page='#{pageNum}']")
-        if pageEl
-          pageEl.innerHTML = svg
-      requestAnimationFrame ->
-        applyVerticalAlignment()
+  refreshVerticalLayout()
 
 prefetch = ->
-  topPage = Math.floor(scrollPos / 2) + 1
-  for p in [topPage + 1, topPage + 2, topPage + 3, topPage + 4, topPage + 5]
-    if p <= pageCount and not memoryCache.has(p)
-      result = getMovementForPage(p)
-      if result
-        {movement, localPage} = result
-        requestPage(movement.id, localPage)
-  purgeCacheFarPages()
+  page = displayedPage()
+  # Reading order: the next pages, nearest first, then the one before
+  pages = [page + 1 .. page + PREFETCH_AHEAD]
+  pages.push page - PREFETCH_BEHIND if PREFETCH_BEHIND > 0
+  for p in pages
+    continue unless p >= 1 and p <= pageCount
+    continue if memoryCache.has(p)
+    result = getMovementForPage(p)
+    # Skip pages of a movement that is not loaded yet
+    continue unless result and getGlobalPage(result.movement.id, result.localPage) is p
+    {movement, localPage} = result
+    requestPage(movement.id, localPage)
+  purgeCacheFarPages(page)
 
-purgeCacheFarPages = ->
-  topPage = Math.floor(scrollPos / 2) + 1
-  return if memoryCache.size <= 20
+purgeCacheFarPages = (page) ->
+  first = page - PREFETCH_BEHIND
+  last = page + PREFETCH_AHEAD
+  # Never drop a page of the prefetch window: it would be requested again
   for key from memoryCache.keys()
-    if Math.abs(key - topPage) > 10
-      memoryCache.delete key
+    memoryCache.delete key if key < first or key > last
 
 savePositionDebounced = ->
   return unless currentFileId
@@ -628,19 +797,23 @@ maxScrollPos = -> (pageCount * 2) - 2
 applyVerticalAlignment = ->
   return if scrollMode is "vertical"  # Native scroll handles alignment
   slot = $("page-current")
+  scrollTop = slot.scrollTop
   maxScroll = slot.scrollHeight - slot.clientHeight
   return unless maxScroll > 0
-  ratio = slot.scrollTop / maxScroll
+  ratio = scrollTop / maxScroll
   viewH = slot.clientHeight
-  pages = slot.querySelectorAll(".scroll-page")
-  for page in pages
+  # Read every height first, then write every transform: interleaving the two
+  # would force a layout at each iteration
+  svgs = []
+  heights = []
+  for page in slot.querySelectorAll(".scroll-page")
     svg = page.querySelector("svg")
     continue unless svg
-    svgH = svg.getBoundingClientRect().height
-    idealY = ratio * Math.max(0, svgH - viewH)
-    actualY = slot.scrollTop
-    compensation = actualY - idealY
-    svg.style.transform = "translateY(#{compensation}px)"
+    svgs.push svg
+    heights.push svg.getBoundingClientRect().height
+  for svg, i in svgs
+    idealY = ratio * Math.max(0, heights[i] - viewH)
+    svg.style.transform = "translateY(#{scrollTop - idealY}px)"
 
 captureVerticalScroll = ->
   slot = $("page-current")
@@ -666,22 +839,120 @@ checkAndLoadMorePages = ->
     if nextPage <= pageCount
       div = document.createElement "div"
       div.className = "scroll-page"
+      div.dataset.page = nextPage  # Identify page by number
       div.innerHTML = '<div class="loading-placeholder">Chargement...</div>'
       wrapper.appendChild div
       renderPageAsync(nextPage).then (svg) ->
-        if svg
+        if svg and div.isConnected
           div.innerHTML = svg
           requestAnimationFrame -> applyVerticalAlignment()
+  prefetch()
+
+# Find the last completely visible SVG in vertical mode
+findLastCompleteSvg = ->
+  return null unless scrollMode is "vertical"
+
+  slot = $("page-current")
+  wrapper = slot.querySelector(".scroll-wrapper")
+  return null unless wrapper
+
+  svgs = wrapper.querySelectorAll("svg")
+  return null if svgs.length is 0
+
+  slotRect = slot.getBoundingClientRect()
+  viewBottom = slotRect.bottom
+
+  lastCompleteSvg = null
+  for svg in svgs
+    svgRect = svg.getBoundingClientRect()
+    svgBottom = svgRect.bottom
+
+    # Check if SVG is completely visible
+    if svgBottom <= viewBottom
+      lastCompleteSvg = svg
+    else
+      break  # Stop as soon as we find a partially visible SVG
+
+  return lastCompleteSvg
+
+# Set horizontal position and refresh the view
+setScrollPos = (pos) ->
+  scrollPos = pos
+  currentPage = Math.floor(scrollPos / 2) + 1
+  displayView()
+  showIndicator()
+  prefetch()
+  savePositionDebounced()
+
+# Tolérance (px) : un système plus proche que ça du haut de l'écran y est
+# considéré comme déjà amené
+SYSTEM_TOLERANCE = 10
+
+# Hauts des systèmes affichés, en coordonnées de défilement du slot. Toutes
+# les positions sont lues d'un coup, avant le scrollTo de l'appelant.
+systemTops = ->
+  slot = $("page-current")
+  base = slot.getBoundingClientRect().top - slot.scrollTop
+  for system in slot.querySelectorAll ".scroll-page svg g.system"
+    system.getBoundingClientRect().top - base
+
+# Haut du système qui croise le haut de l'écran une fois défilé à pos
+systemTopBefore = (tops, pos) ->
+  found = null
+  for top in tops when top <= pos
+    found = top
+  found
+
+# Cible du défilement vertical selon le réglage « Défilement »
+# dir vaut 1 vers l'avant, -1 vers l'arrière
+verticalTarget = (dir) ->
+  slot = $("page-current")
+  current = slot.scrollTop
+  {scrollUnit, overlap} = loadSettings()
+  tops = systemTops()
+  target = null
+
+  if scrollUnit is "system"
+    # Premier système sous le haut de l'écran (ou dernier au-dessus)
+    for top in tops
+      if dir > 0
+        if top > current + SYSTEM_TOLERANCE
+          target = top
+          break
+      else if top < current - SYSTEM_TOLERANCE
+        target = top
+  else if overlap > 0
+    # Par page avec recouvrement : (1 - r) écran, puis retour au haut du
+    # système qui croise le haut de l'écran, à condition que cela avance
+    raw = current + dir * slot.clientHeight * (1 - overlap / 100)
+    target = systemTopBefore tops, raw
+    target = raw unless target? and (target - current) * dir > 0
+  else
+    # Par page sans recouvrement : page SVG suivante après la dernière
+    # entièrement visible, ou page précédente (comportement historique)
+    svgs = slot.querySelectorAll ".scroll-page svg"
+    base = slot.getBoundingClientRect().top - slot.scrollTop
+    svgTop = (svg) -> svg.getBoundingClientRect().top - base
+    if dir > 0
+      lastComplete = findLastCompleteSvg()
+      if lastComplete
+        index = Array.prototype.indexOf.call svgs, lastComplete
+        target = svgTop svgs[index + 1] if index + 1 < svgs.length
+      target = null unless target? and target > current + SYSTEM_TOLERANCE
+    else
+      for svg in svgs when svgTop(svg) < current - SYSTEM_TOLERANCE
+        target = svgTop svg
+
+  # Repli quand aucun système/page ne donne de cible : une demi-page
+  target ?= current + dir * window.innerHeight * 0.5
+  Math.max 0, Math.min slot.scrollHeight - slot.clientHeight, target
 
 goNext = ->
   return unless fileLoaded
   if scrollMode is "vertical"
     slot = $("page-current")
-    maxScroll = slot.scrollHeight - slot.clientHeight
-    return if slot.scrollTop >= maxScroll
-    viewHeight = window.innerHeight
-    scrollAmount = viewHeight * 0.5  # Scroll by 50% of view height
-    slot.scrollBy top: scrollAmount, behavior: "instant"
+    return if slot.scrollTop >= slot.scrollHeight - slot.clientHeight
+    slot.scrollTo top: verticalTarget(1), behavior: "instant"
     verticalPos++
     checkAndLoadMorePages()
     showIndicator()
@@ -689,33 +960,21 @@ goNext = ->
   else
     return if scrollPos >= maxScrollPos()
     captureVerticalScroll()
-    scrollPos++
-    currentPage = Math.floor(scrollPos / 2) + 1
-    displayView()
-    showIndicator()
-    prefetch()
-    savePositionDebounced()
+    setScrollPos(scrollPos + 1)
 
 goPrev = ->
   return unless fileLoaded
   if scrollMode is "vertical"
     slot = $("page-current")
     return if slot.scrollTop <= 0
-    viewHeight = window.innerHeight
-    scrollAmount = viewHeight * 0.5  # Scroll by 50% of view height
-    slot.scrollBy top: -scrollAmount, behavior: "instant"
+    slot.scrollTo top: verticalTarget(-1), behavior: "instant"
     verticalPos = Math.max(0, verticalPos - 1)
     showIndicator()
     savePositionDebounced()
   else
     return if scrollPos <= 0
     captureVerticalScroll()
-    scrollPos--
-    currentPage = Math.floor(scrollPos / 2) + 1
-    displayView()
-    showIndicator()
-    prefetch()
-    savePositionDebounced()
+    setScrollPos(scrollPos - 1)
 
 # Get current movement index from page
 getCurrentMovementIndex = ->
@@ -737,51 +996,63 @@ getMovementStartPage = (movIndex) ->
 # Navigation functions
 goToPage = (page) ->
   return unless fileLoaded and page >= 1 and page <= pageCount
-  scrollPos = (page - 1) * 2
-  currentPage = page
-  displayView()
-  showIndicator()
-  prefetch()
-  savePositionDebounced()
+  setScrollPos (page - 1) * 2
 
 goToStart = ->
   return unless fileLoaded
-  scrollPos = 0
-  currentPage = 1
-  displayView()
-  showIndicator()
-  prefetch()
-  savePositionDebounced()
+  setScrollPos 0
 
 goToEnd = ->
   return unless fileLoaded
-  scrollPos = maxScrollPos()
-  currentPage = Math.floor(scrollPos / 2) + 1
-  displayView()
-  showIndicator()
-  prefetch()
-  savePositionDebounced()
+  setScrollPos maxScrollPos()
 
 goToPrevMovement = ->
   return unless fileLoaded
   currentIdx = getCurrentMovementIndex()
   return if currentIdx <= 0
-  targetPage = getMovementStartPage(currentIdx - 1)
-  scrollPos = (targetPage - 1) * 2
-  currentPage = targetPage
-  displayView()
-  showIndicator()
-  prefetch()
-  savePositionDebounced()
+  startPage = getMovementStartPage(currentIdx - 1)
+  setScrollPos (startPage - 1) * 2
 
 goToNextMovement = ->
   return unless fileLoaded
   currentIdx = getCurrentMovementIndex()
   return if currentIdx >= movements.length - 1
-  targetPage = getMovementStartPage(currentIdx + 1)
-  scrollPos = (targetPage - 1) * 2
-  currentPage = targetPage
-  displayView()
+  startPage = getMovementStartPage(currentIdx + 1)
+  setScrollPos (startPage - 1) * 2
+
+jumpVertical = (direction) ->
+  slot = $("page-current")
+  maxScroll = slot.scrollHeight - slot.clientHeight
+  return if direction < 0 and slot.scrollTop <= 0
+  return if direction > 0 and slot.scrollTop >= maxScroll
+
+  # Target ~5 half view heights away, then snap to the closest SVG
+  targetScroll = slot.scrollTop + direction * window.innerHeight * 2.5
+  targetScroll = Math.max(0, Math.min(maxScroll, targetScroll))
+
+  slotRect = slot.getBoundingClientRect()
+  wrapper = slot.querySelector(".scroll-wrapper")
+  if wrapper
+    svgs = wrapper.querySelectorAll("svg")
+    closestSvg = null
+    closestDistance = Infinity
+
+    for svg in svgs
+      svgRect = svg.getBoundingClientRect()
+      svgScrollPos = slot.scrollTop + (svgRect.top - slotRect.top)
+      distance = Math.abs(svgScrollPos - targetScroll)
+
+      if distance < closestDistance
+        closestDistance = distance
+        closestSvg = svg
+
+    if closestSvg
+      svgRect = closestSvg.getBoundingClientRect()
+      targetScroll = slot.scrollTop + (svgRect.top - slotRect.top)
+
+  slot.scrollTo top: targetScroll, behavior: "instant"
+
+  checkAndLoadMorePages() if direction > 0
   showIndicator()
   prefetch()
   savePositionDebounced()
@@ -789,49 +1060,62 @@ goToNextMovement = ->
 goBack5 = ->
   return unless fileLoaded
   if scrollMode is "vertical"
-    slot = $("page-current")
-    return if slot.scrollTop <= 0
-    viewHeight = window.innerHeight
-    scrollAmount = viewHeight * 0.5  # Scroll by 50% of view height
-    slot.scrollBy top: -scrollAmount * 5, behavior: "instant"
-    showIndicator()
-    savePositionDebounced()
+    jumpVertical -1
   else
-    scrollPos = Math.max(0, scrollPos - 10)
-    currentPage = Math.floor(scrollPos / 2) + 1
-    displayView()
-    showIndicator()
-    prefetch()
-    savePositionDebounced()
+    setScrollPos Math.max(0, scrollPos - 10)
 
 goForward5 = ->
   return unless fileLoaded
   if scrollMode is "vertical"
-    slot = $("page-current")
-    maxScroll = slot.scrollHeight - slot.clientHeight
-    return if slot.scrollTop >= maxScroll
-    viewHeight = window.innerHeight
-    scrollAmount = viewHeight * 0.5  # Scroll by 50% of view height
-    slot.scrollBy top: scrollAmount * 5, behavior: "instant"
-    showIndicator()
-    savePositionDebounced()
+    jumpVertical 1
   else
-    scrollPos = Math.min(maxScrollPos(), scrollPos + 10)
-    currentPage = Math.floor(scrollPos / 2) + 1
-    displayView()
-    showIndicator()
-    prefetch()
-    savePositionDebounced()
+    setScrollPos Math.min(maxScrollPos(), scrollPos + 10)
+
+# Capture the attributes in effect at each split point, in one pass per part
+# Returns {splitIndex: [attributes per part]}
+captureSplitAttrs = (parts, splitPoints) ->
+  splitAttrs = {}
+  for splitIndex in splitPoints
+    splitAttrs[splitIndex] = []
+  for part in parts
+    state =
+      staves: null
+      clefs: []
+      key: null
+      time: null
+      divisions: null
+      transpose: null
+    for measure, i in part.querySelectorAll("measure")
+      # Snapshot the state before this measure, i.e. as it starts
+      splitAttrs[i].push Object.assign({}, state) if splitAttrs[i]?
+      attrs = measure.querySelector("attributes")
+      if attrs
+        staves = attrs.querySelector("staves")
+        state.staves = staves if staves
+        clefs = attrs.querySelectorAll("clef")
+        state.clefs = Array.from(clefs) if clefs.length > 0
+        key = attrs.querySelector("key")
+        state.key = key if key
+        time = attrs.querySelector("time")
+        state.time = time if time
+        divisions = attrs.querySelector("divisions")
+        state.divisions = divisions if divisions
+        transpose = attrs.querySelector("transpose")
+        state.transpose = transpose if transpose
+  splitAttrs
 
 # Detect split points and capture attributes at each point (lazy approach)
-# Returns {splitPoints, splitAttrs, totalMeasures, parts}
+# Returns {doc, splitPoints, splitAttrs, totalMeasures}
 detectSplitPoints = (xmlString) ->
-  parser = new DOMParser()
-  doc = parser.parseFromString xmlString, "application/xml"
+  doc = new DOMParser().parseFromString xmlString, "application/xml"
+
+  # Insert system breaks once, in place: preprocessMusicXML only adds <print>
+  # elements, which neither detection below nor the measure list observe.
+  preprocessMusicXML doc
 
   parts = doc.querySelectorAll("part")
   unless parts.length > 0
-    return {splitPoints: [], splitAttrs: {}, totalMeasures: 0, parts: null}
+    return {doc, splitPoints: [], splitAttrs: {}, totalMeasures: 0}
 
   firstPartMeasures = parts[0].querySelectorAll("measure")
   totalMeasures = firstPartMeasures.length
@@ -891,51 +1175,60 @@ detectSplitPoints = (xmlString) ->
   console.log "Points de découpage: #{splitPoints.join(', ')}" if splitPoints.length > 0
 
   # Capture attributes at each split point
-  splitAttrs = {}
-  for splitIndex in splitPoints
-    splitAttrs[splitIndex] = []
-    for part in parts
-      measures = part.querySelectorAll("measure")
-      currentStaves = null
-      currentClefs = []
-      currentKey = null
-      currentTime = null
-      currentDivisions = null
-      currentTranspose = null
-      for m, i in measures when i < splitIndex
-        attrs = m.querySelector("attributes")
-        if attrs
-          staves = attrs.querySelector("staves")
-          currentStaves = staves if staves
-          clefs = attrs.querySelectorAll("clef")
-          currentClefs = Array.from(clefs) if clefs.length > 0
-          key = attrs.querySelector("key")
-          currentKey = key if key
-          time = attrs.querySelector("time")
-          currentTime = time if time
-          divisions = attrs.querySelector("divisions")
-          currentDivisions = divisions if divisions
-          transpose = attrs.querySelector("transpose")
-          currentTranspose = transpose if transpose
-      splitAttrs[splitIndex].push
-        staves: currentStaves
-        clefs: currentClefs
-        key: currentKey
-        time: currentTime
-        divisions: currentDivisions
-        transpose: currentTranspose
+  splitAttrs = captureSplitAttrs parts, splitPoints
 
-  {splitPoints, splitAttrs, totalMeasures, parts: Array.from(parts)}
+  {doc, splitPoints, splitAttrs, totalMeasures}
+
+# Retire d'un document les parties masquées et leur entrée de <part-list>
+removeHiddenParts = (doc, hidden) ->
+  return doc unless hidden.size > 0
+  for el in Array.from doc.querySelectorAll("part, score-part")
+    el.parentNode.removeChild el if hidden.has el.getAttribute("id")
+  doc
+
+# Taille des voix : <staff-details><staff-size>N</staff-size></staff-details>
+# dans les <attributes> de la première mesure (une par portée si la partie en a plusieurs)
+applyPartSizes = (doc) ->
+  return doc if Object.keys(partSizes).length is 0
+  for part in Array.from doc.querySelectorAll "part"
+    size = partSizes[part.getAttribute "id"]
+    continue unless size? and size isnt 100
+    measure = part.querySelector "measure"
+    continue unless measure
+    attrs = measure.querySelector "attributes"
+    unless attrs
+      attrs = doc.createElement "attributes"
+      measure.insertBefore attrs, measure.firstChild
+    staves = parseInt attrs.querySelector("staves")?.textContent ? "1"
+    staves = 1 unless staves > 1
+    # staff-details se place après les clefs, avant transpose et suivants
+    anchor = null
+    for child in attrs.children
+      if child.tagName in ["transpose", "for-part", "directive", "measure-style"]
+        anchor = child
+        break
+    for n in [1..staves]
+      details = doc.createElement "staff-details"
+      details.setAttribute "number", String(n) if staves > 1
+      sizeEl = doc.createElement "staff-size"
+      sizeEl.textContent = String size
+      details.appendChild sizeEl
+      attrs.insertBefore details, anchor
+  doc
 
 # Extract a single movement by index (lazy extraction)
 # movementIndex: 0-based, where 0 is first movement
-extractMovement = (xmlString, splitInfo, movementIndex) ->
-  {splitPoints, splitAttrs, totalMeasures} = splitInfo
+extractMovement = (splitInfo, movementIndex) ->
+  {doc, splitPoints, splitAttrs, totalMeasures} = splitInfo
+  serializer = new XMLSerializer()
 
-  # No splits: return whole document
+  # No splits: the whole document is movement 0
   if splitPoints.length is 0
-    return preprocessMusicXML(xmlString) if movementIndex is 0
-    return null
+    return null unless movementIndex is 0
+    clone = doc.cloneNode true
+    removeHiddenParts clone, hiddenParts
+    applyPartSizes clone
+    return serializer.serializeToString clone
 
   # Calculate start and end measure indices for this movement
   allPoints = [0, ...splitPoints, totalMeasures]
@@ -945,31 +1238,22 @@ extractMovement = (xmlString, splitInfo, movementIndex) ->
   unless startMeasure? and endMeasure?
     return null
 
-  parser = new DOMParser()
-  doc = parser.parseFromString xmlString, "application/xml"
-  partsPart = doc.querySelectorAll("part")
-  serializer = new XMLSerializer()
+  # Work on a copy: the split document stays intact for the other movements
+  clone = doc.cloneNode true
 
-  for part, pIdx in partsPart
-    measures = Array.from part.querySelectorAll("measure")
-
-    # Remove measures after this movement
-    for m, i in measures when i >= endMeasure
-      m.parentNode.removeChild(m)
-
-    # Remove measures before this movement
-    for m, i in measures when i < startMeasure
-      m.parentNode.removeChild(m) if m.parentNode
+  for part, pIdx in clone.querySelectorAll("part")
+    # Remove measures outside this movement
+    for measure, i in Array.from(part.querySelectorAll("measure")) when i < startMeasure or i >= endMeasure
+      measure.parentNode.removeChild measure
 
     # Insert attributes at start if not first movement
     if startMeasure > 0 and splitAttrs[startMeasure]?[pIdx]
       attrs = splitAttrs[startMeasure][pIdx]
-      remainingMeasures = Array.from part.querySelectorAll("measure")
-      if remainingMeasures.length > 0
-        firstMeasure = remainingMeasures[0]
+      firstMeasure = part.querySelector("measure")
+      if firstMeasure
         existingAttrs = firstMeasure.querySelector("attributes")
 
-        newAttrsEl = doc.createElement("attributes")
+        newAttrsEl = clone.createElement("attributes")
         if attrs.divisions
           newAttrsEl.appendChild attrs.divisions.cloneNode(true)
         if attrs.key
@@ -1000,12 +1284,12 @@ extractMovement = (xmlString, splitInfo, movementIndex) ->
         else if newAttrsEl.children.length > 0
           firstMeasure.insertBefore newAttrsEl, firstMeasure.firstChild
 
-  preprocessMusicXML(serializer.serializeToString(doc))
+  removeHiddenParts clone, hiddenParts
+  applyPartSizes clone
+  serializer.serializeToString clone
 
-# Preprocess MusicXML: insert system breaks after double barlines
-preprocessMusicXML = (xmlString) ->
-  parser = new DOMParser()
-  doc = parser.parseFromString xmlString, "application/xml"
+# Preprocess MusicXML: insert system breaks after double barlines (in place)
+preprocessMusicXML = (doc) ->
   measures = Array.from doc.querySelectorAll("measure")
   for measure, i in measures
     barlines = measure.querySelectorAll('barline[location="right"]')
@@ -1029,119 +1313,70 @@ preprocessMusicXML = (xmlString) ->
         )
         printEl.setAttribute "new-system", "yes"
         nextMeasure.insertBefore printEl, nextMeasure.firstChild
-  serializer = new XMLSerializer()
-  serializer.serializeToString doc
+  doc
 
 # Load a score using the worker with lazy movement extraction
 loadXml = (xml, startPage = 1) ->
   currentXml = xml
+  loadHiddenParts()
   currentPage = 1  # Always start at page 1 for immediate display
   scrollPos = 0
   lastWidth = window.innerWidth
+  # Drop the displayed pages: they belong to the previous render
+  $("page-current").innerHTML = ""
   memoryCache.clear()
+  pendingRequests.clear()
   pendingRenders.clear()
   pendingMovementLoads.clear()
+  pushedPages = {}
   movements = []
+  awaitingLoad = true
   targetPage = if startPage > 1 then startPage else null  # Navigate later if needed
   showLoading()
 
-  # Try to get structure from cache first
-  loadStructure = ->
-    if currentFileId
-      svgStore.getStructure(currentFileId).then (cached) ->
-        if cached and cached.splitPoints
-          console.log "Structure en cache: #{cached.splitPoints.length} points de découpage"
-          # Use cached splitPoints but recalculate splitAttrs for those exact points
-          splitInfo = detectSplitPoints xml
-          # Restore cached splitPoints
-          splitInfo.splitPoints = cached.splitPoints
-          splitInfo.totalMeasures = cached.totalMeasures
-          # Recalculate splitAttrs for the cached splitPoints
-          parts = splitInfo.parts
-          splitAttrs = {}
-          for splitIndex in cached.splitPoints
-            splitAttrs[splitIndex] = []
-            for part in parts
-              measures = part.querySelectorAll("measure")
-              currentStaves = null
-              currentClefs = []
-              currentKey = null
-              currentTime = null
-              currentDivisions = null
-              currentTranspose = null
-              for m, i in measures when i < splitIndex
-                attrs = m.querySelector("attributes")
-                if attrs
-                  staves = attrs.querySelector("staves")
-                  currentStaves = staves if staves
-                  clefs = attrs.querySelectorAll("clef")
-                  currentClefs = Array.from(clefs) if clefs.length > 0
-                  key = attrs.querySelector("key")
-                  currentKey = key if key
-                  time = attrs.querySelector("time")
-                  currentTime = time if time
-                  divisions = attrs.querySelector("divisions")
-                  currentDivisions = divisions if divisions
-                  transpose = attrs.querySelector("transpose")
-                  currentTranspose = transpose if transpose
-              splitAttrs[splitIndex].push
-                staves: currentStaves
-                clefs: currentClefs
-                key: currentKey
-                time: currentTime
-                divisions: currentDivisions
-                transpose: currentTranspose
-          splitInfo.splitAttrs = splitAttrs
-          return splitInfo
-        # Not in cache, detect and store (only splitPoints and totalMeasures)
-        splitInfo = detectSplitPoints xml
-        svgStore.setStructure(currentFileId, {
-          splitPoints: splitInfo.splitPoints
-          totalMeasures: splitInfo.totalMeasures
-        })
-        splitInfo
-    else
-      Promise.resolve(detectSplitPoints xml)
+  # Splitting only depends on the XML: reuse it when the same XML is loaded
+  # again (resize, zoom)
+  unless splitXml is xml and currentSplitInfo
+    currentSplitInfo = detectSplitPoints xml
+    splitXml = xml
 
-  loadStructure().then (splitInfo) ->
-    currentSplitInfo = splitInfo
-    movementCount = currentSplitInfo.splitPoints.length + 1
-    console.log "Partition divisée en #{movementCount} mouvement(s)"
+  movementCount = currentSplitInfo.splitPoints.length + 1
+  console.log "Partition divisée en #{movementCount} mouvement(s)"
 
-    # Reset scroll mode for new file
-    scrollMode = null
-    systemHeight = 0
-    verticalPos = 0
+  # Reset scroll mode for new file
+  scrollMode = null
+  systemHeight = 0
+  verticalPos = 0
 
-    # Initialize movement tracking
-    for i in [0...movementCount]
-      movements.push {id: i + 1, pageCount: 0, loaded: false}
+  # Initialize movement tracking
+  for i in [0...movementCount]
+    movements.push {id: i + 1, pageCount: 0, pushed: 0, loaded: false}
 
-    # Calculate and store dimensions
-    currentPageWidth = Math.round(window.innerWidth * 100 / currentScale)
-    currentPageHeight = Math.round(window.innerHeight * 100 / currentScale)
-    pageWidth = currentPageWidth
-    pageHeight = currentPageHeight
+  # Calculate and store dimensions
+  currentPageWidth = Math.round(window.innerWidth * 100 / currentScale)
+  currentPageHeight = Math.round(window.innerHeight * 100 / currentScale)
+  pageWidth = currentPageWidth
+  pageHeight = currentPageHeight
 
-    # Clear previous movements before loading new file
-    worker.postMessage { type: "clearMovements" }
+  # Clear previous movements before loading new file
+  worker.postMessage { type: "clearMovements" }
 
-    # Extract and load first movement immediately
-    firstXml = extractMovement xml, currentSplitInfo, 0
-    worker.postMessage
-      type: "loadMovement"
-      movementId: 1
-      xmlString: firstXml
-      pageWidth: pageWidth
-      pageHeight: pageHeight
-      scale: currentScale
+  # Extract and load first movement immediately
+  firstXml = extractMovement currentSplitInfo, 0
+  worker.postMessage
+    type: "loadMovement"
+    movementId: 1
+    xmlString: firstXml
+    pageWidth: pageWidth
+    pageHeight: pageHeight
+    scale: currentScale
 
-    # Subsequent movements will be loaded after first movement is displayed
-    # (see movementLoaded handler)
+  # Subsequent movements will be loaded after first movement is displayed
+  # (see movementLoaded handler)
 
-    fileLoaded = true
-    hideImport()
-    showLibraryBtn()
+  fileLoaded = true
+  hideImport()
+  showLibraryBtn()
 
 # Load remaining movements sequentially after first page is displayed
 loadRemainingMovements = ->
@@ -1164,16 +1399,13 @@ loadRemainingMovements = ->
     pageWidth = currentPageWidth
     pageHeight = currentPageHeight
 
-    mvXml = extractMovement currentXml, currentSplitInfo, index
+    mvXml = extractMovement currentSplitInfo, index
     return processNextMovement(index + 1) unless mvXml
 
     # Load movement and wait for it to be ready
     loadMovementAndWait(movementId, mvXml, pageWidth, pageHeight).then ->
-      # Process first page (cache check, render if needed, store if needed)
-      requestPage(movementId, 1).then (svg) ->
-        console.log "Mouvement #{movementId} traité"
-        # Move to next movement
-        processNextMovement(index + 1)
+      # Pages are pushed by the worker, go on with the next movement
+      processNextMovement(index + 1)
 
   # Start with movement 2 (index 1)
   processNextMovement(1)
@@ -1374,18 +1606,97 @@ setupResize = ->
       loadXml currentXml, currentPage
     , 300
 
+# Remplit la liste des voix depuis le document déjà analysé (pas de re-parse)
+renderPartsList = ->
+  group = $("parts-group")
+  list = $("parts-list")
+  return unless group and list
+  doc = currentSplitInfo?.doc if fileLoaded
+  parts = if doc then Array.from(doc.querySelectorAll "score-part") else []
+  group.classList.toggle "hidden", parts.length < 2
+  list.innerHTML = ""
+  for part in parts
+    do (part) ->
+      id = part.getAttribute "id"
+      name = part.querySelector("part-name")?.textContent.trim()
+      name = part.querySelector("part-abbreviation")?.textContent.trim() if not name
+      label = document.createElement "label"
+      box = document.createElement "input"
+      box.type = "checkbox"
+      box.checked = not hiddenParts.has id
+      nameEl = document.createElement "span"
+      nameEl.textContent = name or id
+      sizeSel = document.createElement "select"
+      sizeSel.className = "part-size"
+      for pct in [50..150] by 10
+        opt = document.createElement "option"
+        opt.value = pct
+        opt.textContent = "#{pct} %"
+        sizeSel.appendChild opt
+      sizeSel.value = partSizes[id] or 100
+      sizeSel.disabled = hiddenParts.has id
+      label.appendChild box
+      label.appendChild nameEl
+      label.appendChild sizeSel
+      box.addEventListener "change", ->
+        if box.checked then hiddenParts.delete id else hiddenParts.add id
+        sizeSel.disabled = not box.checked
+        saveHiddenParts()
+        updatePartsDisabled()
+        # Recharger comme le fait le zoom, avec la nouvelle sélection
+        loadXml currentXml, currentPage if fileLoaded and currentXml
+      sizeSel.addEventListener "change", ->
+        pct = parseInt sizeSel.value
+        if pct is 100 then delete partSizes[id] else partSizes[id] = pct
+        saveHiddenParts()
+        loadXml currentXml, currentPage if fileLoaded and currentXml
+      list.appendChild label
+  updatePartsDisabled()
+
+# Au moins une partie reste affichée : on désactive la dernière cochée
+updatePartsDisabled = ->
+  list = $("parts-list")
+  return unless list
+  boxes = Array.from list.querySelectorAll "input"
+  checked = boxes.filter (box) -> box.checked
+  for box in boxes
+    box.disabled = checked.length is 1 and box.checked
+
 # Settings overlay controls
 setupSettings = ->
+  # Show current storage usage
+  updateStorageInfo = ->
+    if 'storage' in navigator and 'estimate' in navigator.storage
+      navigator.storage.estimate().then (estimate) ->
+        usageMB = (estimate.usage / 1024 / 1024).toFixed(2)
+        quotaMB = (estimate.quota / 1024 / 1024).toFixed(0)
+        storageInfo = $("storage-info")
+        if storageInfo
+          storageInfo.textContent = "#{usageMB}MB / #{quotaMB}MB"
+
+          # Change color based on usage
+          usagePercent = (estimate.usage / estimate.quota) * 100
+          if usagePercent > 80
+            storageInfo.style.color = '#f44336'  # Red
+          else if usagePercent > 60
+            storageInfo.style.color = '#ff9800'  # Orange
+          else
+            storageInfo.style.color = '#4caf50'  # Green
+
   $("btn-settings").addEventListener "click", ->
     $("settings-overlay").classList.remove "hidden"
+    renderPartsList()
+    updateStorageInfo()
 
   $("settings-close").addEventListener "click", ->
     $("settings-overlay").classList.add "hidden"
 
-  # Zoom slider
+  # Zoom slider: live label, apply on release
   $("zoom-range").addEventListener "input", (e) ->
+    $("zoom-value").textContent = parseInt e.target.value
+
+  $("zoom-range").addEventListener "change", (e) ->
     val = parseInt e.target.value
-    $("zoom-value").textContent = val
     currentScale = val
     settings = loadSettings()
     settings.zoom = val
@@ -1414,6 +1725,216 @@ setupSettings = ->
         settings.tapSize = size
         saveSettings settings
 
+  # Scroll unit buttons
+  for btn in document.querySelectorAll(".scroll-unit-btn")
+    do (btn) ->
+      btn.addEventListener "click", ->
+        settings = loadSettings()
+        settings.scrollUnit = btn.dataset.unit
+        saveSettings settings
+        applyScrollSettings settings.scrollUnit, settings.overlap or 0
+
+  # Overlap select
+  $("overlap-select").addEventListener "change", (e) ->
+    settings = loadSettings()
+    settings.overlap = parseInt e.target.value
+    saveSettings settings
+
+  # Storage management button
+  storageBtn = $("btn-storage")
+  if storageBtn
+    storageBtn.addEventListener "click", ->
+      requestStorageQuota()
+
+# Request increased storage quota for MusicXML files
+requestStorageQuota = ->
+  if 'storage' in navigator and 'estimate' in navigator.storage
+    # Check current usage
+    navigator.storage.estimate().then (estimate) ->
+      console.log "Storage usage: #{(estimate.usage / 1024 / 1024).toFixed(2)}MB / #{(estimate.quota / 1024 / 1024).toFixed(2)}MB"
+
+      # Request more storage if needed (limit to 200MB)
+      if estimate.quota < 200 * 1024 * 1024 # 200MB
+        if 'persist' in navigator.storage
+          navigator.storage.persist().then (persistent) ->
+            if persistent
+              console.log "✅ Storage persistence granted - extended quota available"
+              showStorageMessage "Stockage étendu à 200MB activé", "success"
+            else
+              console.log "⚠️ Storage persistence denied"
+              currentQuotaMB = (estimate.quota / 1024 / 1024).toFixed(0)
+              showStorageMessage "Stockage limité à #{currentQuotaMB}MB", "warning"
+        else
+          console.log "Storage persistence not supported"
+      else
+        console.log "✅ Sufficient storage quota available (200MB or more)"
+
+# Show storage-related messages
+showStorageMessage = (message, type = 'info') ->
+  messageEl = document.getElementById 'storage-message'
+  unless messageEl
+    messageEl = document.createElement 'div'
+    messageEl.id = 'storage-message'
+    messageEl.style.cssText = '''
+      position: fixed;
+      bottom: 60px;
+      right: 20px;
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-size: 14px;
+      z-index: 1000;
+      max-width: 300px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    '''
+    document.body.appendChild messageEl
+
+  # Set colors based on type
+  colors =
+    success: '#4caf50'
+    warning: '#ff9800'
+    error: '#f44336'
+    info: '#2196f3'
+
+  messageEl.style.background = colors[type] or colors.info
+  messageEl.style.color = 'white'
+  messageEl.textContent = message
+  messageEl.style.display = 'block'
+
+  # Auto-hide after 4 seconds
+  setTimeout ->
+    messageEl.style.display = 'none'
+  , 4000
+
+# Handle protocol handlers and URL parameters
+handleProtocolParameters = ->
+  urlParams = new URLSearchParams window.location.search
+
+  # Handle file parameter from protocol handlers or share target
+  fileParam = urlParams.get('file')
+  if fileParam
+    console.log "Protocol handler: Opening file #{fileParam}"
+
+    # Handle different URL schemes
+    if fileParam.startsWith('http://') or fileParam.startsWith('https://')
+      # Remote file - fetch and load
+      fetchFileFromUrl fileParam
+    else if fileParam.startsWith('file://')
+      # Local file (limited browser support)
+      console.warn "Local file protocol not supported in browsers"
+    else
+      # Direct file path or base64 data
+      loadFileFromParameter fileParam
+
+  # Handle shared files via Web Share API
+  sharedFile = urlParams.get('shared')
+  if sharedFile
+    console.log "Shared file detected"
+    loadFileFromParameter sharedFile
+
+# Fetch file from remote URL
+fetchFileFromUrl = (url) ->
+  console.log "Fetching remote file: #{url}"
+  fetch url
+    .then (response) ->
+      if response.ok
+        response.text()
+      else
+        throw new Error "HTTP #{response.status}: #{response.statusText}"
+    .then (xmlContent) ->
+      # Load the fetched MusicXML content
+      loadMusicXMLContent xmlContent, url
+    .catch (error) ->
+      console.error "Failed to fetch remote file:", error
+      showError "Impossible de charger le fichier distant: #{error.message}"
+
+# Load file from URL parameter
+loadFileFromParameter = (fileData) ->
+  try
+    if fileData.startsWith('data:') or fileData.startsWith('blob:')
+      # Data URL or Blob URL
+      loadFileFromDataUrl fileData
+    else if fileData.includes('<') and fileData.includes('musicxml')
+      # Direct XML content
+      loadMusicXMLContent fileData, 'protocol-handler'
+    else
+      # Assume it's a filename that needs to be resolved
+      console.warn "Unsupported file format in protocol handler"
+  catch error
+    console.error "Error loading file from parameter:", error
+    showError "Erreur lors du chargement du fichier: #{error.message}"
+
+# Load file from Data URL
+loadFileFromDataUrl = (dataUrl) ->
+  try
+    # Extract base64 content from data URL
+    matches = dataUrl.match(/^data:([^;]+);base64,(.+)$/)
+    if matches and matches[2]
+      decodedContent = atob matches[2]
+      loadMusicXMLContent decodedContent, 'data-url'
+    else
+      throw new Error "Invalid data URL format"
+  catch error
+    console.error "Error parsing data URL:", error
+    showError "Format de fichier invalide"
+
+# Load MusicXML content into the app
+loadMusicXMLContent = (xmlContent, source = 'unknown') ->
+  console.log "Loading MusicXML content from #{source}"
+
+  # Create a temporary File object for the import system
+  try
+    # Parse XML to validate it's MusicXML
+    parser = new DOMParser()
+    xmlDoc = parser.parseFromString xmlContent, 'text/xml'
+
+    if xmlDoc.getElementsByTagName('parsererror').length > 0
+      throw new Error "Invalid XML format"
+
+    # Check if it's MusicXML
+    rootElement = xmlDoc.documentElement
+    unless rootElement.tagName in ['score-partwise', 'score-timewise']
+      throw new Error "Not a valid MusicXML file"
+
+    # Create a File-like object
+    filename = if source.includes('url') then 'remote.musicxml' else 'protocol-handler.musicxml'
+    file = new File [xmlContent], filename, { type: 'application/vnd.recordare.musicxml+xml' }
+
+    # Use existing import system
+    handleFileImport file
+
+  catch error
+    console.error "Error processing MusicXML:", error
+    showError "Fichier MusicXML invalide: #{error.message}"
+
+# Show error message to user
+showError = (message) ->
+  # Create or update error notification
+  errorEl = document.getElementById 'protocol-error'
+  unless errorEl
+    errorEl = document.createElement 'div'
+    errorEl.id = 'protocol-error'
+    errorEl.style.cssText = '''
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: #f44336;
+      color: white;
+      padding: 12px 20px;
+      border-radius: 8px;
+      z-index: 10000;
+      max-width: 300px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    '''
+    document.body.appendChild errorEl
+
+  errorEl.textContent = message
+  errorEl.style.display = 'block'
+
+  # Auto-hide after 5 seconds
+  setTimeout ->
+    errorEl.style.display = 'none'
+  , 5000
+
 # Init
 document.addEventListener "DOMContentLoaded", ->
   applyAllSettings()
@@ -1422,10 +1943,22 @@ document.addEventListener "DOMContentLoaded", ->
   setupLibrary()
   setupSettings()
   setupResize()
-  # Vertical scroll listener for alignment and page indicator
+
+  # Request increased storage quota for MusicXML files
+  requestStorageQuota()
+
+  # Handle protocol handlers and file parameters
+  handleProtocolParameters()
+
+  # Vertical scroll listener: one alignment/indicator pass per frame
   $("page-current").addEventListener "scroll", ->
-    applyVerticalAlignment()
-    if scrollMode is "vertical"
-      showIndicator()
+    return if scrollScheduled
+    scrollScheduled = true
+    requestAnimationFrame ->
+      scrollScheduled = false
+      applyVerticalAlignment()
+      if scrollMode is "vertical"
+        showIndicator()
+        prefetch()
   # Worker will send "ready" when initialized
   worker.postMessage {type: "init"}

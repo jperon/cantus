@@ -4,15 +4,15 @@ const DYNAMIC_CACHE = 'musica-dynamic-v3';
 
 // Assets essentiels pour le fonctionnement offline
 const STATIC_ASSETS = [
-  '/',
-  '/index.html',
-  '/worker.js',
-  '/manifest.json',
-  '/favicon.ico',
-  '/icons/icon-192.png',
-  '/icons/icon-512.png',
-  '/verovio.js',
-  '/verovio-toolkit-wasm.js'
+  './',
+  './index.html',
+  './worker.js',
+  './manifest.json',
+  './favicon.ico',
+  './icons/icon-192.png',
+  './icons/icon-512.png',
+  './verovio.js',
+  './verovio-toolkit-wasm.js'
 ];
 
 // Installation - mise en cache des assets statiques
