@@ -179,7 +179,7 @@ async function buildSpa() {
 
   // 5. Create worker with Verovio inlined (for SPA without blob: URL issues)
   // Inject Verovio code directly into worker
-  const workerWithVerovio = `
+  let workerSource = `
 // Inline Verovio for SPA mode
 ${verovioJs}
 
@@ -187,9 +187,16 @@ ${verovioJs}
 ${workerJs}
   `;
 
+  // Le worker va dans un <script type="text/js-worker"> : un </script dans son
+  // contenu fermerait la balise. L'échappement est sans effet sur le JS.
+  if (/<\/script/i.test(workerSource)) {
+    console.warn("  Attention : '</script' échappé en '<\\/script' dans le worker SPA");
+    workerSource = workerSource.replace(/<\/script/gi, '<\\/script');
+  }
+
   const workerSetup = `
     (function() {
-      var workerCode = ${JSON.stringify(workerWithVerovio)};
+      var workerCode = document.getElementById('worker-src').textContent;
       var blob = new Blob([workerCode], {type: 'application/javascript'});
       var workerUrl = URL.createObjectURL(blob);
       var worker = new Worker(workerUrl);
@@ -201,14 +208,11 @@ ${workerJs}
     })();
   `;
 
-  // 6. No separate Verovio setup needed - it's in the worker
-  const verovioSetup = '';
-
-  // 7. Compile Pug for SPA (no external references)
+  // 6. Compile Pug for SPA (no external references)
   console.log('  Compiling spa.pug...');
   const html = pug.renderFile(path.join(SRC, 'spa.pug'), {
     css,
-    verovioSetup,
+    workerSource,
     workerSetup,
     fflateSetup,
     mxlJs,
