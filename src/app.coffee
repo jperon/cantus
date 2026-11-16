@@ -377,7 +377,6 @@ worker.onmessage = (e) ->
 
     when "movementLoaded"
       {movementId, pageCount: mvPages} = e.data
-      console.log "Mouvement #{movementId} chargé: #{mvPages} pages"
       mv = movements.find (m) -> m.id is movementId
       if mv
         mv.pageCount = mvPages
@@ -557,10 +556,6 @@ showLoading = ->
 hideLoading = ->
   $("overlay-loading").classList.add "hidden"
 
-showError = (msg) ->
-  $("error-message").textContent = msg
-  $("overlay-error").classList.add "visible"
-
 hideError = ->
   $("overlay-error").classList.remove "visible"
 
@@ -638,10 +633,8 @@ detectScrollMode = (svgString) ->
   doc = parser.parseFromString svgString, "image/svg+xml"
   systems = doc.querySelectorAll 'g.system'
   systemCount = systems.length
-  console.log "Détection: #{systemCount} système(s) sur la première page"
   if systemCount <= 1
     scrollMode = "horizontal"
-    console.log "Mode défilement: horizontal"
   else
     scrollMode = "vertical"
     # Calculate average system height from the SVG
@@ -663,7 +656,6 @@ detectScrollMode = (svgString) ->
       systemHeight = svgHeight / systemCount
     else
       systemHeight = 1000  # Default fallback
-    console.log "Mode défilement: vertical (hauteur système: #{systemHeight.toFixed(1)})"
   scrollMode
 
 displayView = ->
@@ -858,6 +850,15 @@ findLastCompleteSvg = ->
 
   return lastCompleteSvg
 
+# Set horizontal position and refresh the view
+setScrollPos = (pos) ->
+  scrollPos = pos
+  currentPage = Math.floor(scrollPos / 2) + 1
+  displayView()
+  showIndicator()
+  prefetch()
+  savePositionDebounced()
+
 goNext = ->
   return unless fileLoaded
   if scrollMode is "vertical"
@@ -911,12 +912,7 @@ goNext = ->
   else
     return if scrollPos >= maxScrollPos()
     captureVerticalScroll()
-    scrollPos++
-    currentPage = Math.floor(scrollPos / 2) + 1
-    displayView()
-    showIndicator()
-    prefetch()
-    savePositionDebounced()
+    setScrollPos(scrollPos + 1)
 
 goPrev = ->
   return unless fileLoaded
@@ -968,12 +964,7 @@ goPrev = ->
   else
     return if scrollPos <= 0
     captureVerticalScroll()
-    scrollPos--
-    currentPage = Math.floor(scrollPos / 2) + 1
-    displayView()
-    showIndicator()
-    prefetch()
-    savePositionDebounced()
+    setScrollPos(scrollPos - 1)
 
 # Get current movement index from page
 getCurrentMovementIndex = ->
@@ -995,146 +986,79 @@ getMovementStartPage = (movIndex) ->
 # Navigation functions
 goToPage = (page) ->
   return unless fileLoaded and page >= 1 and page <= pageCount
-  scrollPos = (page - 1) * 2
-  currentPage = page
-  displayView()
-  showIndicator()
-  prefetch()
-  savePositionDebounced()
+  setScrollPos (page - 1) * 2
 
 goToStart = ->
   return unless fileLoaded
-  scrollPos = 0
-  currentPage = 1
-  displayView()
-  showIndicator()
-  prefetch()
-  savePositionDebounced()
+  setScrollPos 0
 
 goToEnd = ->
   return unless fileLoaded
-  scrollPos = maxScrollPos()
-  currentPage = Math.floor(scrollPos / 2) + 1
-  displayView()
-  showIndicator()
-  prefetch()
-  savePositionDebounced()
+  setScrollPos maxScrollPos()
 
 goToPrevMovement = ->
   return unless fileLoaded
   currentIdx = getCurrentMovementIndex()
   return if currentIdx <= 0
-  targetPage = getMovementStartPage(currentIdx - 1)
-  scrollPos = (targetPage - 1) * 2
-  currentPage = targetPage
-  displayView()
-  showIndicator()
-  prefetch()
-  savePositionDebounced()
+  startPage = getMovementStartPage(currentIdx - 1)
+  setScrollPos (startPage - 1) * 2
 
 goToNextMovement = ->
   return unless fileLoaded
   currentIdx = getCurrentMovementIndex()
   return if currentIdx >= movements.length - 1
-  targetPage = getMovementStartPage(currentIdx + 1)
-  scrollPos = (targetPage - 1) * 2
-  currentPage = targetPage
-  displayView()
+  startPage = getMovementStartPage(currentIdx + 1)
+  setScrollPos (startPage - 1) * 2
+
+jumpVertical = (direction) ->
+  slot = $("page-current")
+  maxScroll = slot.scrollHeight - slot.clientHeight
+  return if direction < 0 and slot.scrollTop <= 0
+  return if direction > 0 and slot.scrollTop >= maxScroll
+
+  # Target ~5 half view heights away, then snap to the closest SVG
+  targetScroll = slot.scrollTop + direction * window.innerHeight * 2.5
+  targetScroll = Math.max(0, Math.min(maxScroll, targetScroll))
+
+  slotRect = slot.getBoundingClientRect()
+  wrapper = slot.querySelector(".scroll-wrapper")
+  if wrapper
+    svgs = wrapper.querySelectorAll("svg")
+    closestSvg = null
+    closestDistance = Infinity
+
+    for svg in svgs
+      svgRect = svg.getBoundingClientRect()
+      svgScrollPos = slot.scrollTop + (svgRect.top - slotRect.top)
+      distance = Math.abs(svgScrollPos - targetScroll)
+
+      if distance < closestDistance
+        closestDistance = distance
+        closestSvg = svg
+
+    if closestSvg
+      svgRect = closestSvg.getBoundingClientRect()
+      targetScroll = slot.scrollTop + (svgRect.top - slotRect.top)
+
+  slot.scrollTo top: targetScroll, behavior: "instant"
+
+  checkAndLoadMorePages() if direction > 0
   showIndicator()
-  prefetch()
   savePositionDebounced()
 
 goBack5 = ->
   return unless fileLoaded
   if scrollMode is "vertical"
-    slot = $("page-current")
-    return if slot.scrollTop <= 0
-
-    # Find SVG that's approximately 5 view heights back
-    targetScroll = Math.max(0, slot.scrollTop - (window.innerHeight * 2.5))  # 5 * 0.5 view heights
-
-    # Find the SVG closest to target position
-    wrapper = slot.querySelector(".scroll-wrapper")
-    if wrapper
-      svgs = wrapper.querySelectorAll("svg")
-      closestSvg = null
-      closestDistance = Infinity
-
-      for svg in svgs
-        svgRect = svg.getBoundingClientRect()
-        slotRect = slot.getBoundingClientRect()
-        svgScrollPos = slot.scrollTop + (svgRect.top - slotRect.top)
-        distance = Math.abs(svgScrollPos - targetScroll)
-
-        if distance < closestDistance
-          closestDistance = distance
-          closestSvg = svg
-
-      if closestSvg
-        svgRect = closestSvg.getBoundingClientRect()
-        finalScroll = slot.scrollTop + (svgRect.top - slotRect.top)
-        slot.scrollTo top: finalScroll, behavior: "instant"
-      else
-        slot.scrollTo top: targetScroll, behavior: "instant"
-    else
-      slot.scrollTo top: targetScroll, behavior: "instant"
-
-    showIndicator()
-    savePositionDebounced()
+    jumpVertical -1
   else
-    scrollPos = Math.max(0, scrollPos - 10)
-    currentPage = Math.floor(scrollPos / 2) + 1
-    displayView()
-    showIndicator()
-    prefetch()
-    savePositionDebounced()
+    setScrollPos Math.max(0, scrollPos - 10)
 
 goForward5 = ->
   return unless fileLoaded
   if scrollMode is "vertical"
-    slot = $("page-current")
-    maxScroll = slot.scrollHeight - slot.clientHeight
-    return if slot.scrollTop >= maxScroll
-
-    # Find SVG that's approximately 5 view heights forward
-    targetScroll = Math.min(maxScroll, slot.scrollTop + (window.innerHeight * 2.5))  # 5 * 0.5 view heights
-
-    # Find the SVG closest to target position
-    wrapper = slot.querySelector(".scroll-wrapper")
-    if wrapper
-      svgs = wrapper.querySelectorAll("svg")
-      closestSvg = null
-      closestDistance = Infinity
-
-      for svg in svgs
-        svgRect = svg.getBoundingClientRect()
-        slotRect = slot.getBoundingClientRect()
-        svgScrollPos = slot.scrollTop + (svgRect.top - slotRect.top)
-        distance = Math.abs(svgScrollPos - targetScroll)
-
-        if distance < closestDistance
-          closestDistance = distance
-          closestSvg = svg
-
-      if closestSvg
-        svgRect = closestSvg.getBoundingClientRect()
-        finalScroll = slot.scrollTop + (svgRect.top - slotRect.top)
-        slot.scrollTo top: finalScroll, behavior: "instant"
-      else
-        slot.scrollTo top: targetScroll, behavior: "instant"
-    else
-      slot.scrollTo top: targetScroll, behavior: "instant"
-
-    checkAndLoadMorePages()
-    showIndicator()
-    savePositionDebounced()
+    jumpVertical 1
   else
-    scrollPos = Math.min(maxScrollPos(), scrollPos + 10)
-    currentPage = Math.floor(scrollPos / 2) + 1
-    displayView()
-    showIndicator()
-    prefetch()
-    savePositionDebounced()
+    setScrollPos Math.min(maxScrollPos(), scrollPos + 10)
 
 # Detect split points and capture attributes at each point (lazy approach)
 # Returns {splitPoints, splitAttrs, totalMeasures, parts}
@@ -1689,16 +1613,38 @@ setupResize = ->
 
 # Settings overlay controls
 setupSettings = ->
+  # Show current storage usage
+  updateStorageInfo = ->
+    if 'storage' in navigator and 'estimate' in navigator.storage
+      navigator.storage.estimate().then (estimate) ->
+        usageMB = (estimate.usage / 1024 / 1024).toFixed(2)
+        quotaMB = (estimate.quota / 1024 / 1024).toFixed(0)
+        storageInfo = $("storage-info")
+        if storageInfo
+          storageInfo.textContent = "#{usageMB}MB / #{quotaMB}MB"
+
+          # Change color based on usage
+          usagePercent = (estimate.usage / estimate.quota) * 100
+          if usagePercent > 80
+            storageInfo.style.color = '#f44336'  # Red
+          else if usagePercent > 60
+            storageInfo.style.color = '#ff9800'  # Orange
+          else
+            storageInfo.style.color = '#4caf50'  # Green
+
   $("btn-settings").addEventListener "click", ->
     $("settings-overlay").classList.remove "hidden"
+    updateStorageInfo()
 
   $("settings-close").addEventListener "click", ->
     $("settings-overlay").classList.add "hidden"
 
-  # Zoom slider
+  # Zoom slider: live label, apply on release
   $("zoom-range").addEventListener "input", (e) ->
+    $("zoom-value").textContent = parseInt e.target.value
+
+  $("zoom-range").addEventListener "change", (e) ->
     val = parseInt e.target.value
-    $("zoom-value").textContent = val
     currentScale = val
     settings = loadSettings()
     settings.zoom = val
@@ -1732,29 +1678,6 @@ setupSettings = ->
   if storageBtn
     storageBtn.addEventListener "click", ->
       requestStorageQuota()
-
-  # Show current storage usage
-  updateStorageInfo = ->
-    if 'storage' in navigator and 'estimate' in navigator.storage
-      navigator.storage.estimate().then (estimate) ->
-        usageMB = (estimate.usage / 1024 / 1024).toFixed(2)
-        quotaMB = (estimate.quota / 1024 / 1024).toFixed(0)
-        storageInfo = $("storage-info")
-        if storageInfo
-          storageInfo.textContent = "#{usageMB}MB / #{quotaMB}MB"
-
-          # Change color based on usage
-          usagePercent = (estimate.usage / estimate.quota) * 100
-          if usagePercent > 80
-            storageInfo.style.color = '#f44336'  # Red
-          else if usagePercent > 60
-            storageInfo.style.color = '#ff9800'  # Orange
-          else
-            storageInfo.style.color = '#4caf50'  # Green
-
-  # Update storage info periodically
-  updateStorageInfo()
-  setInterval updateStorageInfo, 5000  # Update every 5 seconds
 
 # Request increased storage quota for MusicXML files
 requestStorageQuota = ->
