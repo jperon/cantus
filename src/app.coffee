@@ -163,11 +163,13 @@ document.addEventListener "DOMContentLoaded", ->
 
   buildDateEl = document.getElementById("build-date")
   if buildDateEl
-    # Format: "2026-03-23T15:25:45.733Z" -> "Build: 23/03 17:25"
+    # Format: "2026-03-23T15:25:45.733Z" -> "Version du 23/03/2026 à 17:25"
+    buildDateEl.title = buildDate
     try
       date = new Date(buildDate)
-      formatted = "Build: #{date.toLocaleDateString('fr-FR', {day: '2-digit', month: '2-digit'})} #{date.toLocaleTimeString('fr-FR', {hour: '2-digit', minute: '2-digit'})}"
-      buildDateEl.textContent = formatted
+      day = date.toLocaleDateString('fr-FR', {day: '2-digit', month: '2-digit', year: 'numeric'})
+      time = date.toLocaleTimeString('fr-FR', {hour: '2-digit', minute: '2-digit'})
+      buildDateEl.textContent = "Version du #{day} à #{time}"
     catch
       buildDateEl.textContent = buildDate
 
