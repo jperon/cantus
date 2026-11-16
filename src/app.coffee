@@ -1042,6 +1042,39 @@ goForward5 = ->
   else
     setScrollPos Math.min(maxScrollPos(), scrollPos + 10)
 
+# Capture the attributes in effect at each split point, in one pass per part
+# Returns {splitIndex: [attributes per part]}
+captureSplitAttrs = (parts, splitPoints) ->
+  splitAttrs = {}
+  for splitIndex in splitPoints
+    splitAttrs[splitIndex] = []
+  for part in parts
+    state =
+      staves: null
+      clefs: []
+      key: null
+      time: null
+      divisions: null
+      transpose: null
+    for measure, i in part.querySelectorAll("measure")
+      # Snapshot the state before this measure, i.e. as it starts
+      splitAttrs[i].push Object.assign({}, state) if splitAttrs[i]?
+      attrs = measure.querySelector("attributes")
+      if attrs
+        staves = attrs.querySelector("staves")
+        state.staves = staves if staves
+        clefs = attrs.querySelectorAll("clef")
+        state.clefs = Array.from(clefs) if clefs.length > 0
+        key = attrs.querySelector("key")
+        state.key = key if key
+        time = attrs.querySelector("time")
+        state.time = time if time
+        divisions = attrs.querySelector("divisions")
+        state.divisions = divisions if divisions
+        transpose = attrs.querySelector("transpose")
+        state.transpose = transpose if transpose
+  splitAttrs
+
 # Detect split points and capture attributes at each point (lazy approach)
 # Returns {splitPoints, splitAttrs, totalMeasures, parts}
 detectSplitPoints = (xmlString) ->
@@ -1110,39 +1143,7 @@ detectSplitPoints = (xmlString) ->
   console.log "Points de découpage: #{splitPoints.join(', ')}" if splitPoints.length > 0
 
   # Capture attributes at each split point
-  splitAttrs = {}
-  for splitIndex in splitPoints
-    splitAttrs[splitIndex] = []
-    for part in parts
-      measures = part.querySelectorAll("measure")
-      currentStaves = null
-      currentClefs = []
-      currentKey = null
-      currentTime = null
-      currentDivisions = null
-      currentTranspose = null
-      for m, i in measures when i < splitIndex
-        attrs = m.querySelector("attributes")
-        if attrs
-          staves = attrs.querySelector("staves")
-          currentStaves = staves if staves
-          clefs = attrs.querySelectorAll("clef")
-          currentClefs = Array.from(clefs) if clefs.length > 0
-          key = attrs.querySelector("key")
-          currentKey = key if key
-          time = attrs.querySelector("time")
-          currentTime = time if time
-          divisions = attrs.querySelector("divisions")
-          currentDivisions = divisions if divisions
-          transpose = attrs.querySelector("transpose")
-          currentTranspose = transpose if transpose
-      splitAttrs[splitIndex].push
-        staves: currentStaves
-        clefs: currentClefs
-        key: currentKey
-        time: currentTime
-        divisions: currentDivisions
-        transpose: currentTranspose
+  splitAttrs = captureSplitAttrs parts, splitPoints
 
   {splitPoints, splitAttrs, totalMeasures, parts: Array.from(parts)}
 
@@ -1276,41 +1277,7 @@ loadXml = (xml, startPage = 1) ->
           splitInfo.splitPoints = cached.splitPoints
           splitInfo.totalMeasures = cached.totalMeasures
           # Recalculate splitAttrs for the cached splitPoints
-          parts = splitInfo.parts
-          splitAttrs = {}
-          for splitIndex in cached.splitPoints
-            splitAttrs[splitIndex] = []
-            for part in parts
-              measures = part.querySelectorAll("measure")
-              currentStaves = null
-              currentClefs = []
-              currentKey = null
-              currentTime = null
-              currentDivisions = null
-              currentTranspose = null
-              for m, i in measures when i < splitIndex
-                attrs = m.querySelector("attributes")
-                if attrs
-                  staves = attrs.querySelector("staves")
-                  currentStaves = staves if staves
-                  clefs = attrs.querySelectorAll("clef")
-                  currentClefs = Array.from(clefs) if clefs.length > 0
-                  key = attrs.querySelector("key")
-                  currentKey = key if key
-                  time = attrs.querySelector("time")
-                  currentTime = time if time
-                  divisions = attrs.querySelector("divisions")
-                  currentDivisions = divisions if divisions
-                  transpose = attrs.querySelector("transpose")
-                  currentTranspose = transpose if transpose
-              splitAttrs[splitIndex].push
-                staves: currentStaves
-                clefs: currentClefs
-                key: currentKey
-                time: currentTime
-                divisions: currentDivisions
-                transpose: currentTranspose
-          splitInfo.splitAttrs = splitAttrs
+          splitInfo.splitAttrs = captureSplitAttrs splitInfo.parts, cached.splitPoints
           return splitInfo
         # Not in cache, detect and store (only splitPoints and totalMeasures)
         splitInfo = detectSplitPoints xml
