@@ -1689,8 +1689,28 @@ setupResize = ->
 
 # Settings overlay controls
 setupSettings = ->
+  # Show current storage usage
+  updateStorageInfo = ->
+    if 'storage' in navigator and 'estimate' in navigator.storage
+      navigator.storage.estimate().then (estimate) ->
+        usageMB = (estimate.usage / 1024 / 1024).toFixed(2)
+        quotaMB = (estimate.quota / 1024 / 1024).toFixed(0)
+        storageInfo = $("storage-info")
+        if storageInfo
+          storageInfo.textContent = "#{usageMB}MB / #{quotaMB}MB"
+
+          # Change color based on usage
+          usagePercent = (estimate.usage / estimate.quota) * 100
+          if usagePercent > 80
+            storageInfo.style.color = '#f44336'  # Red
+          else if usagePercent > 60
+            storageInfo.style.color = '#ff9800'  # Orange
+          else
+            storageInfo.style.color = '#4caf50'  # Green
+
   $("btn-settings").addEventListener "click", ->
     $("settings-overlay").classList.remove "hidden"
+    updateStorageInfo()
 
   $("settings-close").addEventListener "click", ->
     $("settings-overlay").classList.add "hidden"
@@ -1734,29 +1754,6 @@ setupSettings = ->
   if storageBtn
     storageBtn.addEventListener "click", ->
       requestStorageQuota()
-
-  # Show current storage usage
-  updateStorageInfo = ->
-    if 'storage' in navigator and 'estimate' in navigator.storage
-      navigator.storage.estimate().then (estimate) ->
-        usageMB = (estimate.usage / 1024 / 1024).toFixed(2)
-        quotaMB = (estimate.quota / 1024 / 1024).toFixed(0)
-        storageInfo = $("storage-info")
-        if storageInfo
-          storageInfo.textContent = "#{usageMB}MB / #{quotaMB}MB"
-
-          # Change color based on usage
-          usagePercent = (estimate.usage / estimate.quota) * 100
-          if usagePercent > 80
-            storageInfo.style.color = '#f44336'  # Red
-          else if usagePercent > 60
-            storageInfo.style.color = '#ff9800'  # Orange
-          else
-            storageInfo.style.color = '#4caf50'  # Green
-
-  # Update storage info periodically
-  updateStorageInfo()
-  setInterval updateStorageInfo, 5000  # Update every 5 seconds
 
 # Request increased storage quota for MusicXML files
 requestStorageQuota = ->
