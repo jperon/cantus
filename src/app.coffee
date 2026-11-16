@@ -1165,6 +1165,13 @@ detectSplitPoints = (xmlString) ->
 
   {doc, splitPoints, splitAttrs, totalMeasures}
 
+# Retire d'un document les parties masquées et leur entrée de <part-list>
+removeHiddenParts = (doc, hidden) ->
+  return doc unless hidden.size > 0
+  for el in Array.from doc.querySelectorAll("part, score-part")
+    el.parentNode.removeChild el if hidden.has el.getAttribute("id")
+  doc
+
 # Extract a single movement by index (lazy extraction)
 # movementIndex: 0-based, where 0 is first movement
 extractMovement = (splitInfo, movementIndex) ->
@@ -1173,8 +1180,9 @@ extractMovement = (splitInfo, movementIndex) ->
 
   # No splits: the whole document is movement 0
   if splitPoints.length is 0
-    return serializer.serializeToString(doc) if movementIndex is 0
-    return null
+    return null unless movementIndex is 0
+    return serializer.serializeToString(doc) if hiddenParts.size is 0
+    return serializer.serializeToString(removeHiddenParts(doc.cloneNode(true), hiddenParts))
 
   # Calculate start and end measure indices for this movement
   allPoints = [0, ...splitPoints, totalMeasures]
@@ -1230,6 +1238,7 @@ extractMovement = (splitInfo, movementIndex) ->
         else if newAttrsEl.children.length > 0
           firstMeasure.insertBefore newAttrsEl, firstMeasure.firstChild
 
+  removeHiddenParts clone, hiddenParts
   serializer.serializeToString clone
 
 # Preprocess MusicXML: insert system breaks after double barlines (in place)
