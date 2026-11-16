@@ -345,6 +345,7 @@ memoryCache = new Map()  # In-memory cache for current session
 pendingRequests = new Map()  # Pending page requests for deduplication
 fileLoaded = false
 indicatorTimeout = null
+scrollScheduled = false  # Scroll events are handled once per frame
 currentXml = null
 currentFileId = null
 lastWidth = window.innerWidth
@@ -1790,10 +1791,14 @@ document.addEventListener "DOMContentLoaded", ->
   # Handle protocol handlers and file parameters
   handleProtocolParameters()
 
-  # Vertical scroll listener for alignment and page indicator
+  # Vertical scroll listener: one alignment/indicator pass per frame
   $("page-current").addEventListener "scroll", ->
-    applyVerticalAlignment()
-    if scrollMode is "vertical"
-      showIndicator()
+    return if scrollScheduled
+    scrollScheduled = true
+    requestAnimationFrame ->
+      scrollScheduled = false
+      applyVerticalAlignment()
+      if scrollMode is "vertical"
+        showIndicator()
   # Worker will send "ready" when initialized
   worker.postMessage {type: "init"}
