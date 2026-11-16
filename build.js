@@ -121,8 +121,8 @@ async function build() {
 
   // Inject build date as cache version to force cache invalidation on updates
   const swWithVersion = swJs.replace(
-    "CACHE_NAME = 'musica-v3'",
-    `CACHE_NAME = 'musica-${buildDate}'`
+    "VERSION = 'dev'",
+    `VERSION = '${buildDate}'`
   );
   fs.writeFileSync(path.join(DIST, 'sw.js'), swWithVersion);
   const faviconSrc = path.join(PWA, 'favicon.ico');
@@ -256,8 +256,8 @@ ${workerJs}
 
   // Inject build date as cache version to force cache invalidation on updates
   const swWithVersion = swJs.replace(
-    "CACHE_NAME = 'musica-v3'",
-    `CACHE_NAME = 'musica-${buildDate}'`
+    "VERSION = 'dev'",
+    `VERSION = '${buildDate}'`
   );
   fs.writeFileSync(path.join(DIST, 'sw.js'), swWithVersion);
 

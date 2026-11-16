@@ -1,9 +1,9 @@
 # Service Worker for Cantus PWA
 # Progressive Web App with offline support and intelligent caching
 
-CACHE_NAME = 'musica-v3'
-STATIC_CACHE = 'musica-static-v3'
-DYNAMIC_CACHE = 'musica-dynamic-v3'
+VERSION = 'dev'
+STATIC_CACHE = "musica-static-#{VERSION}"
+DYNAMIC_CACHE = "musica-dynamic-#{VERSION}"
 
 # Essential assets for offline functionality
 STATIC_ASSETS = [
@@ -204,7 +204,7 @@ self.addEventListener 'message', (event) ->
 
     when 'GET_VERSION'
       event.ports[0].postMessage {
-        version: CACHE_NAME
+        version: VERSION
         timestamp: Date.now()
       }
 
