@@ -345,6 +345,7 @@ memoryCache = new Map()  # In-memory cache for current session
 pendingRequests = new Map()  # Pending page requests for deduplication
 fileLoaded = false
 indicatorTimeout = null
+scrollScheduled = false  # Scroll events are handled once per frame
 currentXml = null
 currentFileId = null
 lastWidth = window.innerWidth
@@ -355,6 +356,10 @@ currentScale = 40
 verticalScrollRatio = 0
 currentPageWidth = 0
 currentPageHeight = 0
+
+# Pages pre-rendered around the displayed one
+PREFETCH_AHEAD = 6
+PREFETCH_BEHIND = 1
 
 # Scroll mode: "horizontal" (1 system) or "vertical" (2+ systems)
 scrollMode = null
@@ -405,6 +410,7 @@ worker.onmessage = (e) ->
             # Detect scroll mode from first page before displaying
             detectScrollMode(svg)
             displayView()
+            prefetch()
             # Now load subsequent movements after first page is displayed
             loadRemainingMovements()
       # Navigate to target page if all movements are loaded
@@ -569,34 +575,28 @@ showLibraryBtn = ->
   $("btn-library").classList.remove "hidden"
   $("btn-settings").classList.remove "hidden"
 
+# Page shown in the indicator: in vertical mode, the page crossing the bottom
+# half of the viewport (1 at the top of the scroll)
+displayedPage = ->
+  return Math.floor(scrollPos / 2) + 1 unless scrollMode is "vertical"
+  slot = $("page-current")
+  return 1 if slot.scrollTop <= 0
+  clientHeight = slot.clientHeight
+  page = 1
+  for div, i in slot.querySelectorAll(".scroll-page")
+    rect = div.getBoundingClientRect()
+    # The following pages are lower: no need to measure them
+    break if rect.top >= clientHeight
+    page = i + 1 if rect.bottom > clientHeight * 0.5
+  page
+
 showIndicator = ->
   el = $("page-indicator")
-  if scrollMode is "vertical"
-    # In vertical mode, show the page visible at bottom of screen
-    slot = $("page-current")
-    scrollTop = slot.scrollTop
-    clientHeight = slot.clientHeight
-    pages = slot.querySelectorAll(".scroll-page")
-    # At top, always show page 1
-    if scrollTop <= 0
-      bottomPage = 1
-    else
-      bottomPage = 1
-      for page, i in pages
-        rect = page.getBoundingClientRect()
-        # Page is visible and crosses the bottom half of viewport
-        if rect.top < clientHeight and rect.bottom > clientHeight * 0.5
-          bottomPage = i + 1
-    el.textContent = "#{bottomPage} / #{pageCount}"
-    pageNumberEl = $("page-number")
-    if pageNumberEl
-      pageNumberEl.textContent = "#{bottomPage}/#{pageCount}"
-  else
-    topPage = Math.floor(scrollPos / 2) + 1
-    el.textContent = "#{topPage} / #{pageCount}"
-    pageNumberEl = $("page-number")
-    if pageNumberEl
-      pageNumberEl.textContent = "#{topPage}/#{pageCount}"
+  page = displayedPage()
+  el.textContent = "#{page} / #{pageCount}"
+  pageNumberEl = $("page-number")
+  if pageNumberEl
+    pageNumberEl.textContent = "#{page}/#{pageCount}"
   el.classList.add "visible"
   clearTimeout indicatorTimeout if indicatorTimeout
   indicatorTimeout = setTimeout ->
@@ -615,27 +615,25 @@ renderPageAsync = (globalPage) ->
 detectScrollMode = (svgString) ->
   return if scrollMode?  # Already detected
   return unless svgString
-  # Parse SVG to count systems
-  parser = new DOMParser()
-  doc = parser.parseFromString svgString, "image/svg+xml"
-  systems = doc.querySelectorAll 'g.system'
-  systemCount = systems.length
+  # Verovio writes systems as <g id="…" class="system">: no need to parse the
+  # whole SVG to count them
+  systemCount = (svgString.match(/<g\b[^>]*class="system"/g) or []).length
   if systemCount <= 1
     scrollMode = "horizontal"
   else
     scrollMode = "vertical"
     # Calculate average system height from the SVG
-    svg = doc.querySelector "svg"
+    svgTag = svgString.match(/<svg\b[^>]*>/)?[0] or ""
     svgHeight = 0
     # Try viewBox first
-    viewBoxStr = svg?.getAttribute("viewBox")
+    viewBoxStr = svgTag.match(/viewBox="([^"]*)"/)?[1]
     if viewBoxStr
       viewBox = viewBoxStr.split(/\s+/).map(Number)
       if viewBox.length >= 4 and viewBox[3] > 0
         svgHeight = viewBox[3]
     # Fallback: use height attribute (may include "px")
-    if svgHeight <= 0 and svg
-      heightAttr = svg.getAttribute("height")
+    if svgHeight <= 0
+      heightAttr = svgTag.match(/height="([^"]*)"/)?[1]
       if heightAttr
         svgHeight = parseFloat(heightAttr)
     # Calculate system height
@@ -712,21 +710,26 @@ displayView = ->
   refreshVerticalLayout()
 
 prefetch = ->
-  topPage = Math.floor(scrollPos / 2) + 1
-  for p in [topPage + 1, topPage + 2, topPage + 3, topPage + 4, topPage + 5]
-    if p <= pageCount and not memoryCache.has(p)
-      result = getMovementForPage(p)
-      if result
-        {movement, localPage} = result
-        requestPage(movement.id, localPage)
-  purgeCacheFarPages()
+  page = displayedPage()
+  # Reading order: the next pages, nearest first, then the one before
+  pages = [page + 1 .. page + PREFETCH_AHEAD]
+  pages.push page - PREFETCH_BEHIND if PREFETCH_BEHIND > 0
+  for p in pages
+    continue unless p >= 1 and p <= pageCount
+    continue if memoryCache.has(p)
+    result = getMovementForPage(p)
+    # Skip pages of a movement that is not loaded yet
+    continue unless result and getGlobalPage(result.movement.id, result.localPage) is p
+    {movement, localPage} = result
+    requestPage(movement.id, localPage)
+  purgeCacheFarPages(page)
 
-purgeCacheFarPages = ->
-  topPage = Math.floor(scrollPos / 2) + 1
-  return if memoryCache.size <= 20
+purgeCacheFarPages = (page) ->
+  first = page - PREFETCH_BEHIND
+  last = page + PREFETCH_AHEAD
+  # Never drop a page of the prefetch window: it would be requested again
   for key from memoryCache.keys()
-    if Math.abs(key - topPage) > 10
-      memoryCache.delete key
+    memoryCache.delete key if key < first or key > last
 
 savePositionDebounced = ->
   return unless currentFileId
@@ -744,19 +747,23 @@ maxScrollPos = -> (pageCount * 2) - 2
 applyVerticalAlignment = ->
   return if scrollMode is "vertical"  # Native scroll handles alignment
   slot = $("page-current")
+  scrollTop = slot.scrollTop
   maxScroll = slot.scrollHeight - slot.clientHeight
   return unless maxScroll > 0
-  ratio = slot.scrollTop / maxScroll
+  ratio = scrollTop / maxScroll
   viewH = slot.clientHeight
-  pages = slot.querySelectorAll(".scroll-page")
-  for page in pages
+  # Read every height first, then write every transform: interleaving the two
+  # would force a layout at each iteration
+  svgs = []
+  heights = []
+  for page in slot.querySelectorAll(".scroll-page")
     svg = page.querySelector("svg")
     continue unless svg
-    svgH = svg.getBoundingClientRect().height
-    idealY = ratio * Math.max(0, svgH - viewH)
-    actualY = slot.scrollTop
-    compensation = actualY - idealY
-    svg.style.transform = "translateY(#{compensation}px)"
+    svgs.push svg
+    heights.push svg.getBoundingClientRect().height
+  for svg, i in svgs
+    idealY = ratio * Math.max(0, heights[i] - viewH)
+    svg.style.transform = "translateY(#{scrollTop - idealY}px)"
 
 captureVerticalScroll = ->
   slot = $("page-current")
@@ -789,6 +796,7 @@ checkAndLoadMorePages = ->
         if svg and div.isConnected
           div.innerHTML = svg
           requestAnimationFrame -> applyVerticalAlignment()
+  prefetch()
 
 # Find the last completely visible SVG in vertical mode
 findLastCompleteSvg = ->
@@ -1011,6 +1019,7 @@ jumpVertical = (direction) ->
 
   checkAndLoadMorePages() if direction > 0
   showIndicator()
+  prefetch()
   savePositionDebounced()
 
 goBack5 = ->
@@ -1790,10 +1799,15 @@ document.addEventListener "DOMContentLoaded", ->
   # Handle protocol handlers and file parameters
   handleProtocolParameters()
 
-  # Vertical scroll listener for alignment and page indicator
+  # Vertical scroll listener: one alignment/indicator pass per frame
   $("page-current").addEventListener "scroll", ->
-    applyVerticalAlignment()
-    if scrollMode is "vertical"
-      showIndicator()
+    return if scrollScheduled
+    scrollScheduled = true
+    requestAnimationFrame ->
+      scrollScheduled = false
+      applyVerticalAlignment()
+      if scrollMode is "vertical"
+        showIndicator()
+        prefetch()
   # Worker will send "ready" when initialized
   worker.postMessage {type: "init"}
