@@ -44,7 +44,6 @@ html, body {
   display: flex;
   width: 200vw;
   min-height: 100%;
-  transition: transform 0.35s ease;
   will-change: transform;
 }
 
@@ -52,7 +51,6 @@ html, body {
   flex-direction: column;
   width: 100%;
   min-height: auto;
-  transition: none;
   transform: none;
 }
 
