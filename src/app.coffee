@@ -191,6 +191,10 @@ setupServiceWorker = ->
         # Écouter les messages du service worker
         navigator.serviceWorker.addEventListener 'message', handleServiceWorkerMessage
 
+        # Vérifier les mises à jour quand l'application redevient visible
+        document.addEventListener 'visibilitychange', ->
+          registration.update() if document.visibilityState is 'visible'
+
       .catch (error) ->
         console.error "Erreur d'enregistrement du Service Worker:", error
 
