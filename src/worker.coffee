@@ -87,35 +87,23 @@ initVerovio = (resolve, reject) ->
   .catch (err) ->
     reject(err)
 
-# Load the MuseScore converter once, from the package (normal build) or from
-# the sources inlined in the SPA page
+# Load the MuseScore converter once: the package in the normal build, the
+# inlined wasm module in the SPA. Both resolve an object with convert(bytes).
 loadMscz2xml = ->
   return msczLoad if msczLoad
   msczLoad = new Promise (resolve, reject) ->
     try
       if msczInline
-        # SPA : sources inlinées ; le .wasm est fourni en octets à wasm-bindgen
-        eval msczInline.wasmJs + "\nself.__msczInit = wasm_bindgen"
-        init = self.__msczInit
+        # SPA : évaluer wasm-bindgen (portée globale) puis lui donner le .wasm inliné
+        self.eval msczInline.wasmJs + '\nself.wasm_bindgen = wasm_bindgen;'
         bytes = Uint8Array.from atob(msczInline.wasm), (c) -> c.charCodeAt 0
-        self.wasm_bindgen = Object.assign (-> init { module_or_path: bytes }), init
-        loadPackage = -> eval msczInline.js
+        self.wasm_bindgen { module_or_path: bytes }
+          .then -> resolve self.wasm_bindgen
+          .catch reject
       else
-        # Le paquet trouve ses voisins à côté de ce préfixe
-        self.MSCZ2XML_BASE_URL = 'mscz2xml/'
-        importScripts 'mscz2xml/mscz2xml_wasm.js'
-        # wasm_bindgen est un binding lexical global : le paquet le lit sur self
-        eval 'self.wasm_bindgen = wasm_bindgen'
-        loadPackage = -> importScripts 'mscz2xml/mscz2xml.js'
-      # mscz2xml.js importe lui-même mscz2xml_wasm.js, déjà chargé
-      realImportScripts = self.importScripts
-      self.importScripts = (url) ->
-        realImportScripts.call self, url unless /mscz2xml_wasm\.js/.test url
-      try
-        loadPackage()
-      finally
-        self.importScripts = realImportScripts
-      self.mscz2xml.ready.then resolve, reject
+        self.MSCZ2XML_BASE_URL = new URL('mscz2xml/', self.location.href).href
+        importScripts 'mscz2xml/mscz2xml.js'
+        self.mscz2xml.ready.then -> resolve self.mscz2xml
     catch err
       reject err
   msczLoad
@@ -234,7 +222,7 @@ handleMessage = (e) ->
       when "convertMscz"
         { id, bytes } = e.data
         loadMscz2xml()
-          .then -> self.mscz2xml.convert new Uint8Array(bytes)
+          .then (api) -> api.convert new Uint8Array(bytes)
           .then (xml) ->
             self.postMessage { type: "msczConverted", id, xml }
           .catch (err) ->

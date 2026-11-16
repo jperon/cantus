@@ -100,7 +100,6 @@ html(lang="fr")
       window.__musicaMsczAvailable = #{msczAvailable ? 'true' : 'false'}
     if msczInline
       script#mscz2xml-wasm-src(type="text/plain") !{msczInline.wasmJs}
-      script#mscz2xml-src(type="text/plain") !{msczInline.js}
       script#mscz2xml-wasm-b64(type="text/plain") !{msczInline.wasm}
     script#worker-src(type="text/js-worker") !{workerSource}
     script !{workerSetup}

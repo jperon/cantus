@@ -76,7 +76,6 @@ function readMscz2xml() {
   console.log('  Reading mscz2xml...');
   return {
     wasmJs: read('mscz2xml_wasm.js'),
-    js: read('mscz2xml.js'),
     wasm: fs.readFileSync(path.join(MSCZ2XML_CLASSIC, 'mscz2xml_wasm_bg.wasm')).toString('base64'),
   };
 }
@@ -251,13 +250,12 @@ ${workerJs}
       // Tell worker Verovio is already loaded (inline)
       worker.postMessage({type: 'verovioInline'});
 
-      // MuseScore import: the package sources are inlined too
+      // MuseScore import: the wasm module is inlined too
       var msczWasmJs = document.getElementById('mscz2xml-wasm-src');
       if (msczWasmJs) {
         worker.postMessage({
           type: 'msczInline',
           wasmJs: msczWasmJs.textContent,
-          js: document.getElementById('mscz2xml-src').textContent,
           wasm: document.getElementById('mscz2xml-wasm-b64').textContent
         });
       }
