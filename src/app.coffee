@@ -1235,6 +1235,8 @@ loadXml = (xml, startPage = 1) ->
   currentPage = 1  # Always start at page 1 for immediate display
   scrollPos = 0
   lastWidth = window.innerWidth
+  # Drop the displayed pages: they belong to the previous render
+  $("page-current").innerHTML = ""
   memoryCache.clear()
   pendingRequests.clear()
   pendingRenders.clear()
