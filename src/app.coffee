@@ -1651,9 +1651,11 @@ renderPartsList = ->
         pct = parseInt sizeSel.value
         if pct is 100 then delete partSizes[id] else partSizes[id] = pct
         saveHiddenParts()
+        updatePartsSizesReset()
         partsChanged = true
       list.appendChild label
   updatePartsDisabled()
+  updatePartsSizesReset()
 
 # Au moins une partie reste affichée : on désactive la dernière cochée
 updatePartsDisabled = ->
@@ -1663,6 +1665,12 @@ updatePartsDisabled = ->
   checked = boxes.filter (box) -> box.checked
   for box in boxes
     box.disabled = checked.length is 1 and box.checked
+
+# Bouton « Toutes les voix à 100 % » : actif dès qu'une taille diffère de 100
+updatePartsSizesReset = ->
+  btn = $("parts-sizes-reset")
+  return unless btn
+  btn.disabled = Object.keys(partSizes).every (id) -> partSizes[id] is 100
 
 # Fermer les réglages : applique en une seule fois les changements de voix
 closeSettings = ->
@@ -1698,6 +1706,14 @@ setupSettings = ->
     updateStorageInfo()
 
   $("settings-close").addEventListener "click", closeSettings
+
+  # Remet toutes les tailles de voix à 100 % (les voix masquées sont conservées)
+  $("parts-sizes-reset").addEventListener "click", ->
+    changed = Object.keys(partSizes).some (id) -> partSizes[id] isnt 100
+    partSizes = {}
+    saveHiddenParts()
+    renderPartsList()
+    partsChanged = true if changed
 
   # Zoom slider: live label, apply on release
   $("zoom-range").addEventListener "input", (e) ->
