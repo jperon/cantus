@@ -5,7 +5,6 @@ CACHE_NAME = "musica-svg-cache-v1"
 STRUCTURE_CACHE_NAME = "musica-structure-cache-v1"
 MAX_STORAGE_BYTES = 100 * 1024 * 1024  # 100 MB limit
 
-fflate = window.__fflate
 cache = null
 structureCache = null
 
@@ -23,19 +22,13 @@ getStructureCache = ->
     structureCache = c
     c
 
-# Compress SVG string to Uint8Array using gzip
-compress = (svgString) ->
-  return null unless fflate
-  encoder = new TextEncoder()
-  data = encoder.encode(svgString)
-  fflate.gzipSync(data)
+# Compress string to gzip Blob
+compress = (str) ->
+  new Response(new Blob([str]).stream().pipeThrough(new CompressionStream("gzip"))).blob()
 
-# Decompress Uint8Array back to SVG string
-decompress = (compressed) ->
-  return null unless fflate
-  decompressed = fflate.gunzipSync(compressed)
-  decoder = new TextDecoder()
-  decoder.decode(decompressed)
+# Decompress gzip Blob back to string
+decompress = (blob) ->
+  new Response(blob.stream().pipeThrough(new DecompressionStream("gzip"))).text()
 
 # Generate cache key as full URL (includes dimensions for portrait/landscape)
 makeKey = (fileId, page, width, height) ->
@@ -45,40 +38,17 @@ makeKey = (fileId, page, width, height) ->
 set = (fileId, page, svg, width, height) ->
   return Promise.resolve() unless svg and fileId
   getCache().then (c) ->
-    compressed = compress(svg)
-    return unless compressed
-
-    key = makeKey(fileId, page, width, height)
-    # Cache API requires a Request object as key
-    request = new Request(key, method: "GET")
-    blob = new Blob([compressed], type: "application/octet-stream")
-    response = new Response(blob)
-    c.put(request, response).then ->
-      console.log "Cache écriture: #{fileId}:#{page} (#{compressed.byteLength} bytes compressé)"
+    compress(svg).then (blob) ->
+      # Cache API requires a Request object as key
+      c.put(new Request(makeKey(fileId, page, width, height), method: "GET"), new Response(blob))
 
 # Retrieve SVG from cache (includes dimensions)
 get = (fileId, page, width, height) ->
   return Promise.resolve(null) unless fileId
   getCache().then (c) ->
-    key = makeKey(fileId, page, width, height)
-    request = new Request(key)
-    c.match(request).then (response) ->
+    c.match(new Request(makeKey(fileId, page, width, height))).then (response) ->
       return null unless response
-      response.arrayBuffer().then (buffer) ->
-        svg = decompress(new Uint8Array(buffer))
-        console.log "Cache lecture: #{fileId}:#{page} (#{buffer.byteLength} bytes)"
-        svg
-
-# Get total storage size
-getStorageSize = ->
-  getCache().then (c) ->
-    c.keys().then (keys) ->
-      total = 0
-      promises = keys.map (req) ->
-        c.match(req).then (res) ->
-          res.arrayBuffer().then (buf) ->
-            total += buf.byteLength
-      Promise.all(promises).then -> total
+      response.blob().then decompress
 
 # Clear all cached SVGs
 clearAll = ->
@@ -93,27 +63,16 @@ makeStructureKey = (fileId) ->
 setStructure = (fileId, structure) ->
   return Promise.resolve() unless structure and fileId
   getStructureCache().then (c) ->
-    json = JSON.stringify(structure)
-    compressed = compress(json)
-    return unless compressed
-
-    key = makeStructureKey(fileId)
-    request = new Request(key, method: "GET")
-    blob = new Blob([compressed], type: "application/octet-stream")
-    response = new Response(blob)
-    c.put(request, response).then ->
-      console.log "Cache structure: #{fileId} (#{compressed.byteLength} bytes)"
+    compress(JSON.stringify(structure)).then (blob) ->
+      c.put(new Request(makeStructureKey(fileId), method: "GET"), new Response(blob))
 
 # Retrieve structure info from cache
 getStructure = (fileId) ->
   return Promise.resolve(null) unless fileId
   getStructureCache().then (c) ->
-    key = makeStructureKey(fileId)
-    request = new Request(key)
-    c.match(request).then (response) ->
+    c.match(new Request(makeStructureKey(fileId))).then (response) ->
       return null unless response
-      response.arrayBuffer().then (buffer) ->
-        json = decompress(new Uint8Array(buffer))
+      response.blob().then(decompress).then (json) ->
         try
           JSON.parse(json)
         catch
@@ -124,5 +83,4 @@ window.__svgCache =
   set: set
   getStructure: getStructure
   setStructure: setStructure
-  getStorageSize: getStorageSize
   clearAll: clearAll
