@@ -54,17 +54,6 @@ get = (fileId, page, width, height) ->
           console.log "Cache lecture: #{fileId}:#{page} (#{blob.size} bytes)"
           svg
 
-# Get total storage size
-getStorageSize = ->
-  getCache().then (c) ->
-    c.keys().then (keys) ->
-      total = 0
-      promises = keys.map (req) ->
-        c.match(req).then (res) ->
-          res.arrayBuffer().then (buf) ->
-            total += buf.byteLength
-      Promise.all(promises).then -> total
-
 # Clear all cached SVGs
 clearAll = ->
   caches.delete(CACHE_NAME).then ->
@@ -99,5 +88,4 @@ window.__svgCache =
   set: set
   getStructure: getStructure
   setStructure: setStructure
-  getStorageSize: getStorageSize
   clearAll: clearAll
