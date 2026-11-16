@@ -84,6 +84,15 @@ initVerovio = (resolve, reject) ->
   .catch (err) ->
     reject(err)
 
+# Render one page of the currently loaded movement and send it back
+postPage = (movementId, pageNumber) ->
+  self.postMessage {
+    type: "svg"
+    movementId
+    page: pageNumber
+    svg: tk.renderToSVG pageNumber
+  }
+
 loadMovement = (movementId, xmlString, pageWidth, pageHeight, scale = 40) ->
   options = {
     breaks: "auto"
@@ -117,6 +126,9 @@ loadMovement = (movementId, xmlString, pageWidth, pageHeight, scale = 40) ->
     movementId
     pageCount
   }
+  # Send every page now: rendering this movement later would reload it entirely
+  if pageCount > 0
+    postPage movementId, page for page in [1..pageCount]
 
 # Switch to a different movement if needed
 switchToMovement = (movementId) ->
@@ -142,13 +154,7 @@ renderMovementPage = (movementId, pageNumber) ->
     }
     return
 
-  svg = tk.renderToSVG pageNumber
-  self.postMessage {
-    type: "svg"
-    movementId
-    page: pageNumber
-    svg
-  }
+  postPage movementId, pageNumber
 
 self.onmessage = (e) ->
   { type } = e.data
