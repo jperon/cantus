@@ -13,8 +13,9 @@
   "devDependencies": {
     "chokidar": "^3.6.0",
     "coffeescript": "^2.7.0",
-    "pug": "^3.0.3",
+    "esbuild": "^0.28.2",
     "playwright": "^1.48.0",
+    "pug": "^3.0.3",
     "verovio": "^4.4.0"
   },
   "dependencies": {

@@ -73,8 +73,8 @@ html(lang="fr")
     #build-date
     script.
       window.__musicaBuildDate = "#{buildDate}"
+    script#worker-src(type="text/js-worker") !{workerSource}
     script !{workerSetup}
-    script !{verovioSetup}
     script !{fflateSetup}
     script !{mxlJs}
     script !{storageJs}
