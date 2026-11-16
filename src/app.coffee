@@ -1408,11 +1408,8 @@ loadRemainingMovements = ->
 
     # Load movement and wait for it to be ready
     loadMovementAndWait(movementId, mvXml, pageWidth, pageHeight).then ->
-      # Process first page (cache check, render if needed, store if needed)
-      requestPage(movementId, 1).then (svg) ->
-        console.log "Mouvement #{movementId} traité"
-        # Move to next movement
-        processNextMovement(index + 1)
+      # Pages are pushed by the worker, go on with the next movement
+      processNextMovement(index + 1)
 
   # Start with movement 2 (index 1)
   processNextMovement(1)
