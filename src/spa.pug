@@ -22,7 +22,7 @@ html(lang="fr")
         h1 Liseuse MusicXML
         p Ouvrir un fichier MusicXML pour commencer
         button#import-btn Ouvrir un fichier
-        input#file-input(type="file" accept=".xml,.musicxml,.mxl")
+        input#file-input(type="file" accept=msczAvailable ? ".xml,.musicxml,.mxl,.mscz,.mscx" : ".xml,.musicxml,.mxl")
     button#btn-library.hidden ☰
     button#btn-settings.hidden ⚙
     #overlay-loading
@@ -90,7 +90,7 @@ html(lang="fr")
       #library-list
       #library-actions
         button#library-import-btn Ajouter un fichier
-        input#library-file-input(type="file" accept=".xml,.musicxml,.mxl")
+        input#library-file-input(type="file" accept=msczAvailable ? ".xml,.musicxml,.mxl,.mscz,.mscx" : ".xml,.musicxml,.mxl")
     #page-indicator
     #loading-indicator.hidden
       .spinner-small
@@ -104,6 +104,10 @@ html(lang="fr")
       button.nav-btn(data-action="end" title="Fin") ⏭
     script.
       window.__musicaBuildDate = "#{buildDate}"
+      window.__musicaMsczAvailable = #{msczAvailable ? 'true' : 'false'}
+    if msczInline
+      script#mscz2xml-wasm-src(type="text/plain") !{msczInline.wasmJs}
+      script#mscz2xml-wasm-b64(type="text/plain") !{msczInline.wasm}
     script#worker-src(type="text/js-worker") !{workerSource}
     script !{workerSetup}
     script !{fflateSetup}

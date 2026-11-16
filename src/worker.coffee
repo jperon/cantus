@@ -6,6 +6,8 @@ verovioLoaded = false
 movements = {}  # movementId -> {pageCount, loaded, xml, options}
 currentMovement = null
 pending = []  # messages waiting for the toolkit, replayed once Verovio is ready
+msczLoad = null  # mscz2xml loading promise, created on first MuseScore conversion
+msczInline = null  # SPA: {wasmJs, js, wasm} sources sent by the page
 
 # Clear all movements (call before loading new file)
 clearMovements = ->
@@ -84,6 +86,27 @@ initVerovio = (resolve, reject) ->
     resolve()
   .catch (err) ->
     reject(err)
+
+# Load the MuseScore converter once: the package in the normal build, the
+# inlined wasm module in the SPA. Both resolve an object with convert(bytes).
+loadMscz2xml = ->
+  return msczLoad if msczLoad
+  msczLoad = new Promise (resolve, reject) ->
+    try
+      if msczInline
+        # SPA : évaluer wasm-bindgen (portée globale) puis lui donner le .wasm inliné
+        self.eval msczInline.wasmJs + '\nself.wasm_bindgen = wasm_bindgen;'
+        bytes = Uint8Array.from atob(msczInline.wasm), (c) -> c.charCodeAt 0
+        self.wasm_bindgen { module_or_path: bytes }
+          .then -> resolve self.wasm_bindgen
+          .catch reject
+      else
+        self.MSCZ2XML_BASE_URL = new URL('mscz2xml/', self.location.href).href
+        importScripts 'mscz2xml/mscz2xml.js'
+        self.mscz2xml.ready.then -> resolve self.mscz2xml
+    catch err
+      reject err
+  msczLoad
 
 # Render one page of the currently loaded movement and send it back
 postPage = (movementId, pageNumber) ->
@@ -192,6 +215,22 @@ handleMessage = (e) ->
 
       when "init"
         notifyReady() if tk
+
+      when "msczInline"
+        msczInline = e.data
+
+      when "convertMscz"
+        { id, bytes } = e.data
+        loadMscz2xml()
+          .then (api) -> api.convert new Uint8Array(bytes)
+          .then (xml) ->
+            self.postMessage { type: "msczConverted", id, xml }
+          .catch (err) ->
+            self.postMessage {
+              type: "msczError"
+              id
+              message: err.message or String(err)
+            }
 
       when "clearMovements"
         clearMovements()

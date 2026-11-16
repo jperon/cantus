@@ -9,6 +9,11 @@ const SRC = path.join(__dirname, 'src');
 const PWA = path.join(__dirname, 'pwa');
 const DIST = path.join(__dirname, 'dist');
 const VEROVIO_TOOLKIT = path.join(__dirname, '..', 'partitura', 'verovio-toolkit-wasm.js');
+// Paquet wasm d'import MuseScore (mscz2xml), produit par le projet ../musescore
+const MSCZ2XML_CLASSIC = path.join(
+  process.env.MSCZ2XML_PKG || path.join(__dirname, '..', 'musescore', 'result-wasm'),
+  'classic'
+);
 
 // Minification (désactivée en --watch ou --no-minify pour déboguer)
 const MINIFY = !process.argv.includes('--watch') && !process.argv.includes('--no-minify');
@@ -44,6 +49,43 @@ function readFflate() {
   console.log('  Reading fflate...');
   const src = fs.readFileSync(path.join(__dirname, 'node_modules', 'fflate', 'umd', 'index.js'), 'utf-8');
   return minify(`(function(){${src}; window.__fflate = fflate;})()`);
+}
+
+// Copie le paquet mscz2xml dans dist/mscz2xml ; renvoie false s'il est absent
+function copyMscz2xml() {
+  if (!fs.existsSync(MSCZ2XML_CLASSIC)) {
+    console.warn(`  Attention : ${MSCZ2XML_CLASSIC} introuvable, import MuseScore désactivé`);
+    return false;
+  }
+  console.log('  Copying mscz2xml...');
+  ensureDir(path.join(DIST, 'mscz2xml'));
+  for (const file of fs.readdirSync(MSCZ2XML_CLASSIC)) {
+    fs.copyFileSync(path.join(MSCZ2XML_CLASSIC, file), path.join(DIST, 'mscz2xml', file));
+  }
+  console.log('  -> dist/mscz2xml');
+  return true;
+}
+
+// Sources du paquet mscz2xml pour le SPA (tout est inliné dans la page)
+function readMscz2xml() {
+  if (!fs.existsSync(MSCZ2XML_CLASSIC)) {
+    console.warn(`  Attention : ${MSCZ2XML_CLASSIC} introuvable, import MuseScore désactivé`);
+    return null;
+  }
+  const read = (file) => fs.readFileSync(path.join(MSCZ2XML_CLASSIC, file), 'utf-8');
+  console.log('  Reading mscz2xml...');
+  return {
+    wasmJs: read('mscz2xml_wasm.js'),
+    wasm: fs.readFileSync(path.join(MSCZ2XML_CLASSIC, 'mscz2xml_wasm_bg.wasm')).toString('base64'),
+  };
+}
+
+// Le contenu d'un <script type="text/plain"> est du texte brut : un
+// '</script' y fermerait la balise. L'échappement est sans effet sur le JS.
+function escapeScript(source) {
+  if (!/<\/script/i.test(source)) return source;
+  console.warn("  Attention : '</script' échappé en '<\\/script' dans le HTML SPA");
+  return source.replace(/<\/script/gi, '<\\/script');
 }
 
 function compileScripts() {
@@ -113,6 +155,8 @@ async function build() {
   fs.copyFileSync(verovioToolkit(), path.join(DIST, 'verovio-toolkit-wasm.js'));
   console.log('  -> dist/verovio-toolkit-wasm.js (partitura)');
 
+  const msczAvailable = copyMscz2xml();
+
   const fflateSetup = readFflate();
   const { mxlJs, storageJs, svgCacheJs, workerJs, appJs } = compileScripts();
 
@@ -146,6 +190,7 @@ async function build() {
     svgCacheJs,
     appJs,
     buildDate,
+    msczAvailable,
   });
 
   // 13. Write dist/index.html
@@ -180,6 +225,8 @@ async function buildSpa() {
 
   const fflateSetup = readFflate();
   const { mxlJs, storageJs, svgCacheJs, workerJs, appJs } = compileScripts();
+  const msczInline = readMscz2xml();
+  const msczAvailable = !!msczInline;
 
   // 4. Read CSS
   const css = readSrc('styles.css');
@@ -195,11 +242,8 @@ ${workerJs}
   `;
 
   // Le worker va dans un <script type="text/js-worker"> : un </script dans son
-  // contenu fermerait la balise. L'échappement est sans effet sur le JS.
-  if (/<\/script/i.test(workerSource)) {
-    console.warn("  Attention : '</script' échappé en '<\\/script' dans le worker SPA");
-    workerSource = workerSource.replace(/<\/script/gi, '<\\/script');
-  }
+  // contenu fermerait la balise.
+  workerSource = escapeScript(workerSource);
 
   const workerSetup = `
     (function() {
@@ -212,6 +256,16 @@ ${workerJs}
 
       // Tell worker Verovio is already loaded (inline)
       worker.postMessage({type: 'verovioInline'});
+
+      // MuseScore import: the wasm module is inlined too
+      var msczWasmJs = document.getElementById('mscz2xml-wasm-src');
+      if (msczWasmJs) {
+        worker.postMessage({
+          type: 'msczInline',
+          wasmJs: msczWasmJs.textContent,
+          wasm: document.getElementById('mscz2xml-wasm-b64').textContent
+        });
+      }
     })();
   `;
 
@@ -227,6 +281,8 @@ ${workerJs}
     svgCacheJs,
     appJs,
     buildDate,
+    msczAvailable,
+    msczInline,
   });
 
   // 8. Write dist/spa.html

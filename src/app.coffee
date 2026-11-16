@@ -373,6 +373,8 @@ movements = []  # [{id, pageCount, pushed, loaded}]
 pendingRenders = new Map()  # "movementId:page" -> resolve function
 pushedPages = {}  # movementId -> last page of the initial push received (in order)
 pendingMovementLoads = new Map()  # movementId -> resolve function
+pendingMscz = new Map()  # MuseScore conversion id -> {resolve, reject}
+msczRequestId = 0
 targetPage = null  # Page to navigate to once all movements are loaded
 awaitingLoad = false  # A new load is posted: ignore the previous render's replies
 currentSplitInfo = null  # Split info for lazy extraction
@@ -461,6 +463,16 @@ worker.onmessage = (e) ->
         showError "Erreur mouvement #{movementId}: #{message}"
       else
         showError message
+
+    when "msczConverted", "msczError"
+      {id, xml, message} = e.data
+      pending = pendingMscz.get id
+      return unless pending
+      pendingMscz.delete id
+      if type is "msczConverted"
+        pending.resolve xml
+      else
+        pending.reject new Error message
 
 # Calculate global page from movementId and localPage
 getGlobalPage = (movementId, localPage) ->
@@ -1552,13 +1564,20 @@ setupNavigation = ->
         e.preventDefault()
         goPrev()
 
+# Ask the worker to convert a MuseScore file (.mscz/.mscx) to MusicXML
+convertMsczToXml = (buffer) ->
+  new Promise (resolve, reject) ->
+    id = ++msczRequestId
+    pendingMscz.set id, {resolve, reject}
+    worker.postMessage { type: "convertMscz", id, bytes: buffer }, [buffer]
+
 # File import (both from import-section and library overlay)
 handleFileImport = (file) ->
   return unless file
   showLoading()
   hideImport()
   hideLibrary()
-  name = file.name.replace(/\.(xml|musicxml|mxl)$/i, "")
+  name = file.name.replace(/\.(xml|musicxml|mxl|mscz|mscx)$/i, "")
   mxl = window.__musicaMxl
 
   if mxl.isMxlFile(file)
@@ -1573,6 +1592,25 @@ handleFileImport = (file) ->
       catch err
         hideLoading()
         showError "Erreur MXL : #{err.message}"
+    reader.onerror = ->
+      hideLoading()
+      showError "Impossible de lire le fichier."
+    reader.readAsArrayBuffer file
+  else if file.name.match /\.msc[zx]$/i
+    unless window.__musicaMsczAvailable
+      hideLoading()
+      return showError "Import MuseScore non disponible dans cette version."
+    # MuseScore: convert to MusicXML in the worker, then import the XML
+    reader = new FileReader()
+    reader.onload = (ev) ->
+      convertMsczToXml(ev.target.result)
+        .then (xml) ->
+          storage.saveFile(name, xml).then (id) ->
+            currentFileId = id
+            loadXml xml, 1
+        .catch (err) ->
+          hideLoading()
+          showError "Erreur MuseScore : #{err.message or err}"
     reader.onerror = ->
       hideLoading()
       showError "Impossible de lire le fichier."

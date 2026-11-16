@@ -17,6 +17,13 @@ STATIC_ASSETS = [
   './verovio-toolkit-wasm.js'
 ]
 
+# Import MuseScore (paquet facultatif, absent des builds sans mscz2xml)
+MSCZ2XML_ASSETS = [
+  './mscz2xml/mscz2xml.js'
+  './mscz2xml/mscz2xml_wasm.js'
+  './mscz2xml/mscz2xml_wasm_bg.wasm'
+]
+
 # Installation - cache static assets
 # Le nouveau SW reste en attente : app.coffee propose la mise à jour,
 # puis envoie SKIP_WAITING quand l'utilisateur l'accepte.
@@ -27,6 +34,14 @@ self.addEventListener 'install', (event) ->
       .then (cache) ->
         console.log 'SW: Caching static assets'
         cache.addAll STATIC_ASSETS.map((u) -> new Request(u, cache: 'reload'))
+          .then ->
+            # Mise en cache séparée : un paquet mscz2xml absent ne doit pas
+            # faire échouer l'installation du service worker
+            Promise.all(
+              MSCZ2XML_ASSETS.map (u) ->
+                cache.add(new Request(u, cache: 'reload')).catch (err) ->
+                  console.warn 'SW: mscz2xml non mis en cache', u, err
+            )
   )
 
 # Un cache est ancien s'il appartient à ce service worker mais pas à cette
@@ -82,9 +97,11 @@ isStaticAsset = (urlOrPath) ->
   path = if urlOrPath.startsWith('/') then urlOrPath else new URL(urlOrPath, 'http://x').pathname
   STATIC_ASSETS.some((asset) -> path is asset or path is asset + '/') or
          path.includes('/verovio') or
+         path.includes('/mscz2xml/') or
          path.includes('/icons/') or
          path.endsWith('.js') or
          path.endsWith('.css') or
+         path.endsWith('.wasm') or
          path.endsWith('.png') or
          path.endsWith('.ico') or
          path.endsWith('.svg')
