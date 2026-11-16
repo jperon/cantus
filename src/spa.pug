@@ -55,6 +55,20 @@ html(lang="fr")
           button.tap-btn.active(data-size="30") Normale
           button.tap-btn(data-size="40") Grande
       .settings-group
+        label.settings-label Défilement
+        .settings-row
+          button.scroll-unit-btn.active(data-unit="page") Par page
+          button.scroll-unit-btn(data-unit="system") Par système
+        .settings-row#overlap-row
+          span Recouvrement
+          select#overlap-select
+            option(value="0") 0 %
+            option(value="10") 10 %
+            option(value="20") 20 %
+            option(value="30") 30 %
+            option(value="40") 40 %
+            option(value="50") 50 %
+      .settings-group
         label.settings-label À propos
         .settings-row
           span Cantus v1.0 - Liseuse MusicXML

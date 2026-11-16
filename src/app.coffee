@@ -521,7 +521,7 @@ getMovementForPage = (globalPage) ->
   null
 
 # Settings defaults
-defaultSettings = { zoom: 40, theme: "white", tapSize: 30 }
+defaultSettings = { zoom: 40, theme: "white", tapSize: 30, scrollUnit: "page", overlap: 0 }
 
 loadSettings = ->
   try
@@ -554,11 +554,18 @@ applyZoom = (zoom) ->
   $("zoom-range").value = zoom
   $("zoom-value").textContent = zoom
 
+applyScrollSettings = (unit, overlap) ->
+  for btn in document.querySelectorAll ".scroll-unit-btn"
+    btn.classList.toggle "active", btn.dataset.unit is unit
+  $("overlap-select").value = String overlap
+  $("overlap-row").classList.toggle "hidden", unit isnt "page"
+
 applyAllSettings = ->
   settings = loadSettings()
   applyTheme settings.theme
   applyTapSize settings.tapSize
   applyZoom settings.zoom
+  applyScrollSettings settings.scrollUnit or "page", settings.overlap or 0
 
 # Parties masquées, propres à chaque fichier
 loadHiddenParts = ->
@@ -1669,6 +1676,21 @@ setupSettings = ->
         settings = loadSettings()
         settings.tapSize = size
         saveSettings settings
+
+  # Scroll unit buttons
+  for btn in document.querySelectorAll(".scroll-unit-btn")
+    do (btn) ->
+      btn.addEventListener "click", ->
+        settings = loadSettings()
+        settings.scrollUnit = btn.dataset.unit
+        saveSettings settings
+        applyScrollSettings settings.scrollUnit, settings.overlap or 0
+
+  # Overlap select
+  $("overlap-select").addEventListener "change", (e) ->
+    settings = loadSettings()
+    settings.overlap = parseInt e.target.value
+    saveSettings settings
 
   # Storage management button
   storageBtn = $("btn-storage")
