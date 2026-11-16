@@ -84,6 +84,12 @@ function copyPwaFiles(buildDate) {
   }
 }
 
+function copyLegalFiles() {
+  console.log('  Copying license files...');
+  fs.copyFileSync(path.join(__dirname, 'LICENSE'), path.join(DIST, 'LICENSE'));
+  fs.copyFileSync(path.join(__dirname, 'THIRD-PARTY.md'), path.join(DIST, 'THIRD-PARTY.md'));
+}
+
 function copyScreenshots(label = 'Copying screenshots...') {
   const screenshotsDir = path.join(PWA, 'screenshots');
   if (!fs.existsSync(screenshotsDir)) return;
@@ -148,6 +154,7 @@ async function build() {
   console.log(`  -> dist/index.html (${sizeMB} MB)`);
 
   copyPwaFiles(buildDate);
+  copyLegalFiles();
   copyScreenshots();
 
   // Generate screenshots if they don't exist (only if --screenshots flag is passed)
