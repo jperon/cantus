@@ -1596,13 +1596,29 @@ renderPartsList = ->
       box.checked = not hiddenParts.has id
       nameEl = document.createElement "span"
       nameEl.textContent = name or id
+      sizeSel = document.createElement "select"
+      sizeSel.className = "part-size"
+      for pct in [50..150] by 10
+        opt = document.createElement "option"
+        opt.value = pct
+        opt.textContent = "#{pct} %"
+        sizeSel.appendChild opt
+      sizeSel.value = partSizes[id] or 100
+      sizeSel.disabled = hiddenParts.has id
       label.appendChild box
       label.appendChild nameEl
+      label.appendChild sizeSel
       box.addEventListener "change", ->
         if box.checked then hiddenParts.delete id else hiddenParts.add id
+        sizeSel.disabled = not box.checked
         saveHiddenParts()
         updatePartsDisabled()
         # Recharger comme le fait le zoom, avec la nouvelle sélection
+        loadXml currentXml, currentPage if fileLoaded and currentXml
+      sizeSel.addEventListener "change", ->
+        pct = parseInt sizeSel.value
+        if pct is 100 then delete partSizes[id] else partSizes[id] = pct
+        saveHiddenParts()
         loadXml currentXml, currentPage if fileLoaded and currentXml
       list.appendChild label
   updatePartsDisabled()

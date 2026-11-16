@@ -365,6 +365,13 @@ html, body {
   cursor: pointer;
 }
 
+#parts-list select {
+  margin-left: auto;
+  font-size: 13px;
+  padding: 2px;
+  color: #333;
+}
+
 #zoom-range {
   flex: 1;
   height: 4px;
