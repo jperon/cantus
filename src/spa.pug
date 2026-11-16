@@ -51,6 +51,12 @@ html(lang="fr")
           button.tap-btn(data-size="20") Petite
           button.tap-btn.active(data-size="30") Normale
           button.tap-btn(data-size="40") Grande
+      .settings-group
+        label.settings-label À propos
+        .settings-row
+          span Cantus v1.0 - Liseuse MusicXML
+        .settings-row
+          span#build-date
     #library-overlay.hidden
       #library-header
         h2 Bibliothèque
@@ -70,7 +76,6 @@ html(lang="fr")
       button.nav-btn(data-action="next-5" title="5 pages après") +5
       button.nav-btn(data-action="next-mov" title="Mouvement suivant") ▶▶
       button.nav-btn(data-action="end" title="Fin") ⏭
-    #build-date
     script.
       window.__musicaBuildDate = "#{buildDate}"
     script#worker-src(type="text/js-worker") !{workerSource}
