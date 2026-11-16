@@ -84,7 +84,7 @@ isStaticAsset = (urlOrPath) ->
 # Check if it's a navigation request
 isNavigationRequest = (request) ->
   request.mode is 'navigate' or
-         (request.method is 'GET' and request.headers.get('accept').includes('text/html'))
+         (request.method is 'GET' and (request.headers.get('accept') or '').includes('text/html'))
 
 # Cache First : sert le cache, sinon le réseau
 cacheFirst = (request) ->
