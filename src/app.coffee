@@ -1259,69 +1259,44 @@ loadXml = (xml, startPage = 1) ->
   targetPage = if startPage > 1 then startPage else null  # Navigate later if needed
   showLoading()
 
-  # Try to get structure from cache first
-  loadStructure = ->
-    if currentFileId
-      svgStore.getStructure(currentFileId).then (cached) ->
-        if cached and cached.splitPoints
-          console.log "Structure en cache: #{cached.splitPoints.length} points de découpage"
-          # Use cached splitPoints but recalculate splitAttrs for those exact points
-          splitInfo = detectSplitPoints xml
-          # Restore cached splitPoints
-          splitInfo.splitPoints = cached.splitPoints
-          splitInfo.totalMeasures = cached.totalMeasures
-          # Recalculate splitAttrs for the cached splitPoints
-          splitInfo.splitAttrs = captureSplitAttrs splitInfo.doc.querySelectorAll("part"), cached.splitPoints
-          return splitInfo
-        # Not in cache, detect and store (only splitPoints and totalMeasures)
-        splitInfo = detectSplitPoints xml
-        svgStore.setStructure(currentFileId, {
-          splitPoints: splitInfo.splitPoints
-          totalMeasures: splitInfo.totalMeasures
-        })
-        splitInfo
-    else
-      Promise.resolve(detectSplitPoints xml)
+  currentSplitInfo = detectSplitPoints xml
+  movementCount = currentSplitInfo.splitPoints.length + 1
+  console.log "Partition divisée en #{movementCount} mouvement(s)"
 
-  loadStructure().then (splitInfo) ->
-    currentSplitInfo = splitInfo
-    movementCount = currentSplitInfo.splitPoints.length + 1
-    console.log "Partition divisée en #{movementCount} mouvement(s)"
+  # Reset scroll mode for new file
+  scrollMode = null
+  systemHeight = 0
+  verticalPos = 0
 
-    # Reset scroll mode for new file
-    scrollMode = null
-    systemHeight = 0
-    verticalPos = 0
+  # Initialize movement tracking
+  for i in [0...movementCount]
+    movements.push {id: i + 1, pageCount: 0, loaded: false}
 
-    # Initialize movement tracking
-    for i in [0...movementCount]
-      movements.push {id: i + 1, pageCount: 0, loaded: false}
+  # Calculate and store dimensions
+  currentPageWidth = Math.round(window.innerWidth * 100 / currentScale)
+  currentPageHeight = Math.round(window.innerHeight * 100 / currentScale)
+  pageWidth = currentPageWidth
+  pageHeight = currentPageHeight
 
-    # Calculate and store dimensions
-    currentPageWidth = Math.round(window.innerWidth * 100 / currentScale)
-    currentPageHeight = Math.round(window.innerHeight * 100 / currentScale)
-    pageWidth = currentPageWidth
-    pageHeight = currentPageHeight
+  # Clear previous movements before loading new file
+  worker.postMessage { type: "clearMovements" }
 
-    # Clear previous movements before loading new file
-    worker.postMessage { type: "clearMovements" }
+  # Extract and load first movement immediately
+  firstXml = extractMovement currentSplitInfo, 0
+  worker.postMessage
+    type: "loadMovement"
+    movementId: 1
+    xmlString: firstXml
+    pageWidth: pageWidth
+    pageHeight: pageHeight
+    scale: currentScale
 
-    # Extract and load first movement immediately
-    firstXml = extractMovement currentSplitInfo, 0
-    worker.postMessage
-      type: "loadMovement"
-      movementId: 1
-      xmlString: firstXml
-      pageWidth: pageWidth
-      pageHeight: pageHeight
-      scale: currentScale
+  # Subsequent movements will be loaded after first movement is displayed
+  # (see movementLoaded handler)
 
-    # Subsequent movements will be loaded after first movement is displayed
-    # (see movementLoaded handler)
-
-    fileLoaded = true
-    hideImport()
-    showLibraryBtn()
+  fileLoaded = true
+  hideImport()
+  showLibraryBtn()
 
 # Load remaining movements sequentially after first page is displayed
 loadRemainingMovements = ->
