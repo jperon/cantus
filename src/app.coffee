@@ -711,7 +711,10 @@ displayView = ->
 
 prefetch = ->
   page = displayedPage()
-  for p in [page - PREFETCH_BEHIND .. page + PREFETCH_AHEAD]
+  # Reading order: the next pages, nearest first, then the one before
+  pages = [page + 1 .. page + PREFETCH_AHEAD]
+  pages.push page - PREFETCH_BEHIND if PREFETCH_BEHIND > 0
+  for p in pages
     continue unless p >= 1 and p <= pageCount
     continue if memoryCache.has(p)
     result = getMovementForPage(p)
