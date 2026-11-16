@@ -472,6 +472,8 @@ requestPage = (movementId, localPage) ->
       if svg
         memoryCache.set(globalPage, svg)
         return svg
+      # The worker may have pushed this page while the lookup was in flight
+      return memoryCache.get(globalPage) if memoryCache.has(globalPage)
       # Not in cache, request from worker
       return requestFromWorker(movementId, localPage)
     pendingRequests.set pendingKey, promise
