@@ -356,6 +356,7 @@ currentScale = 40
 verticalScrollRatio = 0
 currentPageWidth = 0
 currentPageHeight = 0
+hiddenParts = new Set()  # Ids des parties masquées pour le fichier courant
 
 # Pages pre-rendered around the displayed one
 PREFETCH_AHEAD = 6
@@ -550,6 +551,26 @@ applyAllSettings = ->
   applyTheme settings.theme
   applyTapSize settings.tapSize
   applyZoom settings.zoom
+
+# Parties masquées, propres à chaque fichier
+loadHiddenParts = ->
+  hiddenParts = new Set()
+  return unless currentFileId
+  try
+    saved = localStorage.getItem "musica-hidden-parts-#{currentFileId}"
+    hiddenParts = new Set JSON.parse(saved) if saved
+  catch
+    # localStorage unavailable (file:// on some browsers)
+
+saveHiddenParts = ->
+  return unless currentFileId
+  try
+    localStorage.setItem "musica-hidden-parts-#{currentFileId}", JSON.stringify(Array.from hiddenParts)
+  catch
+    # localStorage unavailable (file:// on some browsers)
+
+# Suffixe de clé du cache SVG : une page rendue avec une autre sélection diffère
+partsVariant = -> Array.from(hiddenParts).sort().join ","
 
 # DOM refs
 $ = (id) -> document.getElementById id
@@ -1241,6 +1262,7 @@ preprocessMusicXML = (doc) ->
 # Load a score using the worker with lazy movement extraction
 loadXml = (xml, startPage = 1) ->
   currentXml = xml
+  loadHiddenParts()
   currentPage = 1  # Always start at page 1 for immediate display
   scrollPos = 0
   lastWidth = window.innerWidth
