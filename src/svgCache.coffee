@@ -40,8 +40,7 @@ set = (fileId, page, svg, width, height) ->
   getCache().then (c) ->
     compress(svg).then (blob) ->
       # Cache API requires a Request object as key
-      c.put(new Request(makeKey(fileId, page, width, height), method: "GET"), new Response(blob)).then ->
-        console.log "Cache écriture: #{fileId}:#{page} (#{blob.size} bytes compressé)"
+      c.put(new Request(makeKey(fileId, page, width, height), method: "GET"), new Response(blob))
 
 # Retrieve SVG from cache (includes dimensions)
 get = (fileId, page, width, height) ->
@@ -49,10 +48,7 @@ get = (fileId, page, width, height) ->
   getCache().then (c) ->
     c.match(new Request(makeKey(fileId, page, width, height))).then (response) ->
       return null unless response
-      response.blob().then (blob) ->
-        decompress(blob).then (svg) ->
-          console.log "Cache lecture: #{fileId}:#{page} (#{blob.size} bytes)"
-          svg
+      response.blob().then decompress
 
 # Clear all cached SVGs
 clearAll = ->
@@ -68,8 +64,7 @@ setStructure = (fileId, structure) ->
   return Promise.resolve() unless structure and fileId
   getStructureCache().then (c) ->
     compress(JSON.stringify(structure)).then (blob) ->
-      c.put(new Request(makeStructureKey(fileId), method: "GET"), new Response(blob)).then ->
-        console.log "Cache structure: #{fileId} (#{blob.size} bytes)"
+      c.put(new Request(makeStructureKey(fileId), method: "GET"), new Response(blob))
 
 # Retrieve structure info from cache
 getStructure = (fileId) ->
