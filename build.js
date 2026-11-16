@@ -2,11 +2,16 @@ const fs = require('fs');
 const path = require('path');
 const pug = require('pug');
 const CoffeeScript = require('coffeescript');
+const esbuild = require('esbuild');
 const { generateScreenshots } = require('./tools/screenshots');
 
 const SRC = path.join(__dirname, 'src');
 const PWA = path.join(__dirname, 'pwa');
 const DIST = path.join(__dirname, 'dist');
+
+// Minification (désactivée en --watch ou --no-minify pour déboguer)
+const MINIFY = !process.argv.includes('--watch') && !process.argv.includes('--no-minify');
+const minify = (js) => MINIFY ? esbuild.transformSync(js, { minify: true }).code : js;
 
 function ensureDir(dir) {
   fs.mkdirSync(dir, { recursive: true });
@@ -41,27 +46,27 @@ async function build() {
   // 5. Read fflate (for MXL/ZIP decompression)
   console.log('  Reading fflate...');
   const fflateSrc = fs.readFileSync(path.join(__dirname, 'node_modules', 'fflate', 'umd', 'index.js'), 'utf-8');
-  const fflateSetup = `(function(){${fflateSrc}; window.__fflate = fflate;})()`;
+  const fflateSetup = minify(`(function(){${fflateSrc}; window.__fflate = fflate;})()`);
 
   // 6. Compile mxl.coffee -> JS
   console.log('  Compiling mxl.coffee...');
-  const mxlJs = compileCoffee('mxl.coffee');
+  const mxlJs = minify(compileCoffee('mxl.coffee'));
 
   // 7. Compile storage.coffee -> JS
   console.log('  Compiling storage.coffee...');
-  const storageJs = compileCoffee('storage.coffee');
+  const storageJs = minify(compileCoffee('storage.coffee'));
 
   // 7b. Compile svgCache.coffee -> JS
   console.log('  Compiling svgCache.coffee...');
-  const svgCacheJs = compileCoffee('svgCache.coffee');
+  const svgCacheJs = minify(compileCoffee('svgCache.coffee'));
 
   // 8. Compile worker.coffee -> JS
   console.log('  Compiling worker.coffee...');
-  const workerJs = compileCoffee('worker.coffee');
+  const workerJs = minify(compileCoffee('worker.coffee'));
 
   // 9. Compile app.coffee -> JS
   console.log('  Compiling app.coffee...');
-  const appJs = compileCoffee('app.coffee');
+  const appJs = minify(compileCoffee('app.coffee'));
 
   // 10. Read CSS
   const css = readSrc('styles.css');
@@ -108,12 +113,12 @@ async function build() {
   console.log('  Compiling sw.coffee...');
   const swJs = CoffeeScript.compile(fs.readFileSync(path.join(PWA, 'sw.coffee'), 'utf-8'), { bare: true });
 
-  // Inject build date as cache version to force cache invalidation on updates
+  // Inject build date as cache version to force cache invalidation on updates (avant minification)
   const swWithVersion = swJs.replace(
     "VERSION = 'dev'",
     `VERSION = '${buildDate}'`
   );
-  fs.writeFileSync(path.join(DIST, 'sw.js'), swWithVersion);
+  fs.writeFileSync(path.join(DIST, 'sw.js'), minify(swWithVersion));
   const faviconSrc = path.join(PWA, 'favicon.ico');
   if (fs.existsSync(faviconSrc)) {
     fs.copyFileSync(faviconSrc, path.join(DIST, 'favicon.ico'));
@@ -180,15 +185,15 @@ async function buildSpa() {
   // 2. Read fflate
   console.log('  Reading fflate...');
   const fflateSrc = fs.readFileSync(path.join(__dirname, 'node_modules', 'fflate', 'umd', 'index.js'), 'utf-8');
-  const fflateSetup = `(function(){${fflateSrc}; window.__fflate = fflate;})()`;
+  const fflateSetup = minify(`(function(){${fflateSrc}; window.__fflate = fflate;})()`);
 
   // 3. Compile CoffeeScript files
   console.log('  Compiling CoffeeScript files...');
-  const mxlJs = compileCoffee('mxl.coffee');
-  const storageJs = compileCoffee('storage.coffee');
-  const svgCacheJs = compileCoffee('svgCache.coffee');
-  const workerJs = compileCoffee('worker.coffee');
-  const appJs = compileCoffee('app.coffee');
+  const mxlJs = minify(compileCoffee('mxl.coffee'));
+  const storageJs = minify(compileCoffee('storage.coffee'));
+  const svgCacheJs = minify(compileCoffee('svgCache.coffee'));
+  const workerJs = minify(compileCoffee('worker.coffee'));
+  const appJs = minify(compileCoffee('app.coffee'));
 
   // 4. Read CSS
   const css = readSrc('styles.css');
@@ -243,12 +248,12 @@ ${workerJs}
   console.log('  Compiling sw.coffee for SPA...');
   const swJs = CoffeeScript.compile(fs.readFileSync(path.join(PWA, 'sw.coffee'), 'utf-8'), { bare: true });
 
-  // Inject build date as cache version to force cache invalidation on updates
+  // Inject build date as cache version to force cache invalidation on updates (avant minification)
   const swWithVersion = swJs.replace(
     "VERSION = 'dev'",
     `VERSION = '${buildDate}'`
   );
-  fs.writeFileSync(path.join(DIST, 'sw.js'), swWithVersion);
+  fs.writeFileSync(path.join(DIST, 'sw.js'), minify(swWithVersion));
 
   // Copy other PWA files for SPA
   fs.copyFileSync(path.join(PWA, 'manifest.json'), path.join(DIST, 'manifest.json'));
