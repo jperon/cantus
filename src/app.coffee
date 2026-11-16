@@ -1188,7 +1188,9 @@ removeHiddenParts = (doc, hidden) ->
   doc
 
 # Taille des voix : <staff-details><staff-size>N</staff-size></staff-details>
-# dans les <attributes> de la première mesure (une par portée si la partie en a plusieurs)
+# Réutilise (et met à l'échelle) les staff-details existants de la partie :
+# Verovio ignore un second staff-details. La taille choisie est relative à
+# leur staff-size d'origine (100 s'il est absent).
 applyPartSizes = (doc) ->
   return doc if Object.keys(partSizes).length is 0
   for part in Array.from doc.querySelectorAll "part"
@@ -1202,19 +1204,35 @@ applyPartSizes = (doc) ->
       measure.insertBefore attrs, measure.firstChild
     staves = parseInt attrs.querySelector("staves")?.textContent ? "1"
     staves = 1 unless staves > 1
+    # staff-details sans number : toutes les portées ; avec number : une portée
+    existing = Array.from part.querySelectorAll "staff-details"
+    covers = (details, n) ->
+      num = details.getAttribute "number"
+      not num? or parseInt(num) is n
     # staff-details se place après les clefs, avant transpose et suivants
     anchor = null
     for child in attrs.children
       if child.tagName in ["transpose", "for-part", "directive", "measure-style"]
         anchor = child
         break
+    # Taille relative à la valeur d'origine de chaque staff-details
+    setSize = (details) ->
+      sizeEl = details.querySelector "staff-size"
+      origin = if sizeEl then parseFloat(sizeEl.textContent) else 100
+      unless sizeEl
+        sizeEl = doc.createElement "staff-size"
+      # staff-size est le dernier enfant prévu par le schéma
+      details.appendChild sizeEl
+      sizeEl.textContent = String Math.round(origin * size) / 100
+    # Tous les staff-details de la partie, quelle que soit la mesure
+    setSize details for details in existing
+    # Portée sans staff-details : en créer un dans la première mesure
     for n in [1..staves]
+      continue if existing.some (el) -> covers el, n
       details = doc.createElement "staff-details"
       details.setAttribute "number", String(n) if staves > 1
-      sizeEl = doc.createElement "staff-size"
-      sizeEl.textContent = String size
-      details.appendChild sizeEl
       attrs.insertBefore details, anchor
+      setSize details
   doc
 
 # Extract a single movement by index (lazy extraction)
