@@ -5,6 +5,7 @@ tk = null
 verovioLoaded = false
 movements = {}  # movementId -> {pageCount, loaded, xml, options}
 currentMovement = null
+pending = []  # messages waiting for the toolkit, replayed once Verovio is ready
 
 # Clear all movements (call before loading new file)
 clearMovements = ->
@@ -159,15 +160,19 @@ renderMovementPage = (movementId, pageNumber) ->
 
   postPage movementId, pageNumber
 
-self.onmessage = (e) ->
+handleMessage = (e) ->
   { type } = e.data
+  # These need the toolkit: keep them instead of dropping them before initialization
+  if not tk and type in ["loadMovement", "renderMovementPage", "clearMovements"]
+    pending.push e.data
+    return
   try
     switch type
       when "verovioInline"
         # Verovio is inlined in SPA mode - initialize it
         verovioLoaded = true
         initVerovio(
-          -> self.postMessage {type: "ready"}
+          -> notifyReady()
           (err) ->
             self.postMessage {
               type: "error"
@@ -178,9 +183,7 @@ self.onmessage = (e) ->
       when "setVerovioUrl"
         loadVerovio(e.data.url)
           .then ->
-            self.postMessage {
-              type: "ready"
-            }
+            notifyReady()
           .catch (err) ->
             self.postMessage {
               type: "error"
@@ -188,16 +191,12 @@ self.onmessage = (e) ->
             }
 
       when "init"
-        if tk
-          self.postMessage {
-            type: "ready"
-          }
+        notifyReady() if tk
 
       when "clearMovements"
         clearMovements()
 
       when "loadMovement"
-        return unless tk
         {
           movementId
           xmlString
@@ -208,7 +207,6 @@ self.onmessage = (e) ->
         loadMovement movementId, xmlString, pageWidth, pageHeight, scale
 
       when "renderMovementPage"
-        return unless tk
         {
           movementId
           page
@@ -220,3 +218,16 @@ self.onmessage = (e) ->
       type: "error"
       message: err.message or String(err)
     }
+
+# Replay the messages received before Verovio was ready, in arrival order
+flushPending = ->
+  queued = pending
+  pending = []
+  handleMessage {data} for data in queued
+
+# Tell the app Verovio is ready, then process the messages that arrived too early
+notifyReady = ->
+  self.postMessage {type: "ready"}
+  flushPending()
+
+self.onmessage = handleMessage
