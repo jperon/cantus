@@ -587,7 +587,12 @@ saveHiddenParts = ->
     # localStorage unavailable (file:// on some browsers)
 
 # Suffixe de clé du cache SVG : une page rendue avec une autre sélection diffère
-partsVariant = -> Array.from(hiddenParts).sort().join ","
+partsVariant = ->
+  hidden = Array.from(hiddenParts).sort().join ","
+  sizes = (for id in Object.keys(partSizes).sort() when partSizes[id] isnt 100
+    "#{id}=#{partSizes[id]}")
+  return hidden if sizes.length is 0  # clé inchangée quand toutes les voix sont à 100 %
+  "#{hidden}|#{sizes.join ','}"
 
 # DOM refs
 $ = (id) -> document.getElementById id
