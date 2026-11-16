@@ -598,17 +598,6 @@ showIndicator = ->
     el.classList.remove "visible"
   , 1500
 
-# Render two pages side by side with horizontal offset (50% scroll)
-renderPageSync = (globalPage) ->
-  return memoryCache.get(globalPage) if memoryCache.has(globalPage)
-  # Request from worker (requestPage checks persistent cache first)
-  result = getMovementForPage(globalPage)
-  return "" unless result
-  {movement, localPage} = result
-  requestPage(movement.id, localPage)
-  # Return loading placeholder while waiting for worker
-  '<div class="loading-placeholder">Chargement...</div>'
-
 renderPageAsync = (globalPage) ->
   return Promise.resolve(memoryCache.get(globalPage)) if memoryCache.has(globalPage)
   result = getMovementForPage(globalPage)
