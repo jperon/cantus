@@ -5,7 +5,6 @@ CACHE_NAME = "musica-svg-cache-v1"
 STRUCTURE_CACHE_NAME = "musica-structure-cache-v1"
 MAX_STORAGE_BYTES = 100 * 1024 * 1024  # 100 MB limit
 
-fflate = window.__fflate
 cache = null
 structureCache = null
 
