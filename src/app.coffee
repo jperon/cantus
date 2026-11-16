@@ -1153,8 +1153,9 @@ extractMovement = (xmlString, splitInfo, movementIndex) ->
 
   # No splits: return whole document
   if splitPoints.length is 0
-    return preprocessMusicXML(xmlString) if movementIndex is 0
-    return null
+    return null unless movementIndex is 0
+    doc = new DOMParser().parseFromString xmlString, "application/xml"
+    return new XMLSerializer().serializeToString(preprocessMusicXML(doc))
 
   # Calculate start and end measure indices for this movement
   allPoints = [0, ...splitPoints, totalMeasures]
@@ -1219,12 +1220,10 @@ extractMovement = (xmlString, splitInfo, movementIndex) ->
         else if newAttrsEl.children.length > 0
           firstMeasure.insertBefore newAttrsEl, firstMeasure.firstChild
 
-  preprocessMusicXML(serializer.serializeToString(doc))
+  serializer.serializeToString preprocessMusicXML(doc)
 
-# Preprocess MusicXML: insert system breaks after double barlines
-preprocessMusicXML = (xmlString) ->
-  parser = new DOMParser()
-  doc = parser.parseFromString xmlString, "application/xml"
+# Preprocess MusicXML: insert system breaks after double barlines (in place)
+preprocessMusicXML = (doc) ->
   measures = Array.from doc.querySelectorAll("measure")
   for measure, i in measures
     barlines = measure.querySelectorAll('barline[location="right"]')
@@ -1248,8 +1247,7 @@ preprocessMusicXML = (xmlString) ->
         )
         printEl.setAttribute "new-system", "yes"
         nextMeasure.insertBefore printEl, nextMeasure.firstChild
-  serializer = new XMLSerializer()
-  serializer.serializeToString doc
+  doc
 
 # Load a score using the worker with lazy movement extraction
 loadXml = (xml, startPage = 1) ->
