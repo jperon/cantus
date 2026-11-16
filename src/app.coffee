@@ -1189,6 +1189,36 @@ removeHiddenParts = (doc, hidden) ->
     el.parentNode.removeChild el if hidden.has el.getAttribute("id")
   doc
 
+# Taille des voix : <staff-details><staff-size>N</staff-size></staff-details>
+# dans les <attributes> de la première mesure (une par portée si la partie en a plusieurs)
+applyPartSizes = (doc) ->
+  return doc if Object.keys(partSizes).length is 0
+  for part in Array.from doc.querySelectorAll "part"
+    size = partSizes[part.getAttribute "id"]
+    continue unless size? and size isnt 100
+    measure = part.querySelector "measure"
+    continue unless measure
+    attrs = measure.querySelector "attributes"
+    unless attrs
+      attrs = doc.createElement "attributes"
+      measure.insertBefore attrs, measure.firstChild
+    staves = parseInt attrs.querySelector("staves")?.textContent ? "1"
+    staves = 1 unless staves > 1
+    # staff-details se place après les clefs, avant transpose et suivants
+    anchor = null
+    for child in attrs.children
+      if child.tagName in ["transpose", "for-part", "directive", "measure-style"]
+        anchor = child
+        break
+    for n in [1..staves]
+      details = doc.createElement "staff-details"
+      details.setAttribute "number", String(n) if staves > 1
+      sizeEl = doc.createElement "staff-size"
+      sizeEl.textContent = String size
+      details.appendChild sizeEl
+      attrs.insertBefore details, anchor
+  doc
+
 # Extract a single movement by index (lazy extraction)
 # movementIndex: 0-based, where 0 is first movement
 extractMovement = (splitInfo, movementIndex) ->
@@ -1198,8 +1228,10 @@ extractMovement = (splitInfo, movementIndex) ->
   # No splits: the whole document is movement 0
   if splitPoints.length is 0
     return null unless movementIndex is 0
-    return serializer.serializeToString(doc) if hiddenParts.size is 0
-    return serializer.serializeToString(removeHiddenParts(doc.cloneNode(true), hiddenParts))
+    clone = doc.cloneNode true
+    removeHiddenParts clone, hiddenParts
+    applyPartSizes clone
+    return serializer.serializeToString clone
 
   # Calculate start and end measure indices for this movement
   allPoints = [0, ...splitPoints, totalMeasures]
@@ -1256,6 +1288,7 @@ extractMovement = (splitInfo, movementIndex) ->
           firstMeasure.insertBefore newAttrsEl, firstMeasure.firstChild
 
   removeHiddenParts clone, hiddenParts
+  applyPartSizes clone
   serializer.serializeToString clone
 
 # Preprocess MusicXML: insert system breaks after double barlines (in place)
