@@ -1695,10 +1695,12 @@ setupSettings = ->
   $("settings-close").addEventListener "click", ->
     $("settings-overlay").classList.add "hidden"
 
-  # Zoom slider
+  # Zoom slider: live label, apply on release
   $("zoom-range").addEventListener "input", (e) ->
+    $("zoom-value").textContent = parseInt e.target.value
+
+  $("zoom-range").addEventListener "change", (e) ->
     val = parseInt e.target.value
-    $("zoom-value").textContent = val
     currentScale = val
     settings = loadSettings()
     settings.zoom = val
