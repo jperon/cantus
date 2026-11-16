@@ -74,22 +74,11 @@ async function build() {
       var worker = new Worker('worker.js');
       window.__musicaWorker = worker;
 
-      // Check if Verovio is already loaded globally to avoid double loading
-      if (typeof verovio !== 'undefined') {
-        console.log("Main: Verovio already loaded, notifying worker");
-        // Let worker know Verovio is available (but worker will still load its own copy)
-        worker.postMessage({
-          type: 'setVerovioUrl',
-          url: 'verovio-toolkit-wasm.js',
-          verovioAvailable: true
-        });
-      } else {
-        console.log("Main: Verovio not loaded yet, worker will load it");
-        worker.postMessage({
-          type: 'setVerovioUrl',
-          url: 'verovio-toolkit-wasm.js'
-        });
-      }
+      // The worker loads Verovio itself (importScripts)
+      worker.postMessage({
+        type: 'setVerovioUrl',
+        url: 'verovio-toolkit-wasm.js'
+      });
     })();
   `;
 
