@@ -782,10 +782,11 @@ checkAndLoadMorePages = ->
     if nextPage <= pageCount
       div = document.createElement "div"
       div.className = "scroll-page"
+      div.dataset.page = nextPage  # Identify page by number
       div.innerHTML = '<div class="loading-placeholder">Chargement...</div>'
       wrapper.appendChild div
       renderPageAsync(nextPage).then (svg) ->
-        if svg
+        if svg and div.isConnected
           div.innerHTML = svg
           requestAnimationFrame -> applyVerticalAlignment()
 
