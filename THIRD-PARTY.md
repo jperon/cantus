@@ -56,11 +56,12 @@ SOFTWARE.
 ## mscz2xml
 
 - Licence : GNU GPL v3 seulement (GPL-3.0-only)
-- Source : <https://github.com/jperon/mscz2xml>
+- Source : <https://github.com/jperon/scoretk>
 
-mscz2xml est un portage du code de MuseScore Studio, Copyright © MuseScore
-Limited and others, distribué sous GNU GPL v3 seulement (GPL-3.0-only). Il
-n'est chargé que lors de l'import d'un fichier `.mscz` ou `.mscx`.
+mscz2xml, qui fait partie du projet scoretk, est un portage du code de
+MuseScore Studio, Copyright © MuseScore Limited and others, distribué sous
+GNU GPL v3 seulement (GPL-3.0-only). Il n'est chargé que lors de l'import
+d'un fichier `.mscz` ou `.mscx`.
 
 ---
 
