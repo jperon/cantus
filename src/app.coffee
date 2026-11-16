@@ -361,9 +361,9 @@ scrollMode = null
 systemHeight = 0  # Height of a single system in vertical mode
 
 # Movement tracking
-movements = []  # [{id, pageCount, loaded}]
+movements = []  # [{id, pageCount, pushed, loaded}]
 pendingRenders = new Map()  # "movementId:page" -> resolve function
-pushedPages = {}  # movementId -> last page sent by the worker (pages arrive in order)
+pushedPages = {}  # movementId -> last page of the initial push received (in order)
 pendingMovementLoads = new Map()  # movementId -> resolve function
 targetPage = null  # Page to navigate to once all movements are loaded
 currentSplitInfo = null  # Split info for lazy extraction
@@ -380,11 +380,12 @@ worker.onmessage = (e) ->
       startApp()
 
     when "movementLoaded"
-      {movementId, pageCount: mvPages} = e.data
+      {movementId, pageCount: mvPages, pushed} = e.data
       mv = movements.find (m) -> m.id is movementId
       if mv
         mv.pageCount = mvPages
         mv.loaded = true
+        mv.pushed = pushed
       # Update total page count
       pageCount = movements.reduce (sum, m) ->
         sum + (m.pageCount or 0)
@@ -480,10 +481,11 @@ requestFromWorker = (movementId, localPage) ->
   new Promise (resolve) ->
     key = "#{movementId}:#{localPage}"
     pendingRenders.set key, resolve
-    # The worker sends every page of a loaded movement, in page order: if this
-    # page is not sent yet, wait for it instead of asking for a second render
+    # The pages pushed at load arrive in order: wait for the one we are missing
+    # instead of asking for a second render. Any other page is rendered here.
     mv = movements.find (m) -> m.id is movementId
-    return if mv?.pageCount and localPage > (pushedPages[movementId] or 0)
+    if localPage <= (mv?.pushed or 0) and localPage > (pushedPages[movementId] or 0)
+      return
     worker.postMessage
       type: "renderMovementPage"
       movementId: movementId
@@ -1278,7 +1280,7 @@ loadXml = (xml, startPage = 1) ->
 
   # Initialize movement tracking
   for i in [0...movementCount]
-    movements.push {id: i + 1, pageCount: 0, loaded: false}
+    movements.push {id: i + 1, pageCount: 0, pushed: 0, loaded: false}
 
   # Calculate and store dimensions
   currentPageWidth = Math.round(window.innerWidth * 100 / currentScale)

@@ -121,14 +121,17 @@ loadMovement = (movementId, xmlString, pageWidth, pageHeight, scale = 40) ->
     options
   }
   currentMovement = movementId
+  # Only the first pages are pushed now; the rest are rendered on demand
+  # (renderMovementPage), so a big file is not rendered and cached entirely
+  pushed = Math.min pageCount, 2
   self.postMessage {
     type: "movementLoaded"
     movementId
     pageCount
+    pushed
   }
-  # Send every page now: rendering this movement later would reload it entirely
-  if pageCount > 0
-    postPage movementId, page for page in [1..pageCount]
+  if pushed > 0
+    postPage movementId, page for page in [1..pushed]
 
 # Switch to a different movement if needed
 switchToMovement = (movementId) ->
