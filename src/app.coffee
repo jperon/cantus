@@ -372,12 +372,19 @@ pendingRenders = new Map()  # "movementId:page" -> resolve function
 pushedPages = {}  # movementId -> last page of the initial push received (in order)
 pendingMovementLoads = new Map()  # movementId -> resolve function
 targetPage = null  # Page to navigate to once all movements are loaded
+awaitingLoad = false  # A new load is posted: ignore the previous render's replies
 currentSplitInfo = null  # Split info for lazy extraction
 splitXml = null  # XML string the split info was computed from
 
 # Worker message handler
 worker.onmessage = (e) ->
   {type} = e.data
+  # Replies still in flight from the previous render would be mapped onto the
+  # movements just reset (page counts at 0) and shown in its place: drop them
+  # until the new first movement is loaded.
+  if awaitingLoad
+    return if type is "svg"
+    return if type is "movementLoaded" and e.data.movementId isnt 1
   switch type
     when "ready"
       console.log "Worker Verovio prêt"
@@ -386,6 +393,7 @@ worker.onmessage = (e) ->
       startApp()
 
     when "movementLoaded"
+      awaitingLoad = false
       {movementId, pageCount: mvPages, pushed} = e.data
       mv = movements.find (m) -> m.id is movementId
       if mv
@@ -1283,6 +1291,7 @@ loadXml = (xml, startPage = 1) ->
   pendingMovementLoads.clear()
   pushedPages = {}
   movements = []
+  awaitingLoad = true
   targetPage = if startPage > 1 then startPage else null  # Navigate later if needed
   showLoading()
 
