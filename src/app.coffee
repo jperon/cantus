@@ -1040,43 +1040,46 @@ goToNextMovement = ->
   prefetch()
   savePositionDebounced()
 
+jumpVertical = (direction) ->
+  slot = $("page-current")
+  maxScroll = slot.scrollHeight - slot.clientHeight
+  return if direction < 0 and slot.scrollTop <= 0
+  return if direction > 0 and slot.scrollTop >= maxScroll
+
+  # Target ~5 half view heights away, then snap to the closest SVG
+  targetScroll = slot.scrollTop + direction * window.innerHeight * 2.5
+  targetScroll = Math.max(0, Math.min(maxScroll, targetScroll))
+
+  slotRect = slot.getBoundingClientRect()
+  wrapper = slot.querySelector(".scroll-wrapper")
+  if wrapper
+    svgs = wrapper.querySelectorAll("svg")
+    closestSvg = null
+    closestDistance = Infinity
+
+    for svg in svgs
+      svgRect = svg.getBoundingClientRect()
+      svgScrollPos = slot.scrollTop + (svgRect.top - slotRect.top)
+      distance = Math.abs(svgScrollPos - targetScroll)
+
+      if distance < closestDistance
+        closestDistance = distance
+        closestSvg = svg
+
+    if closestSvg
+      svgRect = closestSvg.getBoundingClientRect()
+      targetScroll = slot.scrollTop + (svgRect.top - slotRect.top)
+
+  slot.scrollTo top: targetScroll, behavior: "instant"
+
+  checkAndLoadMorePages() if direction > 0
+  showIndicator()
+  savePositionDebounced()
+
 goBack5 = ->
   return unless fileLoaded
   if scrollMode is "vertical"
-    slot = $("page-current")
-    return if slot.scrollTop <= 0
-
-    # Find SVG that's approximately 5 view heights back
-    targetScroll = Math.max(0, slot.scrollTop - (window.innerHeight * 2.5))  # 5 * 0.5 view heights
-
-    # Find the SVG closest to target position
-    wrapper = slot.querySelector(".scroll-wrapper")
-    if wrapper
-      svgs = wrapper.querySelectorAll("svg")
-      closestSvg = null
-      closestDistance = Infinity
-
-      for svg in svgs
-        svgRect = svg.getBoundingClientRect()
-        slotRect = slot.getBoundingClientRect()
-        svgScrollPos = slot.scrollTop + (svgRect.top - slotRect.top)
-        distance = Math.abs(svgScrollPos - targetScroll)
-
-        if distance < closestDistance
-          closestDistance = distance
-          closestSvg = svg
-
-      if closestSvg
-        svgRect = closestSvg.getBoundingClientRect()
-        finalScroll = slot.scrollTop + (svgRect.top - slotRect.top)
-        slot.scrollTo top: finalScroll, behavior: "instant"
-      else
-        slot.scrollTo top: targetScroll, behavior: "instant"
-    else
-      slot.scrollTo top: targetScroll, behavior: "instant"
-
-    showIndicator()
-    savePositionDebounced()
+    jumpVertical -1
   else
     scrollPos = Math.max(0, scrollPos - 10)
     currentPage = Math.floor(scrollPos / 2) + 1
@@ -1088,42 +1091,7 @@ goBack5 = ->
 goForward5 = ->
   return unless fileLoaded
   if scrollMode is "vertical"
-    slot = $("page-current")
-    maxScroll = slot.scrollHeight - slot.clientHeight
-    return if slot.scrollTop >= maxScroll
-
-    # Find SVG that's approximately 5 view heights forward
-    targetScroll = Math.min(maxScroll, slot.scrollTop + (window.innerHeight * 2.5))  # 5 * 0.5 view heights
-
-    # Find the SVG closest to target position
-    wrapper = slot.querySelector(".scroll-wrapper")
-    if wrapper
-      svgs = wrapper.querySelectorAll("svg")
-      closestSvg = null
-      closestDistance = Infinity
-
-      for svg in svgs
-        svgRect = svg.getBoundingClientRect()
-        slotRect = slot.getBoundingClientRect()
-        svgScrollPos = slot.scrollTop + (svgRect.top - slotRect.top)
-        distance = Math.abs(svgScrollPos - targetScroll)
-
-        if distance < closestDistance
-          closestDistance = distance
-          closestSvg = svg
-
-      if closestSvg
-        svgRect = closestSvg.getBoundingClientRect()
-        finalScroll = slot.scrollTop + (svgRect.top - slotRect.top)
-        slot.scrollTo top: finalScroll, behavior: "instant"
-      else
-        slot.scrollTo top: targetScroll, behavior: "instant"
-    else
-      slot.scrollTo top: targetScroll, behavior: "instant"
-
-    checkAndLoadMorePages()
-    showIndicator()
-    savePositionDebounced()
+    jumpVertical 1
   else
     scrollPos = Math.min(maxScrollPos(), scrollPos + 10)
     currentPage = Math.floor(scrollPos / 2) + 1
