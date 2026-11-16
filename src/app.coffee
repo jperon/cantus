@@ -1152,14 +1152,14 @@ detectSplitPoints = (xmlString) ->
 
 # Extract a single movement by index (lazy extraction)
 # movementIndex: 0-based, where 0 is first movement
-extractMovement = (xmlString, splitInfo, movementIndex) ->
-  {splitPoints, splitAttrs, totalMeasures} = splitInfo
+extractMovement = (splitInfo, movementIndex) ->
+  {doc, splitPoints, splitAttrs, totalMeasures} = splitInfo
+  serializer = new XMLSerializer()
 
-  # No splits: return whole document
+  # No splits: the whole document is movement 0
   if splitPoints.length is 0
-    return null unless movementIndex is 0
-    doc = new DOMParser().parseFromString xmlString, "application/xml"
-    return new XMLSerializer().serializeToString(preprocessMusicXML(doc))
+    return serializer.serializeToString(doc) if movementIndex is 0
+    return null
 
   # Calculate start and end measure indices for this movement
   allPoints = [0, ...splitPoints, totalMeasures]
@@ -1169,31 +1169,22 @@ extractMovement = (xmlString, splitInfo, movementIndex) ->
   unless startMeasure? and endMeasure?
     return null
 
-  parser = new DOMParser()
-  doc = parser.parseFromString xmlString, "application/xml"
-  partsPart = doc.querySelectorAll("part")
-  serializer = new XMLSerializer()
+  # Work on a copy: the split document stays intact for the other movements
+  clone = doc.cloneNode true
 
-  for part, pIdx in partsPart
-    measures = Array.from part.querySelectorAll("measure")
-
-    # Remove measures after this movement
-    for m, i in measures when i >= endMeasure
-      m.parentNode.removeChild(m)
-
-    # Remove measures before this movement
-    for m, i in measures when i < startMeasure
-      m.parentNode.removeChild(m) if m.parentNode
+  for part, pIdx in clone.querySelectorAll("part")
+    # Remove measures outside this movement
+    for measure, i in Array.from(part.querySelectorAll("measure")) when i < startMeasure or i >= endMeasure
+      measure.parentNode.removeChild measure
 
     # Insert attributes at start if not first movement
     if startMeasure > 0 and splitAttrs[startMeasure]?[pIdx]
       attrs = splitAttrs[startMeasure][pIdx]
-      remainingMeasures = Array.from part.querySelectorAll("measure")
-      if remainingMeasures.length > 0
-        firstMeasure = remainingMeasures[0]
+      firstMeasure = part.querySelector("measure")
+      if firstMeasure
         existingAttrs = firstMeasure.querySelector("attributes")
 
-        newAttrsEl = doc.createElement("attributes")
+        newAttrsEl = clone.createElement("attributes")
         if attrs.divisions
           newAttrsEl.appendChild attrs.divisions.cloneNode(true)
         if attrs.key
@@ -1224,7 +1215,7 @@ extractMovement = (xmlString, splitInfo, movementIndex) ->
         else if newAttrsEl.children.length > 0
           firstMeasure.insertBefore newAttrsEl, firstMeasure.firstChild
 
-  serializer.serializeToString preprocessMusicXML(doc)
+  serializer.serializeToString clone
 
 # Preprocess MusicXML: insert system breaks after double barlines (in place)
 preprocessMusicXML = (doc) ->
@@ -1316,7 +1307,7 @@ loadXml = (xml, startPage = 1) ->
     worker.postMessage { type: "clearMovements" }
 
     # Extract and load first movement immediately
-    firstXml = extractMovement xml, currentSplitInfo, 0
+    firstXml = extractMovement currentSplitInfo, 0
     worker.postMessage
       type: "loadMovement"
       movementId: 1
@@ -1353,7 +1344,7 @@ loadRemainingMovements = ->
     pageWidth = currentPageWidth
     pageHeight = currentPageHeight
 
-    mvXml = extractMovement currentXml, currentSplitInfo, index
+    mvXml = extractMovement currentSplitInfo, index
     return processNextMovement(index + 1) unless mvXml
 
     # Load movement and wait for it to be ready
