@@ -1558,6 +1558,44 @@ setupResize = ->
       loadXml currentXml, currentPage
     , 300
 
+# Remplit la liste des voix depuis le document déjà analysé (pas de re-parse)
+renderPartsList = ->
+  group = $("parts-group")
+  list = $("parts-list")
+  return unless group and list
+  doc = currentSplitInfo?.doc if fileLoaded
+  parts = if doc then Array.from(doc.querySelectorAll "score-part") else []
+  group.classList.toggle "hidden", parts.length < 2
+  list.innerHTML = ""
+  for part in parts
+    do (part) ->
+      id = part.getAttribute "id"
+      name = part.querySelector("part-name")?.textContent.trim()
+      name = part.querySelector("part-abbreviation")?.textContent.trim() if not name
+      label = document.createElement "label"
+      box = document.createElement "input"
+      box.type = "checkbox"
+      box.checked = not hiddenParts.has id
+      nameEl = document.createElement "span"
+      nameEl.textContent = name or id
+      label.appendChild box
+      label.appendChild nameEl
+      box.addEventListener "change", ->
+        if box.checked then hiddenParts.delete id else hiddenParts.add id
+        saveHiddenParts()
+        updatePartsDisabled()
+      list.appendChild label
+  updatePartsDisabled()
+
+# Au moins une partie reste affichée : on désactive la dernière cochée
+updatePartsDisabled = ->
+  list = $("parts-list")
+  return unless list
+  boxes = Array.from list.querySelectorAll "input"
+  checked = boxes.filter (box) -> box.checked
+  for box in boxes
+    box.disabled = checked.length is 1 and box.checked
+
 # Settings overlay controls
 setupSettings = ->
   # Show current storage usage
@@ -1581,6 +1619,7 @@ setupSettings = ->
 
   $("btn-settings").addEventListener "click", ->
     $("settings-overlay").classList.remove "hidden"
+    renderPartsList()
     updateStorageInfo()
 
   $("settings-close").addEventListener "click", ->
