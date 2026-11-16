@@ -357,6 +357,7 @@ verticalScrollRatio = 0
 currentPageWidth = 0
 currentPageHeight = 0
 hiddenParts = new Set()  # Ids des parties masquées pour le fichier courant
+partSizes = {}  # Id de partie -> taille en % (100 = taille normale)
 
 # Pages pre-rendered around the displayed one
 PREFETCH_AHEAD = 6
@@ -560,20 +561,28 @@ applyAllSettings = ->
   applyTapSize settings.tapSize
   applyZoom settings.zoom
 
-# Parties masquées, propres à chaque fichier
+# Parties masquées et leurs tailles, propres à chaque fichier
 loadHiddenParts = ->
   hiddenParts = new Set()
+  partSizes = {}
   return unless currentFileId
   try
     saved = localStorage.getItem "musica-hidden-parts-#{currentFileId}"
-    hiddenParts = new Set JSON.parse(saved) if saved
+    return unless saved
+    data = JSON.parse saved
+    if Array.isArray data
+      hiddenParts = new Set data  # ancien format : tableau des ids masqués
+    else
+      hiddenParts = new Set data.hidden or []
+      partSizes = data.sizes or {}
   catch
     # localStorage unavailable (file:// on some browsers)
 
 saveHiddenParts = ->
   return unless currentFileId
   try
-    localStorage.setItem "musica-hidden-parts-#{currentFileId}", JSON.stringify(Array.from hiddenParts)
+    data = {hidden: Array.from(hiddenParts), sizes: partSizes}
+    localStorage.setItem "musica-hidden-parts-#{currentFileId}", JSON.stringify(data)
   catch
     # localStorage unavailable (file:// on some browsers)
 
