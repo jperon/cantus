@@ -854,6 +854,15 @@ findLastCompleteSvg = ->
 
   return lastCompleteSvg
 
+# Set horizontal position and refresh the view
+setScrollPos = (pos) ->
+  scrollPos = pos
+  currentPage = Math.floor(scrollPos / 2) + 1
+  displayView()
+  showIndicator()
+  prefetch()
+  savePositionDebounced()
+
 goNext = ->
   return unless fileLoaded
   if scrollMode is "vertical"
@@ -907,12 +916,7 @@ goNext = ->
   else
     return if scrollPos >= maxScrollPos()
     captureVerticalScroll()
-    scrollPos++
-    currentPage = Math.floor(scrollPos / 2) + 1
-    displayView()
-    showIndicator()
-    prefetch()
-    savePositionDebounced()
+    setScrollPos(scrollPos + 1)
 
 goPrev = ->
   return unless fileLoaded
@@ -964,12 +968,7 @@ goPrev = ->
   else
     return if scrollPos <= 0
     captureVerticalScroll()
-    scrollPos--
-    currentPage = Math.floor(scrollPos / 2) + 1
-    displayView()
-    showIndicator()
-    prefetch()
-    savePositionDebounced()
+    setScrollPos(scrollPos - 1)
 
 # Get current movement index from page
 getCurrentMovementIndex = ->
@@ -991,54 +990,29 @@ getMovementStartPage = (movIndex) ->
 # Navigation functions
 goToPage = (page) ->
   return unless fileLoaded and page >= 1 and page <= pageCount
-  scrollPos = (page - 1) * 2
-  currentPage = page
-  displayView()
-  showIndicator()
-  prefetch()
-  savePositionDebounced()
+  setScrollPos (page - 1) * 2
 
 goToStart = ->
   return unless fileLoaded
-  scrollPos = 0
-  currentPage = 1
-  displayView()
-  showIndicator()
-  prefetch()
-  savePositionDebounced()
+  setScrollPos 0
 
 goToEnd = ->
   return unless fileLoaded
-  scrollPos = maxScrollPos()
-  currentPage = Math.floor(scrollPos / 2) + 1
-  displayView()
-  showIndicator()
-  prefetch()
-  savePositionDebounced()
+  setScrollPos maxScrollPos()
 
 goToPrevMovement = ->
   return unless fileLoaded
   currentIdx = getCurrentMovementIndex()
   return if currentIdx <= 0
-  targetPage = getMovementStartPage(currentIdx - 1)
-  scrollPos = (targetPage - 1) * 2
-  currentPage = targetPage
-  displayView()
-  showIndicator()
-  prefetch()
-  savePositionDebounced()
+  startPage = getMovementStartPage(currentIdx - 1)
+  setScrollPos (startPage - 1) * 2
 
 goToNextMovement = ->
   return unless fileLoaded
   currentIdx = getCurrentMovementIndex()
   return if currentIdx >= movements.length - 1
-  targetPage = getMovementStartPage(currentIdx + 1)
-  scrollPos = (targetPage - 1) * 2
-  currentPage = targetPage
-  displayView()
-  showIndicator()
-  prefetch()
-  savePositionDebounced()
+  startPage = getMovementStartPage(currentIdx + 1)
+  setScrollPos (startPage - 1) * 2
 
 jumpVertical = (direction) ->
   slot = $("page-current")
@@ -1081,24 +1055,14 @@ goBack5 = ->
   if scrollMode is "vertical"
     jumpVertical -1
   else
-    scrollPos = Math.max(0, scrollPos - 10)
-    currentPage = Math.floor(scrollPos / 2) + 1
-    displayView()
-    showIndicator()
-    prefetch()
-    savePositionDebounced()
+    setScrollPos Math.max(0, scrollPos - 10)
 
 goForward5 = ->
   return unless fileLoaded
   if scrollMode is "vertical"
     jumpVertical 1
   else
-    scrollPos = Math.min(maxScrollPos(), scrollPos + 10)
-    currentPage = Math.floor(scrollPos / 2) + 1
-    displayView()
-    showIndicator()
-    prefetch()
-    savePositionDebounced()
+    setScrollPos Math.min(maxScrollPos(), scrollPos + 10)
 
 # Detect split points and capture attributes at each point (lazy approach)
 # Returns {splitPoints, splitAttrs, totalMeasures, parts}
