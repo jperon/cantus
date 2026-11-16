@@ -870,52 +870,75 @@ setScrollPos = (pos) ->
   prefetch()
   savePositionDebounced()
 
+# Tolérance (px) : un système plus proche que ça du haut de l'écran y est
+# considéré comme déjà amené
+SYSTEM_TOLERANCE = 10
+
+# Hauts des systèmes affichés, en coordonnées de défilement du slot. Toutes
+# les positions sont lues d'un coup, avant le scrollTo de l'appelant.
+systemTops = ->
+  slot = $("page-current")
+  base = slot.getBoundingClientRect().top - slot.scrollTop
+  for system in slot.querySelectorAll ".scroll-page svg g.system"
+    system.getBoundingClientRect().top - base
+
+# Haut du système qui croise le haut de l'écran une fois défilé à pos
+systemTopBefore = (tops, pos) ->
+  found = null
+  for top in tops when top <= pos
+    found = top
+  found
+
+# Cible du défilement vertical selon le réglage « Défilement »
+# dir vaut 1 vers l'avant, -1 vers l'arrière
+verticalTarget = (dir) ->
+  slot = $("page-current")
+  current = slot.scrollTop
+  {scrollUnit, overlap} = loadSettings()
+  tops = systemTops()
+  target = null
+
+  if scrollUnit is "system"
+    # Premier système sous le haut de l'écran (ou dernier au-dessus)
+    for top in tops
+      if dir > 0
+        if top > current + SYSTEM_TOLERANCE
+          target = top
+          break
+      else if top < current - SYSTEM_TOLERANCE
+        target = top
+  else if overlap > 0
+    # Par page avec recouvrement : (1 - r) écran, puis retour au haut du
+    # système qui croise le haut de l'écran, à condition que cela avance
+    raw = current + dir * slot.clientHeight * (1 - overlap / 100)
+    target = systemTopBefore tops, raw
+    target = raw unless target? and (target - current) * dir > 0
+  else
+    # Par page sans recouvrement : page SVG suivante après la dernière
+    # entièrement visible, ou page précédente (comportement historique)
+    svgs = slot.querySelectorAll ".scroll-page svg"
+    base = slot.getBoundingClientRect().top - slot.scrollTop
+    svgTop = (svg) -> svg.getBoundingClientRect().top - base
+    if dir > 0
+      lastComplete = findLastCompleteSvg()
+      if lastComplete
+        index = Array.prototype.indexOf.call svgs, lastComplete
+        target = svgTop svgs[index + 1] if index + 1 < svgs.length
+      target = null unless target? and target > current + SYSTEM_TOLERANCE
+    else
+      for svg in svgs when svgTop(svg) < current - SYSTEM_TOLERANCE
+        target = svgTop svg
+
+  # Repli quand aucun système/page ne donne de cible : une demi-page
+  target ?= current + dir * window.innerHeight * 0.5
+  Math.max 0, Math.min slot.scrollHeight - slot.clientHeight, target
+
 goNext = ->
   return unless fileLoaded
   if scrollMode is "vertical"
     slot = $("page-current")
-    maxScroll = slot.scrollHeight - slot.clientHeight
-    return if slot.scrollTop >= maxScroll
-
-    # Find last complete SVG and get the NEXT one
-    lastCompleteSvg = findLastCompleteSvg()
-    if lastCompleteSvg
-      # Get the next SVG after the last complete one
-      wrapper = slot.querySelector(".scroll-wrapper")
-      svgs = wrapper.querySelectorAll("svg")
-      lastCompleteIndex = Array.from(svgs).indexOf(lastCompleteSvg)
-
-      # Use the next SVG if available, otherwise fallback
-      targetSvg = if lastCompleteIndex < svgs.length - 1
-        svgs[lastCompleteIndex + 1]
-      else
-        # No next SVG, use fallback
-        null
-
-      if targetSvg
-        svgRect = targetSvg.getBoundingClientRect()
-        slotRect = slot.getBoundingClientRect()
-        targetScroll = slot.scrollTop + (svgRect.top - slotRect.top)
-
-        # Only scroll if it would actually move us forward
-        if targetScroll > slot.scrollTop + 10  # Small threshold to avoid micro-scrolls
-          slot.scrollTo top: targetScroll, behavior: "instant"
-        else
-          # Fallback if target is too close
-          viewHeight = window.innerHeight
-          scrollAmount = viewHeight * 0.5
-          slot.scrollBy top: scrollAmount, behavior: "instant"
-      else
-        # Fallback to 50% scroll if no next SVG found
-        viewHeight = window.innerHeight
-        scrollAmount = viewHeight * 0.5
-        slot.scrollBy top: scrollAmount, behavior: "instant"
-    else
-      # Fallback to 50% scroll if no SVG found
-      viewHeight = window.innerHeight
-      scrollAmount = viewHeight * 0.5
-      slot.scrollBy top: scrollAmount, behavior: "instant"
-
+    return if slot.scrollTop >= slot.scrollHeight - slot.clientHeight
+    slot.scrollTo top: verticalTarget(1), behavior: "instant"
     verticalPos++
     checkAndLoadMorePages()
     showIndicator()
@@ -930,45 +953,7 @@ goPrev = ->
   if scrollMode is "vertical"
     slot = $("page-current")
     return if slot.scrollTop <= 0
-
-    # Find first SVG that will become completely visible after scrolling back
-    slotRect = slot.getBoundingClientRect()
-    viewTop = slotRect.top
-    wrapper = slot.querySelector(".scroll-wrapper")
-    return unless wrapper
-
-    svgs = wrapper.querySelectorAll("svg")
-    return if svgs.length is 0
-
-    targetSvg = null
-    for svg in svgs
-      svgRect = svg.getBoundingClientRect()
-      svgTop = svgRect.top
-
-      # Find the first SVG that's above the current view
-      if svgTop < viewTop - 10  # Small margin
-        targetSvg = svg
-      else if svgTop >= viewTop
-        break
-
-    if targetSvg
-      svgRect = targetSvg.getBoundingClientRect()
-      targetScroll = slot.scrollTop + (svgRect.top - slotRect.top)
-
-      # Only scroll if it would actually move us backward
-      if targetScroll < slot.scrollTop - 10  # Small threshold to avoid micro-scrolls
-        slot.scrollTo top: targetScroll, behavior: "instant"
-      else
-        # Fallback if target is too close
-        viewHeight = window.innerHeight
-        scrollAmount = viewHeight * 0.5
-        slot.scrollBy top: -scrollAmount, behavior: "instant"
-    else
-      # Fallback to 50% scroll back
-      viewHeight = window.innerHeight
-      scrollAmount = viewHeight * 0.5
-      slot.scrollBy top: -scrollAmount, behavior: "instant"
-
+    slot.scrollTo top: verticalTarget(-1), behavior: "instant"
     verticalPos = Math.max(0, verticalPos - 1)
     showIndicator()
     savePositionDebounced()
