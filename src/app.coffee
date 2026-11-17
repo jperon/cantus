@@ -382,6 +382,8 @@ nextSourceToLoad = 0  # prochaine source à convertir
 allSourcesLoaded = false  # toutes les sources sont converties et leurs mouvements connus
 loadToken = 0  # incrémenté à chaque chargement : arrête les chaînes de conversion en cours
 movementLoadTokens = new Map()  # movementId -> loadToken de la demande en cours
+playbackCache = new Map()  # "movementId:variante de voix" -> données de lecture
+pendingPlayback = new Map()  # même clé -> {resolve, reject}
 
 # Worker message handler
 worker.onmessage = (e) ->
@@ -477,6 +479,26 @@ worker.onmessage = (e) ->
       else
         pending.reject new Error message
 
+    when "playbackData"
+      {movementId, midi, syncMarks, staffLabels, trackMap, duration} = e.data
+      key = playbackKey movementId
+      data = {midi, syncMarks, staffLabels, trackMap, duration}
+      playbackCache.set key, data
+      pending = pendingPlayback.get key
+      if pending
+        pendingPlayback.delete key
+        pending.resolve data
+
+    when "playbackError"
+      {movementId, message} = e.data
+      # PR 1 : aucune UI de lecture, une erreur ici ne doit rien casser
+      console.warn "Données de lecture indisponibles pour le mouvement #{movementId}: #{message}"
+      key = playbackKey movementId
+      pending = pendingPlayback.get key
+      if pending
+        pendingPlayback.delete key
+        pending.reject new Error message
+
 # Calculate global page from movementId and localPage
 getGlobalPage = (movementId, localPage) ->
   offset = 0
@@ -522,6 +544,73 @@ requestFromWorker = (movementId, localPage) ->
       type: "renderMovementPage"
       movementId: movementId
       page: localPage
+
+# Clé du cache de lecture : une sélection de voix différente (masquage ou
+# taille) produit un autre rendu Verovio, donc d'autres données de lecture.
+playbackKey = (movementId) ->
+  "#{movementId}:#{partsVariant()}"
+
+# Demande les données de lecture du worker (MIDI, synchronisation). Calqué sur
+# requestPage/requestFromWorker : cache, déduplication des demandes en cours.
+requestPlaybackData = (movementId) ->
+  key = playbackKey movementId
+  return Promise.resolve(playbackCache.get key) if playbackCache.has key
+  return pendingPlayback.get(key).promise if pendingPlayback.has key
+  promise = new Promise (resolve, reject) ->
+    pendingPlayback.set key, {resolve, reject}
+    worker.postMessage
+      type: "getPlaybackData"
+      movementId: movementId
+  # Conserver la promesse pour dédupliquer une seconde demande identique
+  pendingPlayback.get(key)?.promise = promise
+  promise
+
+# Longueur estimée du base64 décodé (sans dépendance)
+base64Bytes = (b64) ->
+  return 0 unless b64
+  padding = 0
+  padding += 1 if b64.endsWith "="
+  padding += 1 if b64.endsWith "=="
+  Math.floor(b64.length * 3 / 4) - padding
+
+# Sonde de debug pour les tests : données de lecture du mouvement affiché.
+window.__musicaPlaybackProbe = ->
+  result = getMovementForPage displayedPage()
+  unless result
+    return {
+      hasData: false
+      syncMarksCount: 0
+      firstMarks: []
+      duration: 0
+      staffLabels: []
+      trackMap: {}
+      midiBytes: 0
+      error: "aucun mouvement affiché"
+    }
+  requestPlaybackData result.movement.id
+    .then (data) ->
+      {
+        hasData: true
+        movementId: result.movement.id
+        syncMarksCount: data.syncMarks?.length ? 0
+        firstMarks: (data.syncMarks ? []).slice 0, 5
+        duration: data.duration ? 0
+        staffLabels: data.staffLabels ? []
+        trackMap: data.trackMap ? {}
+        midiBytes: base64Bytes data.midi
+      }
+    .catch (err) ->
+      {
+        hasData: false
+        movementId: result.movement.id
+        syncMarksCount: 0
+        firstMarks: []
+        duration: 0
+        staffLabels: []
+        trackMap: {}
+        midiBytes: 0
+        error: err?.message or String(err)
+      }
 
 # Get movement and local page from global page number
 # Only returns loaded movements, falls back to movement 1 if not loaded
@@ -1456,6 +1545,11 @@ startLoad = (startPage = 1) ->
   pendingRequests.clear()
   pendingRenders.clear()
   pendingMovementLoads.clear()
+  # Les données de lecture du chargement précédent ne sont plus valides. Les
+  # demandes en cours sont rejetées : leur réponse pourrait arriver trop tard.
+  pendingPlayback.forEach (pending) -> pending.reject new Error "Chargement remplacé"
+  pendingPlayback.clear()
+  playbackCache.clear()
   pushedPages = {}
   movements = []
   awaitingLoad = true
