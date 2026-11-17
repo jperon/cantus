@@ -22,7 +22,9 @@ html(lang="fr")
         h1 Liseuse MusicXML
         p Ouvrir un fichier MusicXML pour commencer
         button#import-btn Ouvrir un fichier
-        input#file-input(type="file" accept=msczAvailable ? ".xml,.musicxml,.mxl,.mscz,.mscx" : ".xml,.musicxml,.mxl")
+        input#file-input(type="file" multiple accept=msczAvailable ? ".xml,.musicxml,.mxl,.mscz,.mscx" : ".xml,.musicxml,.mxl")
+        button#folder-btn Ouvrir un dossier
+        input#folder-input(type="file" webkitdirectory accept=msczAvailable ? ".xml,.musicxml,.mxl,.mscz,.mscx" : ".xml,.musicxml,.mxl")
     button#btn-library.hidden ☰
     button#btn-settings.hidden ⚙
     #overlay-loading
@@ -90,7 +92,9 @@ html(lang="fr")
       #library-list
       #library-actions
         button#library-import-btn Ajouter un fichier
-        input#library-file-input(type="file" accept=msczAvailable ? ".xml,.musicxml,.mxl,.mscz,.mscx" : ".xml,.musicxml,.mxl")
+        input#library-file-input(type="file" multiple accept=msczAvailable ? ".xml,.musicxml,.mxl,.mscz,.mscx" : ".xml,.musicxml,.mxl")
+        button#library-folder-btn Ajouter un dossier
+        input#library-folder-input(type="file" webkitdirectory accept=msczAvailable ? ".xml,.musicxml,.mxl,.mscz,.mscx" : ".xml,.musicxml,.mxl")
     #page-indicator
     #loading-indicator.hidden
       .spinner-small
