@@ -372,11 +372,40 @@ html, body {
   cursor: pointer;
 }
 
+#parts-list label span {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 #parts-list select {
   margin-left: auto;
   font-size: 13px;
   padding: 2px;
   color: #333;
+}
+
+#parts-list select.part-volume {
+  margin-left: 0;
+  min-width: 88px;
+}
+
+.settings-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  font-size: 14px;
+  color: #333;
+  cursor: pointer;
+}
+
+.settings-check input {
+  width: 20px;
+  height: 20px;
+  accent-color: #333;
 }
 
 #zoom-range {
@@ -876,6 +905,23 @@ body.theme-dark #transport-seek {
 /* Écrans étroits : réduire la rangée de navigation et remonter les boutons du
    coin droit, qui recouvraient le bouton « Fin ». Rien ne change au-delà. */
 @media (max-width: 700px) {
+  /* Voix : deux lignes (case + nom, puis taille + volume) plutôt qu'une
+     rangée illisible sur mobile. */
+  #parts-list label {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+
+  #parts-list label span {
+    flex: 1 1 calc(100% - 32px);
+  }
+
+  #parts-list select {
+    flex: 1 1 0;
+    min-width: 0;
+    margin-left: 0;
+  }
+
   #transport {
     bottom: calc(34px + 3vh);
     gap: 6px;

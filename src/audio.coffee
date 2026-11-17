@@ -13,6 +13,7 @@
 #   setMasterVolume(v)           -> 0..100
 #   setVoiceVolume(label, v)     -> 0..100, par libellé de voix
 #   setVoiceMuted(label, m)      -> true : silence réel
+#   getVoiceGain(label)          -> gain courant du GainNode de la voix (ou null)
 #   resume()                     -> reprend l'AudioContext (politique autoplay)
 #   destroy()
 #
@@ -510,6 +511,13 @@ createEngine = (initialOptions = {}) ->
     if gain and state.ctx
       gain.gain.setTargetAtTime voiceGainValue(state.voiceVolumes[label], state.voiceMuted[label] ? false), state.ctx.currentTime, 0.01
     api
+
+  # Diagnostic / tests : valeur courante du GainNode d'une voix, null si le
+  # libellé n'a pas de piste dans le mouvement chargé.
+  api.getVoiceGain = (label) ->
+    gain = state.voiceGains[label]
+    return null unless gain?
+    Number gain.gain.value
 
   api.setVoiceMuted = (label, muted) ->
     return api unless label?

@@ -357,7 +357,10 @@ currentPageWidth = 0
 currentPageHeight = 0
 hiddenParts = new Set()  # Libellés des voix masquées pour le fichier courant
 partSizes = {}  # Libellé de voix -> taille en % (100 = taille normale)
+partVolumes = {}  # Libellé de voix -> volume en % (100 = volume normal)
 partsChanged = false  # Réglages de voix modifiés, à appliquer à la fermeture
+followPlaybackEnabled = true  # Suivi du défilement pendant la lecture
+currentScrollUnit = "page"  # Dernier réglage « Défilement » appliqué
 
 # Pages pre-rendered around the displayed one
 PREFETCH_AHEAD = 6
@@ -397,6 +400,8 @@ playback =
   loading: false
   loadToken: 0
   rafId: null
+  marks: []  # syncMarks du mouvement chargé (t en ms, page locale)
+  followKey: null  # dernière cible de suivi appliquée
 
 # Worker message handler
 worker.onmessage = (e) ->
@@ -676,11 +681,64 @@ cancelPlaybackFrame = ->
     cancelAnimationFrame playback.rafId
     playback.rafId = null
 
+# Suivi de partition : amène à l'écran le marqueur courant. Appelé depuis la
+# boucle de lecture ; ne fait rien quand le réglage est désactivé. Une page
+# absente du DOM est demandée puis réalignée à la frame suivante : l'écran
+# n'est jamais vidé, la page existante reste affichée en attendant son SVG.
+followPlaybackFrame = ->
+  return unless followPlaybackEnabled
+  return unless playback.movementId?
+  marks = playback.marks
+  return unless Array.isArray(marks) and marks.length
+  api = window.__musicaPlayback
+  return unless api?.planFollow?
+  plan = api.planFollow marks, currentPlaybackPosition(),
+    scrollUnit: if scrollMode is "vertical" then currentScrollUnit else "page"
+  return unless plan
+  target = getGlobalPage playback.movementId, plan.page
+  return unless target >= 1
+  slot = $("page-current")
+  pageEl = slot.querySelector ".scroll-page[data-page=\"#{target}\"]"
+
+  # Horizontal : une page = un système, on ramène la page en haut.
+  if scrollMode isnt "vertical"
+    key = "page:#{target}"
+    return if playback.followKey is key
+    setScrollPos (target - 1) * 2
+    playback.followKey = key
+    return
+
+  # Vertical : la page doit être rendue avant de viser un système.
+  unless pageEl?.querySelector "svg"
+    unless pageEl
+      setScrollPos (target - 1) * 2
+      playback.followKey = "pending:#{target}"
+    return
+
+  system = null
+  if currentScrollUnit is "system" and plan.id?
+    element = document.getElementById plan.id
+    system = element.closest("g.system") if element?.closest?
+  if system
+    # Même arithmétique que systemTops()/verticalTarget()
+    base = slot.getBoundingClientRect().top - slot.scrollTop
+    top = system.getBoundingClientRect().top - base
+    return if Math.abs(slot.scrollTop - top) <= SYSTEM_TOLERANCE
+    slot.scrollTo top: Math.max(0, top), behavior: "instant"
+    playback.followKey = "system:#{target}:#{plan.id}"
+  else
+    # Sans système résoluble (id absent du SVG) : au moins la page en haut.
+    key = "page:#{target}"
+    return if playback.followKey is key
+    scrollToPageTop target
+    playback.followKey = key
+
 # Une seule boucle rAF vivante à la fois ; rien n'est écrit dans localStorage
 playbackFrame = ->
   playback.rafId = null
   return unless playback.state is "playing"
   renderTransport()
+  followPlaybackFrame()
   playback.rafId = requestAnimationFrame playbackFrame
 
 startPlaybackFrame = ->
@@ -717,6 +775,8 @@ resetPlayback = ->
   playback.position = 0
   playback.duration = 0
   playback.loading = false
+  playback.marks = []
+  playback.followKey = null
   renderTransport()
 
 stopPlayback = ->
@@ -731,6 +791,9 @@ stopPlayback = ->
       console.warn "Arrêt de lecture impossible : #{err?.message or err}"
   playback.state = "stopped"
   playback.position = 0
+  # Les marqueurs restent : les données de lecture sont toujours chargées
+  # après un arrêt, une reprise doit pouvoir suivre immédiatement.
+  playback.followKey = null
   renderTransport()
 
 pausePlayback = ->
@@ -800,8 +863,11 @@ startPlayback = ->
       playback.hasData = true
       playback.duration = Math.max 0, Number(data.duration) or 0
       playback.position = 0
+      playback.marks = data.syncMarks ? []
+      playback.followKey = null
       try
         engine.load data
+        applyVoiceAudio data.staffLabels
       catch err
         playback.hasData = false
         playback.state = "stopped"
@@ -897,7 +963,7 @@ getMovementForPage = (globalPage) ->
   null
 
 # Settings defaults
-defaultSettings = { zoom: 40, theme: "white", tapSize: 30, scrollUnit: "page", overlap: 0, masterVolume: 80 }
+defaultSettings = { zoom: 40, theme: "white", tapSize: 30, scrollUnit: "page", overlap: 0, masterVolume: 80, followPlayback: true }
 
 loadSettings = ->
   try
@@ -933,10 +999,16 @@ applyZoom = (zoom) ->
   $("zoom-value").textContent = zoom
 
 applyScrollSettings = (unit, overlap) ->
+  currentScrollUnit = unit or "page"
   for btn in document.querySelectorAll ".scroll-unit-btn"
     btn.classList.toggle "active", btn.dataset.unit is unit
   $("overlap-select").value = String overlap
   $("overlap-row").classList.toggle "hidden", unit isnt "page"
+
+applyFollowPlayback = (enabled) ->
+  followPlaybackEnabled = enabled isnt false
+  box = $("follow-playback")
+  box.checked = followPlaybackEnabled if box
 
 applyMasterVolume = (volume) ->
   value = parseInt volume
@@ -956,11 +1028,37 @@ applyAllSettings = ->
   applyZoom settings.zoom
   applyScrollSettings settings.scrollUnit or "page", settings.overlap or 0
   applyMasterVolume settings.masterVolume
+  applyFollowPlayback settings.followPlayback
 
-# Parties masquées et leurs tailles, propres à chaque fichier
+# Applique les volumes et masquages enregistrés au moteur audio, par libellé.
+# Les libellés inconnus du mouvement chargé sont acceptés sans erreur : une
+# voix masquée peut avoir disparu du MIDI, et le volume reste mémorisé pour
+# son retour. Aucun re-rendu n'est déclenché ici.
+applyVoiceAudio = (labels) ->
+  engine = audioEngine()
+  return unless engine?.setVoiceVolume?
+  list = []
+  seen = new Set()
+  add = (label) ->
+    return unless label? and not seen.has label
+    seen.add label
+    list.push label
+  add label for label in (labels ? [])
+  add label for label in Object.keys partVolumes
+  add label for label in Array.from hiddenParts
+  for label in list
+    volume = parseInt partVolumes[label] ? 100
+    volume = 100 unless isFinite volume
+    engine.setVoiceVolume label, volume
+    engine.setVoiceMuted label, hiddenParts.has(label) if engine.setVoiceMuted?
+
+# Parties masquées, leurs tailles et leurs volumes, propres à chaque fichier.
+# Le format historique (tableau d'ids) reste lu ; le champ `volumes` est
+# absent des anciens réglages et vaut alors 100 % partout.
 loadHiddenParts = ->
   hiddenParts = new Set()
   partSizes = {}
+  partVolumes = {}
   return unless currentFileId
   try
     saved = localStorage.getItem "musica-hidden-parts-#{currentFileId}"
@@ -972,13 +1070,14 @@ loadHiddenParts = ->
     else
       hiddenParts = new Set data.hidden or []
       partSizes = data.sizes or {}
+      partVolumes = data.volumes or {}
   catch
     # localStorage unavailable (file:// on some browsers)
 
 saveHiddenParts = ->
   return unless currentFileId
   try
-    data = {hidden: Array.from(hiddenParts), sizes: partSizes}
+    data = {hidden: Array.from(hiddenParts), sizes: partSizes, volumes: partVolumes}
     localStorage.setItem "musica-hidden-parts-#{currentFileId}", JSON.stringify(data)
   catch
     # localStorage unavailable (file:// on some browsers)
@@ -2308,15 +2407,29 @@ renderPartsList = ->
         sizeSel.appendChild opt
       sizeSel.value = partSizes[partLabel] or 100
       sizeSel.disabled = hiddenParts.has partLabel
+      volumeSel = document.createElement "select"
+      volumeSel.className = "part-volume"
+      volumeSel.title = "Volume de la voix"
+      volumeSel.setAttribute "aria-label", "Volume de #{partLabel}"
+      for pct in [10..100] by 10
+        opt = document.createElement "option"
+        opt.value = pct
+        opt.textContent = "Vol. #{pct} %"
+        volumeSel.appendChild opt
+      volumeSel.value = partVolumes[partLabel] or 100
+      volumeSel.disabled = hiddenParts.has partLabel
       row.appendChild box
       row.appendChild nameEl
       row.appendChild sizeSel
+      row.appendChild volumeSel
       box.addEventListener "change", ->
         if box.checked then hiddenParts.delete partLabel else hiddenParts.add partLabel
         sizeSel.disabled = not box.checked
+        volumeSel.disabled = not box.checked
         saveHiddenParts()
         updatePartsDisabled()
-        # Recalcul différé à la fermeture des réglages
+        # Masquage audible immédiat ; le rendu reste différé à la fermeture
+        applyVoiceAudio [partLabel]
         partsChanged = true
       sizeSel.addEventListener "change", ->
         pct = parseInt sizeSel.value
@@ -2324,9 +2437,19 @@ renderPartsList = ->
         saveHiddenParts()
         updatePartsSizesReset()
         partsChanged = true
+      volumeSel.addEventListener "change", ->
+        pct = parseInt volumeSel.value
+        pct = 100 unless isFinite pct
+        if pct is 100 then delete partVolumes[partLabel] else partVolumes[partLabel] = pct
+        saveHiddenParts()
+        updatePartsVolumesReset()
+        # Application immédiate au moteur : jamais de partsChanged ni de rendu
+        engine = audioEngine()
+        engine?.setVoiceVolume partLabel, pct
       list.appendChild row
   updatePartsDisabled()
   updatePartsSizesReset()
+  updatePartsVolumesReset()
 
 # Au moins une partie reste affichée : on désactive la dernière cochée
 updatePartsDisabled = ->
@@ -2337,11 +2460,17 @@ updatePartsDisabled = ->
   for box in boxes
     box.disabled = checked.length is 1 and box.checked
 
-# Bouton « Toutes les voix à 100 % » : actif dès qu'une taille diffère de 100
+# Bouton « Tailles à 100 % » : actif dès qu'une taille diffère de 100
 updatePartsSizesReset = ->
   btn = $("parts-sizes-reset")
   return unless btn
   btn.disabled = Object.keys(partSizes).every (id) -> partSizes[id] is 100
+
+# Bouton « Volumes à 100 % » : actif dès qu'un volume diffère de 100
+updatePartsVolumesReset = ->
+  btn = $("parts-volumes-reset")
+  return unless btn
+  btn.disabled = Object.keys(partVolumes).every (id) -> parseInt(partVolumes[id]) is 100
 
 # Fermer les réglages : applique en une seule fois les changements de voix
 closeSettings = ->
@@ -2385,6 +2514,13 @@ setupSettings = ->
     saveHiddenParts()
     renderPartsList()
     partsChanged = true if changed
+
+  # Remet tous les volumes de voix à 100 % : aucun re-rendu, seulement le moteur
+  $("parts-volumes-reset").addEventListener "click", ->
+    partVolumes = {}
+    saveHiddenParts()
+    renderPartsList()
+    applyVoiceAudio()
 
   # Zoom slider: live label, apply on release
   $("zoom-range").addEventListener "input", (e) ->
@@ -2434,6 +2570,16 @@ setupSettings = ->
     settings = loadSettings()
     settings.overlap = parseInt e.target.value
     saveSettings settings
+
+  # Suivi du défilement : appliqué immédiatement, sans re-rendu
+  followBox = $("follow-playback")
+  if followBox
+    followBox.addEventListener "change", (e) ->
+      enabled = e.target.checked
+      applyFollowPlayback enabled
+      settings = loadSettings()
+      settings.followPlayback = enabled
+      saveSettings settings
 
   # Volume général : appliqué en direct, conservé à la fin du glissement
   volumeRange = $("master-volume-range")

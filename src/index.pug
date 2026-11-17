@@ -59,7 +59,14 @@ html(lang="fr")
         label.settings-label Voix
         #parts-list
         .settings-row
-          button#parts-sizes-reset.settings-btn(type="button" disabled) Toutes les voix à 100 %
+          button#parts-sizes-reset.settings-btn(type="button" disabled) Tailles à 100 %
+          button#parts-volumes-reset.settings-btn(type="button" disabled) Volumes à 100 %
+      .settings-group
+        label.settings-label Lecture
+        .settings-row
+          label.settings-check
+            input#follow-playback(type="checkbox" checked)
+            span Suivre le défilement
       .settings-group
         label.settings-label Thème
         .settings-row
@@ -140,6 +147,7 @@ html(lang="fr")
     script !{svgCacheJs}
     script !{midiJs}
     script !{audioJs}
+    script !{playbackJs}
     script !{soundfontPlayerJs}
     if soundfontsAvailable
       //- Échantillons MIDI.js chargés en différé : le moteur audio les lit au moment de jouer
