@@ -9,7 +9,10 @@
 # qu'à signer. `apk/` est ignoré par git, donc aucun build Nix sandboxé n'est tenté.
 #
 # Variables optionnelles (sinon apksigner demande le mot de passe sur le terminal) :
-#   BUBBLEWRAP_KEYSTORE_PASSWORD, BUBBLEWRAP_KEY_PASSWORD
+#   BUBBLEWRAP_KEYSTORE_PASSWORD (ou son alias CANTUS_KEYSTORE_PASSWORD)
+#   BUBBLEWRAP_KEY_PASSWORD      (ou CANTUS_KEY_PASSWORD, si la clé a un mot de
+#                                 passe distinct de celui du keystore)
+# Les deux conventions sont acceptées ; BUBBLEWRAP_* est celle de Bubblewrap.
 #
 # Usage : bash scripts/build-apk.sh   (depuis un `nix develop`)
 set -euo pipefail
@@ -73,18 +76,42 @@ SIGNED="$APK_DIR/app-release-signed.apk"
 
 "$BUILD_TOOLS/zipalign" -p -f 4 "$UNSIGNED" "$ALIGNED"
 
-# Sans terminal interactif, apksigner ne peut pas demander le mot de passe :
-# échouer tôt avec une consigne claire plutôt qu'une pile Java.
-if [ ! -t 0 ] && [ -z "${BUBBLEWRAP_KEYSTORE_PASSWORD:-}" ]; then
-  die "keystore protégé : exporter BUBBLEWRAP_KEYSTORE_PASSWORD (et BUBBLEWRAP_KEY_PASSWORD si distinct) pour signer sans terminal"
-fi
+# apksigner n'accepte qu'un nom de variable pour --ks-pass ; on retient donc
+# celui qui est défini, en privilégiant la convention Bubblewrap.
+STOREPASS_VAR=""
+KEYPASS_VAR=""
+for name in BUBBLEWRAP_KEYSTORE_PASSWORD CANTUS_KEYSTORE_PASSWORD; do
+  if [ -n "${!name:-}" ]; then STOREPASS_VAR="$name"; break; fi
+done
+for name in BUBBLEWRAP_KEY_PASSWORD CANTUS_KEY_PASSWORD; do
+  if [ -n "${!name:-}" ]; then KEYPASS_VAR="$name"; break; fi
+done
 
 SIGN_ARGS=(sign --ks "$KEYSTORE" --ks-key-alias "$ALIAS" --out "$SIGNED")
 # Les mots de passe ne transitent que par l'environnement, jamais en argument.
-[ -n "${BUBBLEWRAP_KEYSTORE_PASSWORD:-}" ] && SIGN_ARGS+=(--ks-pass env:BUBBLEWRAP_KEYSTORE_PASSWORD)
-[ -n "${BUBBLEWRAP_KEY_PASSWORD:-}" ] && SIGN_ARGS+=(--key-pass env:BUBBLEWRAP_KEY_PASSWORD)
+if [ -n "$STOREPASS_VAR" ]; then
+  SIGN_ARGS+=(--ks-pass "env:$STOREPASS_VAR")
+  [ -n "$KEYPASS_VAR" ] && SIGN_ARGS+=(--key-pass "env:$KEYPASS_VAR")
+elif [ ! -t 0 ]; then
+  # Ni terminal ni mot de passe fourni : le keystore est peut-être non protégé.
+  # On le teste sans rien afficher, sinon on échoue tôt avec une consigne
+  # claire plutôt qu'avec une pile Java.
+  export CANTUS_EMPTY_STOREPASS=""
+  if keytool -list -keystore "$KEYSTORE" -storepass:env CANTUS_EMPTY_STOREPASS >/dev/null 2>&1; then
+    SIGN_ARGS+=(--ks-pass "env:CANTUS_EMPTY_STOREPASS")
+  else
+    die "keystore protégé : exporter BUBBLEWRAP_KEYSTORE_PASSWORD ou CANTUS_KEYSTORE_PASSWORD (et la variante _KEY_PASSWORD si distinct) pour signer sans terminal"
+  fi
+fi
 
 "$BUILD_TOOLS/apksigner" "${SIGN_ARGS[@]}" "$ALIGNED"
 "$BUILD_TOOLS/apksigner" verify "$SIGNED"
 
-echo "== APK signé : $SIGNED =="
+# Identité de signature : publique (lisible dans l'APK), utile pour vérifier
+# qu'une mise à jour conserve bien le même certificat que l'installation
+# précédente.
+echo "== signature =="
+"$BUILD_TOOLS/apksigner" verify --print-certs "$SIGNED" 2>/dev/null \
+  | grep -E "certificate (DN|SHA-256 digest)" || true
+
+echo "== APK signé : $SIGNED ($(du -h "$SIGNED" | cut -f1)) =="

@@ -65,13 +65,21 @@ wrapper (le flake fournit aussi Gradle 8.14.4).
 Signature : le script utilise `bubblewrap build` s'il est installé, sinon il
 reproduit ses étapes (`./gradlew assembleRelease`, `zipalign`, `apksigner`).
 Le mot de passe du keystore se transmet par l'environnement, jamais en
-argument :
+argument ; `BUBBLEWRAP_*` (convention Bubblewrap) et `CANTUS_*` sont
+équivalents :
 
 ```sh
-export BUBBLEWRAP_KEYSTORE_PASSWORD='…'
-# BUBBLEWRAP_KEY_PASSWORD si la clé a un mot de passe distinct
+export BUBBLEWRAP_KEYSTORE_PASSWORD='…'   # ou CANTUS_KEYSTORE_PASSWORD
+# BUBBLEWRAP_KEY_PASSWORD (ou CANTUS_KEY_PASSWORD) si la clé a un mot de passe
+# distinct ; inutile pour un PKCS12 où les deux sont identiques
 nix run .#apk
 ```
+
+Un keystore non protégé (mot de passe vide) est accepté : le script le
+détecte silencieusement. Sinon, sans terminal et sans mot de passe, il s'arrête
+avec un message explicite plutôt qu'une pile Java. Après signature, il affiche
+le DN et l'empreinte SHA-256 du certificat : à comparer avec l'APK déjà
+installé pour vérifier que la mise à jour garde la même identité de signature.
 
 `startUrl` doit correspondre à l'URL publiée du Web Manifest. Bubblewrap
 n'étant pas empaqueté dans nixpkgs, l'alternative est `npx @bubblewrap/cli
