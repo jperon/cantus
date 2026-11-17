@@ -23,6 +23,23 @@ la campagne navigateur. Chaque script imprime une ligne par vérification
 (`[OK]` / `[ÉCHEC]` avec le détail mesuré), puis un résumé JSON. Les délais
 d'attente sont tous bornés.
 
+### Convention de code de sortie
+
+- Un scénario navigateur **doit sortir en code non nul dès qu'une assertion
+  échoue**. C'est `record()` de `lib.js` qui s'en charge : il compte les
+  `ÉCHEC` et, à la fin du processus (`beforeExit`), positionne le code de
+  sortie à 1 sans interrompre les `close()` en cours ni masquer un crash
+  (une exception non gérée sort déjà en 1). Un nouveau scénario n'a donc rien
+  à faire de particulier, sauf à utiliser `L.record(...)` pour ses assertions.
+- `tests/run.sh` **agrège** : il renvoie 1 si au moins un scénario a échoué,
+  et aussi si la sortie d'un scénario contient une ligne commençant par
+  `[ÉCHEC]` ou `ERREUR GÉNÉRALE` (ceinture et bretelles si un scénario futur
+  oublie la convention). Le motif est ancré en début de ligne : les résumés
+  JSON et les tests négatifs attendus (marqués `[OK]`, par exemple le
+  rechargement hors ligne sans service worker en s4) ne sont pas comptés.
+- Les tests unitaires (`tests/unit/*.test.js`) sortent en 1 en cas d'échec et
+  interrompent la campagne.
+
 ## Tests unitaires
 
 - `tests/unit/midi.test.js` — parseur SMF (`src/midi.coffee`).

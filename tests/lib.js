@@ -293,11 +293,30 @@ function summarize(errors) {
   return errors.filter((e) => !/favicon\.ico.*404|404.*favicon\.ico/i.test(e));
 }
 
+// Compteurs globaux du scénario courant : tout appel à record() en ÉCHEC
+// rend le script fautif, même si le scénario a été interrompu proprement et
+// que son IIFE se termine sans exception.
+let assertions = 0;
+let failures = 0;
+
 function record(results, scenario, pageName, outcome, detail = '') {
   results.push({ scenario, page: pageName, outcome, detail });
+  assertions++;
+  if (outcome === 'ÉCHEC') failures++;
   const line = `[${outcome}] ${scenario} (${pageName})${detail ? ' — ' + detail : ''}`;
   console.log(line);
 }
+
+// Convention : un scénario sort en code 1 dès qu'une assertion a échoué.
+// beforeExit laisse le temps aux sorties console de se vider (et à
+// browser.close()/server.close() de finir) ; on ne masque pas un code déjà
+// non nul (crash, exception non gérée).
+process.on('beforeExit', (code) => {
+  if (failures > 0 && code === 0) {
+    console.error(`\n${failures} assertion(s) en échec sur ${assertions} : code de sortie 1.`);
+    process.exitCode = 1;
+  }
+});
 
 module.exports = {
   ROOT, DIST, SCRATCH, FILES, startServer, launch, newPage,
@@ -308,4 +327,5 @@ module.exports = {
   markSvg, markerPresent, tap, pressArrow, waitPageChange,
   scrollState, resetScrollTop, staffCount,
   summarize, record,
+  stats: () => ({ assertions, failures }),
 };
