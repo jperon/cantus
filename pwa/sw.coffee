@@ -88,6 +88,13 @@ self.addEventListener 'fetch', (event) ->
   { request } = event
   url = new URL request.url
 
+  # Partage Android : le manifest déclare un share_target POST multipart vers
+  # ./share. La requête est traitée ici, les fichiers écrits dans IndexedDB,
+  # puis une redirection 303 ramène l'application sur ./?shared=<jeton>.
+  if request.method is 'POST' and isShareRequest url
+    event.respondWith handleShare request
+    return
+
   # Ignore requests with query params for static assets
   if url.search and isStaticAsset(url.pathname)
     # Create request without query params for cache
@@ -106,6 +113,109 @@ self.addEventListener 'fetch', (event) ->
   else
     # Stale while revalidate for dynamic resources
     event.respondWith staleWhileRevalidate request
+
+# Partage : l'action déclarée dans le manifest, résolue dans la portée du SW
+# (le slash initial peut être absent selon le déploiement).
+isShareRequest = (url) ->
+  try
+    share = new URL './share', self.registration.scope
+    url.origin is share.origin and url.pathname.replace(/\/+$/, '') is share.pathname.replace(/\/+$/, '')
+  catch then false
+
+# IndexedDB du module de stockage (src/storage.coffee) : même base, même magasin
+# « files », même forme d'entrée {id, name, files:[{name, data}], addedAt}. Le
+# service worker n'a pas accès aux globals de la page, on écrit donc ici la
+# même structure afin que storage.getFile la relise sans adaptation.
+SHARE_DB_NAME = 'musica'
+SHARE_DB_VERSION = 1
+
+generateShareId = ->
+  Date.now().toString(36) + Math.random().toString(36).substr(2, 5)
+
+writeShareEntry = (name, files) ->
+  new Promise (resolve, reject) ->
+    req = indexedDB.open SHARE_DB_NAME, SHARE_DB_VERSION
+    req.onupgradeneeded = (e) ->
+      d = e.target.result
+      unless d.objectStoreNames.contains 'files'
+        d.createObjectStore 'files', { keyPath: 'id' }
+      unless d.objectStoreNames.contains 'positions'
+        d.createObjectStore 'positions', { keyPath: 'fileId' }
+    req.onerror = -> reject req.error
+    req.onsuccess = ->
+      d = req.result
+      id = generateShareId()
+      tx = d.transaction 'files', 'readwrite'
+      tx.objectStore('files').put { id, name, files, addedAt: Date.now() }
+      tx.oncomplete = ->
+        d.close()
+        resolve id
+      tx.onerror = -> reject tx.error
+
+# Nom du fichier : Chrome transmet normalement File.name ; si le nom est perdu
+# (« blob »), on se rabat sur le titre du partage puis sur un nom générique.
+shareFileName = (file, fallback) ->
+  name = file?.name
+  unless name and name isnt 'blob'
+    name = fallback or "partage-#{Date.now()}"
+    ext = {
+      'application/vnd.recordare.musicxml+xml': '.musicxml'
+      'application/vnd.recordare.musicxml': '.mxl'
+      'application/xml': '.xml'
+      'text/xml': '.xml'
+      'application/zip': '.mxl'
+      'application/x-musescore': '.mscx'
+      'audio/x-musescore': '.mscx'
+    }[file?.type]
+    name += ext if ext and not /\.\w+$/.test name
+  name.replace /[\/\\]/g, '_'
+
+baseShareName = (name) -> name.replace /\.(xml|musicxml|mxl|mscz|mscx)$/i, ''
+
+shareEntryName = (files, title) ->
+  return baseShareName(files[0].name) if files.length is 1
+  return title if title
+  prefix = baseShareName files[0].name
+  for f in files[1..]
+    other = baseShareName f.name
+    i = 0
+    i++ while i < prefix.length and i < other.length and prefix[i] is other[i]
+    prefix = prefix[0...i]
+  prefix = prefix.replace /[\s\-_.]+$/, ''
+  prefix or 'Partage'
+
+htmlResponse = (status, message) ->
+  escaped = String(message).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  body = "<!doctype html><meta charset=\"utf-8\"><title>Partage impossible</title>" +
+    "<h1>Partage impossible</h1><p>#{escaped}</p><p>Revenez à Cantus et utilisez « Importer ».</p>"
+  new Response body, { status, headers: { 'Content-Type': 'text/html; charset=utf-8' } }
+
+# Réception d'un partage : accepte tous les fichiers (l'application décide
+# ensuite, via isCompatibleFile / la conversion), les stocke, puis redirige.
+handleShare = (request) ->
+  try
+    form = await request.formData()
+    candidates = form.getAll('file').concat form.getAll('files')
+    blobs = (item for item in candidates when item and item.arrayBuffer and item.size > 0)
+    unless blobs.length
+      return htmlResponse 400, "Aucun fichier n'a été reçu."
+
+    title = String(form.get('title') or form.get('text') or '').trim()
+    files = []
+    for blob in blobs
+      name = shareFileName blob, (title if blobs.length is 1)
+      data = await blob.arrayBuffer()
+      files.push { name, data }
+
+    entryName = shareEntryName files, title
+    id = await writeShareEntry entryName, files
+    console.log "SW: partage stocké '#{entryName}' (#{files.length} fichier(s), id: #{id})"
+    # 303 : le navigateur repasse en GET sur l'application ; le jeton est
+    # consommé puis retiré de l'URL par app.coffee.
+    new Response null, { status: 303, headers: { Location: "./?shared=#{encodeURIComponent id}" } }
+  catch err
+    console.error 'SW: échec du partage', err
+    htmlResponse 500, "Le fichier partagé n'a pas pu être enregistré : #{err?.message or err}"
 
 # Check if it's a static asset (pathname only)
 isStaticAsset = (urlOrPath) ->

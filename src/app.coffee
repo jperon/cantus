@@ -2363,6 +2363,13 @@ handleFileImport = (file) ->
 handleImportFiles = (fileList) ->
   files = Array.from fileList or []
   return unless files.length > 0
+  # Un fichier seul est filtré ici aussi (partage Android, sélection directe) :
+  # une extension inconnue est refusée proprement au lieu d'échouer au rendu.
+  files = files.filter (file) -> isCompatibleFile file.name
+  unless files.length > 0
+    showError "Aucun fichier compatible (.xml, .musicxml, .mxl, .mscz, .mscx)"
+    showImport()
+    return
   if files.length is 1
     handleFileImport files[0]
   else
@@ -2752,11 +2759,12 @@ handleProtocolParameters = ->
       # Direct file path or base64 data
       loadFileFromParameter fileParam
 
-  # Handle shared files via Web Share API
-  sharedFile = urlParams.get('shared')
-  if sharedFile
-    console.log "Shared file detected"
-    loadFileFromParameter sharedFile
+  # Fichier(s) partagé(s) via Android : le service worker a écrit l'entrée
+  # dans IndexedDB puis redirigé vers ?shared=<jeton>.
+  sharedToken = urlParams.get('shared')
+  if sharedToken
+    console.log "Shared file detected: #{sharedToken}"
+    importSharedEntry sharedToken
 
 # Fetch file from remote URL
 fetchFileFromUrl = (url) ->
@@ -2861,6 +2869,35 @@ showError = (message) ->
   setTimeout ->
     errorEl.style.display = 'none'
   , 5000
+
+# Retire le jeton de partage de l'URL : un rechargement ne doit pas réimporter
+removeSharedParam = ->
+  url = new URL window.location.href
+  url.searchParams.delete 'shared'
+  history.replaceState null, '', url.pathname + url.search + url.hash
+
+# Consomme une entrée déposée par le share_target (POST multipart du service
+# worker). Les fichiers sont relus depuis IndexedDB puis confiés au pipeline
+# d'import habituel (handleImportFiles : bouton d'import, glisser-déposer).
+# L'entrée temporaire est supprimée : l'import crée sa propre entrée.
+importSharedEntry = (token) ->
+  storage.getFile(token).then (entry) ->
+    unless entry?.files?.length
+      removeSharedParam()
+      showError "Fichier partagé introuvable"
+      return
+
+    files = for source in entry.files
+      new File [source.data], source.name or "#{entry.name}.musicxml"
+
+    storage.deleteFile(token).catch (err) ->
+      console.warn "Entrée de partage non supprimée : #{err?.message or err}"
+
+    removeSharedParam()
+    handleImportFiles files
+  .catch (error) ->
+    removeSharedParam()
+    showError "Impossible de lire le fichier partagé : #{error?.message or error}"
 
 # Init
 document.addEventListener "DOMContentLoaded", ->

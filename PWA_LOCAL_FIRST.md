@@ -162,6 +162,23 @@ sans toucher aux fichiers importés (IndexedDB).
 - Performance hors-ligne
 - Fréquence des mises à jour
 
+## Partage depuis Android
+
+Le manifeste déclare un `share_target` POST `multipart/form-data` vers
+`./share`, avec une seule entrée `files` (Android ne partage qu'un fichier à
+la fois). Le service worker intercepte ce POST avant les stratégies de cache,
+lit `formData()`, écrit les sources brutes dans le magasin IndexedDB `files`
+(même structure que `src/storage.coffee`), puis répond par une redirection
+`303` vers `./?shared=<jeton>`. L'application consomme le jeton au démarrage
+avec son pipeline d'import habituel, puis retire le paramètre de l'URL
+(`history.replaceState`) : un rechargement ne réimporte donc pas.
+
+Les fichiers sont acceptés quelle que soit leur extension ; l'application
+applique ensuite `isCompatibleFile` et signale proprement un refus. Les
+formats `.mscz`/`.mscx` n'ont pas de type MIME standard : selon le fournisseur
+Android, ils arrivent en `application/octet-stream`, `application/zip` ou
+`application/x-musescore`, d'où leur présence dans `accept`.
+
 ## Cas d'usage spécifiques
 
 ### Musicien en tournée
