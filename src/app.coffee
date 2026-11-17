@@ -338,9 +338,9 @@ setupServiceWorker()
 storage = window.__musicaStorage
 worker = window.__musicaWorker
 svgStore = window.__svgCache  # Persistent cache with compression
-currentPage = 1
 scrollPos = 0
 pageCount = 0
+pendingPageScroll = null  # page à amener en haut après un saut (mode vertical)
 memoryCache = new Map()  # In-memory cache for current session
 pendingRequests = new Map()  # Pending page requests for deduplication
 fileLoaded = false
@@ -642,23 +642,45 @@ showLibraryBtn = ->
   $("btn-library").classList.remove "hidden"
   $("btn-settings").classList.remove "hidden"
 
-# Page shown in the indicator: in vertical mode, the page crossing the bottom
-# half of the viewport (the first page rendered at the top of the scroll)
+# Page shown in the indicator: in vertical mode, the page containing the top of
+# the visible area (at the very end, the last rendered page: it may be shorter
+# than the viewport). This is the single notion of "displayed page" shared by
+# the indicator, position saving, reloads and movement jumps.
 displayedPage = ->
   return Math.floor(scrollPos / 2) + 1 unless scrollMode is "vertical"
   slot = $("page-current")
   pages = slot.querySelectorAll(".scroll-page")
-  # After a jump, the rendered pages do not start at page 1
-  firstPage = if pages.length > 0 then parseInt(pages[0].dataset.page) else 1
-  return firstPage if slot.scrollTop <= 0
-  clientHeight = slot.clientHeight
-  page = firstPage
-  for div, i in pages
-    rect = div.getBoundingClientRect()
-    # The following pages are lower: no need to measure them
-    break if rect.top >= clientHeight
-    page = firstPage + i if rect.bottom > clientHeight * 0.5
-  page
+  return 1 if pages.length is 0
+  firstPage = parseInt pages[0].dataset.page
+  lastPage = parseInt pages[pages.length - 1].dataset.page
+  maxScroll = slot.scrollHeight - slot.clientHeight
+  # Bottom of the score: the last page stays displayed even if a shorter page
+  # leaves the top of the viewport in the previous one
+  shown = if maxScroll > 0 and slot.scrollTop >= maxScroll - 1
+    lastPage
+  else
+    slotTop = slot.getBoundingClientRect().top
+    page = firstPage
+    for div in pages
+      if div.getBoundingClientRect().bottom > slotTop
+        page = parseInt div.dataset.page
+        break
+    page
+  return shown unless pageCount > 0
+  Math.max 1, Math.min shown, pageCount
+
+# Bring a page to the top of the scrolling area in vertical mode
+scrollToPageTop = (page) ->
+  slot = $("page-current")
+  pages = Array.from slot.querySelectorAll ".scroll-page"
+  return if pages.length is 0
+  firstPage = parseInt pages[0].dataset.page
+  target = pages.find (div) -> parseInt(div.dataset.page) is page
+  if target? and firstPage isnt page
+    slotTop = slot.getBoundingClientRect().top
+    slot.scrollTop = target.getBoundingClientRect().top - slotTop + slot.scrollTop
+  else
+    slot.scrollTop = 0
 
 showIndicator = ->
   el = $("page-indicator")
@@ -773,9 +795,16 @@ displayView = ->
   if vertical
     wrapper.classList.add "vertical"
     wrapper.style.transform = ""
+    # A jump changed the page list: move the scroll to its target page. If the
+    # mode is not known yet (first render of a restored page), keep the target
+    # for the next vertical display.
+    if pendingPageScroll?
+      scrollToPageTop pendingPageScroll
+      pendingPageScroll = null
   else
     wrapper.classList.remove "vertical"
     wrapper.style.transform = "translateX(-#{offset}vw)"
+    pendingPageScroll = null if scrollMode is "horizontal"
 
   refreshVerticalLayout()
 
@@ -805,7 +834,7 @@ savePositionDebounced = ->
   return unless currentFileId
   clearTimeout positionTimer if positionTimer
   positionTimer = setTimeout ->
-    page = Math.floor(scrollPos / 2) + 1
+    page = displayedPage()
     storage.savePosition currentFileId, page
   , 1000
 
@@ -850,22 +879,24 @@ checkAndLoadMorePages = ->
   slot = $("page-current")
   wrapper = slot.querySelector(".scroll-wrapper")
   return unless wrapper
-  loadedPages = wrapper.querySelectorAll(".scroll-page").length
+  pages = wrapper.querySelectorAll ".scroll-page"
+  return if pages.length is 0
+  # After a jump, the rendered pages do not start at page 1: the next page is
+  # the one following the last rendered page
+  lastPage = parseInt pages[pages.length - 1].dataset.page
   # If scrolled past 70% of loaded content, add more pages
   scrollProgress = slot.scrollTop / (slot.scrollHeight - slot.clientHeight)
-  if scrollProgress > 0.7 and loadedPages < pageCount
-    # Add one more page
-    nextPage = loadedPages + 1
-    if nextPage <= pageCount
-      div = document.createElement "div"
-      div.className = "scroll-page"
-      div.dataset.page = nextPage  # Identify page by number
-      div.innerHTML = '<div class="loading-placeholder">Chargement...</div>'
-      wrapper.appendChild div
-      renderPageAsync(nextPage).then (svg) ->
-        if svg and div.isConnected
-          div.innerHTML = svg
-          requestAnimationFrame -> applyVerticalAlignment()
+  if scrollProgress > 0.7 and lastPage < pageCount
+    nextPage = lastPage + 1
+    div = document.createElement "div"
+    div.className = "scroll-page"
+    div.dataset.page = nextPage  # Identify page by number
+    div.innerHTML = '<div class="loading-placeholder">Chargement...</div>'
+    wrapper.appendChild div
+    renderPageAsync(nextPage).then (svg) ->
+      if svg and div.isConnected
+        div.innerHTML = svg
+        requestAnimationFrame -> applyVerticalAlignment()
   prefetch()
 
 # Find the last completely visible SVG in vertical mode
@@ -898,7 +929,8 @@ findLastCompleteSvg = ->
 # Set horizontal position and refresh the view
 setScrollPos = (pos) ->
   scrollPos = pos
-  currentPage = Math.floor(scrollPos / 2) + 1
+  # In vertical mode the jump must also move the scroll to the target page
+  pendingPageScroll = Math.floor(scrollPos / 2) + 1
   displayView()
   showIndicator()
   prefetch()
@@ -996,9 +1028,9 @@ goPrev = ->
     captureVerticalScroll()
     setScrollPos(scrollPos - 1)
 
-# Get current movement index from page
+# Get current movement index from the displayed page
 getCurrentMovementIndex = ->
-  topPage = Math.floor(scrollPos / 2) + 1
+  topPage = displayedPage()
   offset = 0
   for m, i in movements
     offset += m.pageCount or 0
@@ -1040,54 +1072,17 @@ goToNextMovement = ->
   startPage = getMovementStartPage(currentIdx + 1)
   setScrollPos (startPage - 1) * 2
 
-jumpVertical = (direction) ->
-  slot = $("page-current")
-  maxScroll = slot.scrollHeight - slot.clientHeight
-  return if direction < 0 and slot.scrollTop <= 0
-  return if direction > 0 and slot.scrollTop >= maxScroll
-
-  # Target ~5 half view heights away, then snap to the closest SVG
-  targetScroll = slot.scrollTop + direction * window.innerHeight * 2.5
-  targetScroll = Math.max(0, Math.min(maxScroll, targetScroll))
-
-  slotRect = slot.getBoundingClientRect()
-  wrapper = slot.querySelector(".scroll-wrapper")
-  if wrapper
-    svgs = wrapper.querySelectorAll("svg")
-    closestSvg = null
-    closestDistance = Infinity
-
-    for svg in svgs
-      svgRect = svg.getBoundingClientRect()
-      svgScrollPos = slot.scrollTop + (svgRect.top - slotRect.top)
-      distance = Math.abs(svgScrollPos - targetScroll)
-
-      if distance < closestDistance
-        closestDistance = distance
-        closestSvg = svg
-
-    if closestSvg
-      svgRect = closestSvg.getBoundingClientRect()
-      targetScroll = slot.scrollTop + (svgRect.top - slotRect.top)
-
-  slot.scrollTo top: targetScroll, behavior: "instant"
-
-  checkAndLoadMorePages() if direction > 0
-  showIndicator()
-  prefetch()
-  savePositionDebounced()
-
 goBack5 = ->
   return unless fileLoaded
   if scrollMode is "vertical"
-    jumpVertical -1
+    goToPage Math.max(1, displayedPage() - 5)
   else
     setScrollPos Math.max(0, scrollPos - 10)
 
 goForward5 = ->
   return unless fileLoaded
   if scrollMode is "vertical"
-    jumpVertical 1
+    goToPage Math.min(pageCount, displayedPage() + 5)
   else
     setScrollPos Math.min(maxScrollPos(), scrollPos + 10)
 
@@ -1417,8 +1412,8 @@ startLoad = (startPage = 1) ->
   token = ++loadToken
   partsChanged = false
   loadHiddenParts()
-  currentPage = 1  # Always start at page 1 for immediate display
   scrollPos = 0
+  pendingPageScroll = null
   lastWidth = window.innerWidth
   # Drop the displayed pages: they belong to the previous render
   $("page-current").innerHTML = ""
@@ -1846,7 +1841,7 @@ setupResize = ->
       change = Math.abs(newWidth - lastWidth) / lastWidth
       return if change < 0.05
       lastWidth = newWidth
-      reloadScore currentPage
+      reloadScore displayedPage()
     , 300
 
 # Remplit la liste des voix depuis le document déjà analysé (pas de re-parse)
@@ -1918,7 +1913,7 @@ closeSettings = ->
   $("settings-overlay").classList.add "hidden"
   if partsChanged
     partsChanged = false
-    reloadScore currentPage if fileLoaded and currentSources?.length
+    reloadScore displayedPage() if fileLoaded and currentSources?.length
 
 # Settings overlay controls
 setupSettings = ->
@@ -1968,7 +1963,7 @@ setupSettings = ->
     saveSettings settings
     # Re-render current score with new zoom
     if fileLoaded and currentSources?.length
-      reloadScore currentPage
+      reloadScore displayedPage()
 
   # Theme buttons
   for btn in document.querySelectorAll(".theme-btn")
@@ -2225,5 +2220,7 @@ document.addEventListener "DOMContentLoaded", ->
       if scrollMode is "vertical"
         showIndicator()
         prefetch()
+        # Native scrolling also changes the memorised page
+        savePositionDebounced()
   # Worker will send "ready" when initialized
   worker.postMessage {type: "init"}
