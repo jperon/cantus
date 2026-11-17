@@ -34,6 +34,15 @@ script de construction (`cantus-site-build`) qui opère dans le dépôt courant,
 et **non** une dérivation hermétique du site. C'est volontaire : un build
 sandboxé exigerait de figer Verovio et mscz2xml comme dépendances.
 
+## Module timeline (préparation scoretk)
+
+`src/timeline.coffee` est compilé et inliné (`timelineJs`) avec les autres
+modules, mais n'est encore branché ni dans `app.coffee` ni dans `worker.coffee`.
+Il fournit les manipulations pures de la timeline (slices de mouvement,
+segments de lecture, pauses, marqueurs de synchronisation) qui serviront à la
+future migration scoretk. Le remappage des notes sur les segments reste dans
+`audio.coffee` (`remapNotesToSegments`).
+
 ## Tests Playwright
 
 `tests/lib.js` lance Chromium via `executablePath: process.env.CHROMIUM`. Le

@@ -173,6 +173,7 @@ function compileScripts() {
     svgCacheJs: minify(compileCoffee('svgCache.coffee')),
     playbackCacheJs: minify(compileCoffee('playbackCache.coffee')),
     midiJs: minify(compileCoffee('midi.coffee')),
+    timelineJs: minify(compileCoffee('timeline.coffee')),
     audioJs: minify(compileCoffee('audio.coffee')),
     playbackJs: minify(compileCoffee('playback.coffee')),
     workerJs: minify(compileCoffee('worker.coffee')),
@@ -241,7 +242,7 @@ async function build() {
 
   const fflateSetup = readFflate();
   const soundfontPlayerJs = readSoundfontPlayer();
-  const { mxlJs, storageJs, svgCacheJs, playbackCacheJs, midiJs, audioJs, playbackJs, workerJs, appJs } = compileScripts();
+  const { mxlJs, storageJs, svgCacheJs, playbackCacheJs, midiJs, timelineJs, audioJs, playbackJs, workerJs, appJs } = compileScripts();
 
   // 10. Read CSS
   const css = readCss();
@@ -274,6 +275,7 @@ async function build() {
     svgCacheJs,
     playbackCacheJs,
     midiJs,
+    timelineJs,
     audioJs,
     playbackJs,
     appJs,
@@ -315,7 +317,7 @@ async function buildSpa() {
   const fflateSetup = readFflate();
   const soundfontPlayerJs = readSoundfontPlayer();
   const soundfontSamples = readSoundfontSamples();
-  const { mxlJs, storageJs, svgCacheJs, playbackCacheJs, midiJs, audioJs, playbackJs, workerJs, appJs } = compileScripts();
+  const { mxlJs, storageJs, svgCacheJs, playbackCacheJs, midiJs, timelineJs, audioJs, playbackJs, workerJs, appJs } = compileScripts();
   const msczInline = readMscz2xml();
   const msczAvailable = !!msczInline;
 
@@ -374,6 +376,7 @@ ${workerJs}
     svgCacheJs,
     playbackCacheJs,
     midiJs,
+    timelineJs,
     audioJs,
     playbackJs,
     appJs,
