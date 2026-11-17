@@ -346,7 +346,6 @@ pendingRequests = new Map()  # Pending page requests for deduplication
 fileLoaded = false
 indicatorTimeout = null
 scrollScheduled = false  # Scroll events are handled once per frame
-currentXml = null
 currentFileId = null
 lastWidth = window.innerWidth
 resizeTimer = null
@@ -377,8 +376,12 @@ pendingMscz = new Map()  # MuseScore conversion id -> {resolve, reject}
 msczRequestId = 0
 targetPage = null  # Page to navigate to once all movements are loaded
 awaitingLoad = false  # A new load is posted: ignore the previous render's replies
-currentSplitInfo = null  # Split info for lazy extraction
-splitXml = null  # XML string the split info was computed from
+currentSplitInfo = null  # Split info of the first source, for the parts panel
+currentSources = null  # [{name, data}] : sources de l'entrée courante (XML ou binaire)
+sourceCache = new Map()  # index de source -> {xml, splitInfo}
+nextSourceToLoad = 0  # prochaine source à convertir
+allSourcesLoaded = false  # toutes les sources sont converties et leurs mouvements connus
+loadToken = 0  # incrémenté à chaque chargement : arrête les chaînes de conversion en cours
 
 # Worker message handler
 worker.onmessage = (e) ->
@@ -426,10 +429,8 @@ worker.onmessage = (e) ->
             prefetch()
             # Now load subsequent movements after first page is displayed
             loadRemainingMovements()
-      # Navigate to target page if all movements are loaded
-      if targetPage and movements.every((m) -> m.loaded)
-        goToPage targetPage
-        targetPage = null
+      # Navigate to the remembered page as soon as its movement is loaded
+      tryNavigateTarget()
 
     when "svg"
       {movementId, page, svg} = e.data
@@ -452,8 +453,8 @@ worker.onmessage = (e) ->
       # Note: displayView() is now async, so we don't call it here
       # The async displayView will update when pages are loaded
 
-      # Hide loading indicator if all pages are cached
-      if memoryCache.size >= pageCount and pageCount > 0
+      # Hide loading indicator once the whole score is loaded and cached
+      if allSourcesLoaded and memoryCache.size >= pageCount and pageCount > 0
         hideLoadingIndicator()
 
     when "error"
@@ -639,18 +640,21 @@ showLibraryBtn = ->
   $("btn-settings").classList.remove "hidden"
 
 # Page shown in the indicator: in vertical mode, the page crossing the bottom
-# half of the viewport (1 at the top of the scroll)
+# half of the viewport (the first page rendered at the top of the scroll)
 displayedPage = ->
   return Math.floor(scrollPos / 2) + 1 unless scrollMode is "vertical"
   slot = $("page-current")
-  return 1 if slot.scrollTop <= 0
+  pages = slot.querySelectorAll(".scroll-page")
+  # After a jump, the rendered pages do not start at page 1
+  firstPage = if pages.length > 0 then parseInt(pages[0].dataset.page) else 1
+  return firstPage if slot.scrollTop <= 0
   clientHeight = slot.clientHeight
-  page = 1
-  for div, i in slot.querySelectorAll(".scroll-page")
+  page = firstPage
+  for div, i in pages
     rect = div.getBoundingClientRect()
     # The following pages are lower: no need to measure them
     break if rect.top >= clientHeight
-    page = i + 1 if rect.bottom > clientHeight * 0.5
+    page = firstPage + i if rect.bottom > clientHeight * 0.5
   page
 
 showIndicator = ->
@@ -1346,9 +1350,68 @@ preprocessMusicXML = (doc) ->
         nextMeasure.insertBefore printEl, nextMeasure.firstChild
   doc
 
-# Load a score using the worker with lazy movement extraction
-loadXml = (xml, startPage = 1) ->
-  currentXml = xml
+# Convertit une source en MusicXML. Aucune conversion n'a lieu à l'import :
+# le contenu brut est converti à la demande.
+convertSource = (source) ->
+  name = source.name or ""
+  data = source.data
+  if typeof data is "string"
+    # ancienne entrée {xml}, ou texte déjà décodé
+    Promise.resolve data
+  else if /\.mxl$/i.test name
+    Promise.resolve().then -> window.__musicaMxl.extractMxl data
+  else if /\.msc[zx]$/i.test name
+    unless window.__musicaMsczAvailable
+      Promise.reject new Error "import MuseScore non disponible dans cette version"
+    else
+      # le worker détache le tampon qu'il reçoit : lui donner une copie
+      convertMsczToXml data.slice 0
+  else
+    Promise.resolve new TextDecoder().decode new Uint8Array(data)
+
+# XML converti et découpage en mouvements d'une source, gardés pour la
+# partition courante (le zoom, le redimensionnement et les voix rechargent
+# sans reconvertir)
+ensureSource = (index) ->
+  cached = sourceCache.get index
+  return Promise.resolve cached if cached
+  source = currentSources?[index]
+  return Promise.reject new Error "source inconnue" unless source
+  convertSource(source).then (xml) ->
+    info = {xml, splitInfo: detectSplitPoints xml}
+    sourceCache.set index, info
+    info
+
+# Ajoute les mouvements d'une source à la fin de la liste globale
+appendSourceMovements = (index, info) ->
+  count = info.splitInfo.splitPoints.length + 1
+  for localIndex in [0...count]
+    movements.push
+      id: movements.length + 1
+      pageCount: 0
+      pushed: 0
+      loaded: false
+      sourceIndex: index
+      localIndex: localIndex
+  console.log "Source #{index + 1}/#{currentSources.length} : #{count} mouvement(s), #{movements.length} au total"
+
+# Charge une entrée : un fichier seul est une source, un dossier en a plusieurs.
+# La première source est convertie et affichée tout de suite, les suivantes
+# sont ajoutées en tâche de fond.
+loadSources = (sources, startPage = 1) ->
+  currentSources = sources
+  sourceCache.clear()
+  startLoad startPage
+
+# Recharge la partition courante (redimensionnement, zoom, voix) : les XML
+# convertis et les découpages restent en cache
+reloadScore = (startPage) ->
+  return unless currentSources?.length
+  startLoad startPage
+
+# Reset the render state and start converting the first source
+startLoad = (startPage = 1) ->
+  token = ++loadToken
   partsChanged = false
   loadHiddenParts()
   currentPage = 1  # Always start at page 1 for immediate display
@@ -1363,84 +1426,134 @@ loadXml = (xml, startPage = 1) ->
   pushedPages = {}
   movements = []
   awaitingLoad = true
+  currentSplitInfo = null
+  nextSourceToLoad = 0
+  allSourcesLoaded = false
+  fileLoaded = false
   targetPage = if startPage > 1 then startPage else null  # Navigate later if needed
   showLoading()
-
-  # Splitting only depends on the XML: reuse it when the same XML is loaded
-  # again (resize, zoom)
-  unless splitXml is xml and currentSplitInfo
-    currentSplitInfo = detectSplitPoints xml
-    splitXml = xml
-
-  movementCount = currentSplitInfo.splitPoints.length + 1
-  console.log "Partition divisée en #{movementCount} mouvement(s)"
+  hideLoadingIndicator()
 
   # Reset scroll mode for new file
   scrollMode = null
   systemHeight = 0
   verticalPos = 0
 
-  # Initialize movement tracking
-  for i in [0...movementCount]
-    movements.push {id: i + 1, pageCount: 0, pushed: 0, loaded: false}
-
-  # Calculate and store dimensions
   currentPageWidth = Math.round(window.innerWidth * 100 / currentScale)
   currentPageHeight = Math.round(window.innerHeight * 100 / currentScale)
-  pageWidth = currentPageWidth
-  pageHeight = currentPageHeight
 
   # Clear previous movements before loading new file
   worker.postMessage { type: "clearMovements" }
 
-  # Extract and load first movement immediately
-  firstXml = extractMovement currentSplitInfo, 0
-  worker.postMessage
-    type: "loadMovement"
-    movementId: 1
-    xmlString: firstXml
-    pageWidth: pageWidth
-    pageHeight: pageHeight
-    scale: currentScale
+  loadFirstSource token
 
-  # Subsequent movements will be loaded after first movement is displayed
-  # (see movementLoaded handler)
+# Convertit les sources dans l'ordre jusqu'à la première qui donne un
+# mouvement, et charge son premier mouvement
+loadFirstSource = (token) ->
+  return unless token is loadToken
+  return finishLoad(token) if nextSourceToLoad >= currentSources.length
 
-  fileLoaded = true
-  hideImport()
-  showLibraryBtn()
+  index = nextSourceToLoad++
+  ensureSource(index)
+    .then (info) ->
+      return unless token is loadToken
+      appendSourceMovements index, info
+      currentSplitInfo = info.splitInfo unless currentSplitInfo
+      mvXml = extractMovement info.splitInfo, 0
+      unless mvXml
+        return loadFirstSource token
+      loadMovementAndWait(1, mvXml, currentPageWidth, currentPageHeight)
+      # Subsequent movements and sources are loaded once this one is displayed
+      # (see movementLoaded handler)
+      fileLoaded = true
+      hideImport()
+      showLibraryBtn()
+    .catch (err) ->
+      return unless token is loadToken
+      reportSourceError index, err
+      loadFirstSource token
 
-# Load remaining movements sequentially after first page is displayed
+# Report a source that could not be converted, without stopping the others
+reportSourceError = (index, err) ->
+  console.log "Conversion impossible pour la source #{index + 1}:", err
+  name = currentSources?[index]?.name or "source #{index + 1}"
+  showError "Fichier ignoré (#{name}) : #{err?.message or err}"
+
+# Load remaining movements (and sources) sequentially after the first page is
+# displayed. A source is converted only when the previous one is fully loaded.
 loadRemainingMovements = ->
-  return unless currentSplitInfo and movements.length > 1
-
+  return unless currentSources?.length
+  token = loadToken
   # Show loading indicator while loading remaining movements
   showLoadingIndicator()
+  stepLoad token
 
-  # Process movements one by one sequentially
-  processNextMovement = (index) ->
-    if index >= movements.length
-      # All movements loaded, hide indicator
-      hideLoadingIndicator()
+stepLoad = (token) ->
+  return unless token is loadToken and currentSources?.length
+
+  # 1. A movement is known but not rendered yet
+  pending = movements.find (m) -> not m.loaded
+  if pending
+    info = sourceCache.get pending.sourceIndex
+    return finishLoad token unless info
+    mvXml = extractMovement info.splitInfo, pending.localIndex
+    unless mvXml
+      pending.loaded = true
+      return stepLoad token
+    pageWidth = Math.round(window.innerWidth * 100 / currentScale)
+    pageHeight = Math.round(window.innerHeight * 100 / currentScale)
+    loadMovementAndWait(pending.id, mvXml, pageWidth, pageHeight).then ->
+      stepLoad token
+    return
+
+  # 2. Convert the next source, then append its movements
+  if nextSourceToLoad < currentSources.length
+    index = nextSourceToLoad++
+    ensureSource(index)
+      .then (info) ->
+        return unless token is loadToken
+        appendSourceMovements index, info
+        stepLoad token
+      .catch (err) ->
+        return unless token is loadToken
+        reportSourceError index, err
+        stepLoad token
+    return
+
+  finishLoad token
+
+finishLoad = (token) ->
+  return unless token is loadToken
+  allSourcesLoaded = true
+  hideLoading()
+  hideLoadingIndicator()
+  unless fileLoaded
+    # Nothing could be displayed: back to the import screen, with access to the
+    # library (the entry is saved even if its files cannot be read)
+    showImport()
+    showLibraryBtn()
+  tryNavigateTarget()
+
+# Go to the remembered page as soon as its movement is loaded, without waiting
+# for the remaining sources
+tryNavigateTarget = ->
+  return unless targetPage
+  offset = 0
+  for m in movements
+    count = m.pageCount or 0
+    if offset + count >= targetPage
+      break unless m.loaded
+      page = targetPage
+      targetPage = null
+      goToPage page
       return
-    return unless currentXml and currentSplitInfo
-
-    movementId = index + 1
-    currentPageWidth = Math.round(window.innerWidth * 100 / currentScale)
-    currentPageHeight = Math.round(window.innerHeight * 100 / currentScale)
-    pageWidth = currentPageWidth
-    pageHeight = currentPageHeight
-
-    mvXml = extractMovement currentSplitInfo, index
-    return processNextMovement(index + 1) unless mvXml
-
-    # Load movement and wait for it to be ready
-    loadMovementAndWait(movementId, mvXml, pageWidth, pageHeight).then ->
-      # Pages are pushed by the worker, go on with the next movement
-      processNextMovement(index + 1)
-
-  # Start with movement 2 (index 1)
-  processNextMovement(1)
+    break unless m.loaded
+    offset += count
+  return unless allSourcesLoaded
+  # The page no longer exists (fewer pages than when it was saved)
+  page = Math.min targetPage, pageCount
+  targetPage = null
+  goToPage page
 
 # Load a movement in worker and return Promise that resolves when loaded
 loadMovementAndWait = (movementId, xmlString, pageWidth, pageHeight) ->
@@ -1481,10 +1594,13 @@ renderLibrary = ->
       do (file) ->
         item = document.createElement "div"
         item.className = "library-item"
+        count = file.files?.length or 0
+        meta = formatDate file.addedAt
+        meta += " · #{count} fichiers" if count > 1
         item.innerHTML = """
           <div class="library-item-info">
             <div class="library-item-name">#{file.name}</div>
-            <div class="library-item-date">#{formatDate file.addedAt}</div>
+            <div class="library-item-date">#{meta}</div>
           </div>
           <button class="library-item-delete" title="Supprimer">✕</button>
         """
@@ -1508,14 +1624,21 @@ openFromLibrary = (id) ->
   storage.getFile(id).then (file) ->
     return showError("Fichier introuvable") unless file
     currentFileId = id
+    # ancienne entrée {xml} : une seule source texte
+    sources = if file.files?.length
+      file.files
+    else
+      [{ name: "#{file.name}.musicxml", data: file.xml }]
     storage.getPosition(id).then (page) ->
-      loadXml file.xml, page
+      loadSources sources, page
 
 deleteFromLibrary = (id) ->
   storage.deleteFile(id).then ->
     if currentFileId is id
       currentFileId = null
-      currentXml = null
+      currentSources = null
+      sourceCache.clear()
+      loadToken++  # stop background conversions of the deleted score
       fileLoaded = false
       $("page-current").innerHTML = ""
       showImport()
@@ -1523,6 +1646,8 @@ deleteFromLibrary = (id) ->
 
 # Start app after Verovio is ready: show library or import
 startApp = ->
+  # A file was already picked while the worker was starting: keep it
+  return if currentSources?.length
   storage.listFiles().then (files) ->
     if files.length > 0
       showLibrary()
@@ -1571,69 +1696,106 @@ convertMsczToXml = (buffer) ->
     pendingMscz.set id, {resolve, reject}
     worker.postMessage { type: "convertMscz", id, bytes: buffer }, [buffer]
 
-# File import (both from import-section and library overlay)
+# Extensions gardées dans un dossier (les autres, p. ex. .pdf, sont ignorées)
+isCompatibleFile = (name) -> /\.(xml|musicxml|mxl|mscz|mscx)$/i.test name
+
+baseName = (name) -> name.replace /\.(xml|musicxml|mxl|mscz|mscx)$/i, ""
+
+# Lit le contenu brut d'un fichier (aucune conversion à l'import)
+readFileBuffer = (file) ->
+  new Promise (resolve, reject) ->
+    reader = new FileReader()
+    reader.onload = (ev) -> resolve ev.target.result
+    reader.onerror = -> reject reader.error or new Error "lecture impossible"
+    reader.readAsArrayBuffer file
+
+# Nom de l'entrée : nom du dossier importé, sinon préfixe commun des noms,
+# sinon nom du premier fichier
+entryNameFor = (files) ->
+  rel = files[0].webkitRelativePath or ""
+  return rel.split("/")[0] if rel.includes "/"
+  names = (file.name for file in files)
+  prefix = names[0]
+  for name in names[1..]
+    i = 0
+    i++ while i < prefix.length and i < name.length and prefix[i] is name[i]
+    prefix = prefix[0...i]
+  prefix = prefix.replace /[\s\-_.]+$/, ""
+  # « 01- », « 02- »… ne donne qu'un numéro : préférer le premier nom
+  if prefix is "" or /^\d+$/.test prefix then baseName names[0] else prefix
+
+# Dossier : plusieurs fichiers compatibles forment une seule entrée
+handleFolderImport = (fileList) ->
+  files = Array.from(fileList or []).filter (file) -> isCompatibleFile file.name
+  unless files.length > 0
+    return showError "Aucun fichier compatible (.xml, .musicxml, .mxl, .mscz, .mscx)"
+  showLoading()
+  hideImport()
+  hideLibrary()
+
+  files.sort (a, b) -> a.name.localeCompare b.name, undefined, {numeric: true}
+  name = entryNameFor files
+
+  # Read files one by one: a folder can be large
+  sources = []
+  readNext = (index) ->
+    return Promise.resolve() if index >= files.length
+    readFileBuffer(files[index]).then (data) ->
+      sources.push {name: files[index].name, data}
+      readNext index + 1
+  readNext(0)
+    .then ->
+      storage.saveEntry(name, sources).then (id) ->
+        currentFileId = id
+        loadSources sources, 1
+    .catch (err) ->
+      hideLoading()
+      showError "Impossible de lire le dossier : #{err.message or err}"
+      showImport()
+      showLibraryBtn()
+
+# Un fichier seul : une entrée d'une source, comportement inchangé
 handleFileImport = (file) ->
   return unless file
   showLoading()
   hideImport()
   hideLibrary()
-  name = file.name.replace(/\.(xml|musicxml|mxl|mscz|mscx)$/i, "")
-  mxl = window.__musicaMxl
+  name = baseName file.name
 
-  if mxl.isMxlFile(file)
-    # MXL: read as ArrayBuffer, unzip, extract XML
-    reader = new FileReader()
-    reader.onload = (ev) ->
-      try
-        xml = mxl.extractMxl ev.target.result
-        storage.saveFile(name, xml).then (id) ->
-          currentFileId = id
-          loadXml xml, 1
-      catch err
-        hideLoading()
-        showError "Erreur MXL : #{err.message}"
-    reader.onerror = ->
-      hideLoading()
-      showError "Impossible de lire le fichier."
-    reader.readAsArrayBuffer file
-  else if file.name.match /\.msc[zx]$/i
-    unless window.__musicaMsczAvailable
-      hideLoading()
-      return showError "Import MuseScore non disponible dans cette version."
-    # MuseScore: convert to MusicXML in the worker, then import the XML
-    reader = new FileReader()
-    reader.onload = (ev) ->
-      convertMsczToXml(ev.target.result)
-        .then (xml) ->
-          storage.saveFile(name, xml).then (id) ->
-            currentFileId = id
-            loadXml xml, 1
-        .catch (err) ->
-          hideLoading()
-          showError "Erreur MuseScore : #{err.message or err}"
-    reader.onerror = ->
-      hideLoading()
-      showError "Impossible de lire le fichier."
-    reader.readAsArrayBuffer file
-  else
-    # Plain XML/MusicXML: read as text
-    reader = new FileReader()
-    reader.onload = (ev) ->
-      xml = ev.target.result
-      storage.saveFile(name, xml).then (id) ->
+  readFileBuffer(file)
+    .then (data) ->
+      sources = [{name: file.name, data}]
+      storage.saveEntry(name, sources).then (id) ->
         currentFileId = id
-        loadXml xml, 1
-    reader.onerror = ->
+        loadSources sources, 1
+    .catch (err) ->
       hideLoading()
-      showError "Impossible de lire le fichier."
-    reader.readAsText file
+      showError "Impossible de lire le fichier : #{err.message or err}"
+      showImport()
+      showLibraryBtn()
+
+# Un fichier sélectionné : import simple ; plusieurs : un dossier
+handleImportFiles = (fileList) ->
+  files = Array.from fileList or []
+  return unless files.length > 0
+  if files.length is 1
+    handleFileImport files[0]
+  else
+    handleFolderImport files
 
 setupImport = ->
   fileInput = $("file-input")
   $("import-btn").addEventListener "click", ->
     fileInput.click()
   fileInput.addEventListener "change", (e) ->
-    handleFileImport e.target.files[0]
+    handleImportFiles e.target.files
+    e.target.value = ""
+
+  folderInput = $("folder-input")
+  $("folder-btn").addEventListener "click", ->
+    folderInput.click()
+  folderInput.addEventListener "change", (e) ->
+    handleFolderImport e.target.files
     e.target.value = ""
 
 # Library overlay controls
@@ -1648,7 +1810,14 @@ setupLibrary = ->
   $("library-import-btn").addEventListener "click", ->
     libInput.click()
   libInput.addEventListener "change", (e) ->
-    handleFileImport e.target.files[0]
+    handleImportFiles e.target.files
+    e.target.value = ""
+
+  libFolderInput = $("library-folder-input")
+  $("library-folder-btn").addEventListener "click", ->
+    libFolderInput.click()
+  libFolderInput.addEventListener "change", (e) ->
+    handleFolderImport e.target.files
     e.target.value = ""
 
 # Resize handler with debounce
@@ -1656,12 +1825,12 @@ setupResize = ->
   window.addEventListener "resize", ->
     clearTimeout resizeTimer if resizeTimer
     resizeTimer = setTimeout ->
-      return unless fileLoaded and currentXml
+      return unless fileLoaded and currentSources?.length
       newWidth = window.innerWidth
       change = Math.abs(newWidth - lastWidth) / lastWidth
       return if change < 0.05
       lastWidth = newWidth
-      loadXml currentXml, currentPage
+      reloadScore currentPage
     , 300
 
 # Remplit la liste des voix depuis le document déjà analysé (pas de re-parse)
@@ -1733,7 +1902,7 @@ closeSettings = ->
   $("settings-overlay").classList.add "hidden"
   if partsChanged
     partsChanged = false
-    loadXml currentXml, currentPage if fileLoaded and currentXml
+    reloadScore currentPage if fileLoaded and currentSources?.length
 
 # Settings overlay controls
 setupSettings = ->
@@ -1782,8 +1951,8 @@ setupSettings = ->
     settings.zoom = val
     saveSettings settings
     # Re-render current score with new zoom
-    if fileLoaded and currentXml
-      loadXml currentXml, currentPage
+    if fileLoaded and currentSources?.length
+      reloadScore currentPage
 
   # Theme buttons
   for btn in document.querySelectorAll(".theme-btn")
