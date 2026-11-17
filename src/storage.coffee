@@ -26,14 +26,17 @@ generateId = ->
   Date.now().toString(36) + Math.random().toString(36).substr(2, 5)
 
 # Files store
-saveFile = (name, xml) ->
+# Une entrée est un fichier seul ou un dossier : files contient le contenu brut
+# des sources ({name, data}), sans conversion à l'import. Les anciennes entrées
+# {xml} restent lisibles.
+saveEntry = (name, files) ->
   ensureDB().then (d) ->
     new Promise (resolve, reject) ->
       id = generateId()
       tx = d.transaction "files", "readwrite"
-      tx.objectStore("files").put { id, name, xml, addedAt: Date.now() }
+      tx.objectStore("files").put { id, name, files, addedAt: Date.now() }
       tx.oncomplete = ->
-        console.log "IndexedDB écriture: fichier '#{name}' (id: #{id})"
+        console.log "IndexedDB écriture: '#{name}' (#{files.length} fichier(s), id: #{id})"
         resolve id
       tx.onerror = -> reject tx.error
 
@@ -94,7 +97,7 @@ getPosition = (fileId) ->
 
 # Export as global
 window.__musicaStorage = {
-  saveFile
+  saveEntry
   listFiles
   getFile
   deleteFile

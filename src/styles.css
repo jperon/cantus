@@ -217,7 +217,8 @@ html, body {
   color: #555;
 }
 
-#import-btn {
+#import-btn,
+#folder-btn {
   padding: 12px 32px;
   font-size: 16px;
   background: #333;
@@ -227,7 +228,8 @@ html, body {
   cursor: pointer;
 }
 
-#import-btn:active {
+#import-btn:active,
+#folder-btn:active {
   background: #555;
 }
 
@@ -267,7 +269,8 @@ html, body {
   font-style: italic;
 }
 
-#file-input {
+#file-input,
+#folder-input {
   display: none;
 }
 
@@ -481,7 +484,9 @@ body.theme-dark #import-section p {
 }
 
 body.theme-dark #import-btn,
-body.theme-dark #library-import-btn {
+body.theme-dark #folder-btn,
+body.theme-dark #library-import-btn,
+body.theme-dark #library-folder-btn {
   background: #ddd;
   color: #1a1a1a;
 }
@@ -597,9 +602,13 @@ body.theme-dark #page-indicator {
 #library-actions {
   padding: 16px 20px;
   border-top: 1px solid #eee;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
-#library-import-btn {
+#library-import-btn,
+#library-folder-btn {
   width: 100%;
   padding: 12px;
   font-size: 15px;
@@ -610,11 +619,13 @@ body.theme-dark #page-indicator {
   cursor: pointer;
 }
 
-#library-import-btn:active {
+#library-import-btn:active,
+#library-folder-btn:active {
   background: #555;
 }
 
-#library-file-input {
+#library-file-input,
+#library-folder-input {
   display: none;
 }
 
