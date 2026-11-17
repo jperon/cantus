@@ -140,10 +140,16 @@ async function cachedMscz(page) {
   }
 
   // 2. Diagnostic : sans service worker, un rechargement hors ligne échoue
+  // (l'application enregistre désormais son SW : on le retire d'abord, sinon
+  // ce scénario ne testerait plus l'absence de service worker)
   {
     const { page, ctx } = await L.newPage(browser, url, { pageName: 'index.html' });
     try {
       await L.waitReady(page, 60000);
+      await page.evaluate(async () => {
+        for (const r of await navigator.serviceWorker.getRegistrations()) await r.unregister();
+        for (const key of await caches.keys()) await caches.delete(key);
+      });
       const regs = await registrations(page);
       await ctx.setOffline(true);
       let reloadError = null;
