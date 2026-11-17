@@ -171,6 +171,105 @@ test('normalizePlaybackData : sans durée de timemap, utilise le MIDI', () => {
   assert.throws(() => audio.normalizePlaybackData({ midi: 'x' }, null), /Parseur MIDI/);
 });
 
+// --- Lecture linéaire : remappage des notes sur les segments ----------------
+
+const SEGMENTS = [
+  { measureId: 'm1', from: 0, to: 1, offset: 0 },
+  { measureId: 'm2', from: 5, to: 6, offset: 1 },
+];
+
+test('remapNotesToSegments : translation et troncature à la frontière', () => {
+  const notes = [
+    { start: 0.5, dur: 2, pitch: 60, velocity: 90, track: 1 },
+    { start: 5.2, dur: 0.1, pitch: 64, velocity: 80, track: 1 },
+  ];
+  const out = audio.remapNotesToSegments(notes, SEGMENTS);
+  assert.strictEqual(out.length, 2);
+  approx(out[0].start, 0.5, 'start 0');
+  approx(out[0].dur, 0.5, 'dur 0 (tronquée à la frontière)');
+  assert.strictEqual(out[0].pitch, 60);
+  approx(out[1].start, 1.2, 'start 1');
+  approx(out[1].dur, 0.1, 'dur 1');
+  assert.strictEqual(out[1].pitch, 64);
+});
+
+test('remapNotesToSegments : note hors segment ou de durée restante nulle écartée', () => {
+  const notes = [
+    { start: 1, dur: 1, pitch: 60, velocity: 90, track: 1 },   // == to, hors segment
+    { start: 4.9, dur: 1, pitch: 62, velocity: 90, track: 1 }, // dans un trou
+    { start: 6, dur: 1, pitch: 63, velocity: 90, track: 1 },   // après le dernier
+    { start: 5.5, dur: 0, pitch: 65, velocity: 90, track: 1 }, // durée nulle
+  ];
+  assert.deepStrictEqual(audio.remapNotesToSegments(notes, SEGMENTS), []);
+});
+
+test('remapNotesToSegments : résultat trié par start puis hauteur', () => {
+  const notes = [
+    { start: 5.8, dur: 0.1, pitch: 70, velocity: 90, track: 2 },
+    { start: 0.8, dur: 0.1, pitch: 72, velocity: 90, track: 1 },
+    { start: 0.1, dur: 0.1, pitch: 74, velocity: 90, track: 1 },
+  ];
+  const out = audio.remapNotesToSegments(notes, SEGMENTS);
+  assert.deepStrictEqual(out.map((n) => n.pitch), [74, 72, 70]);
+  approx(out[0].start, 0.1, 'start 0');
+  approx(out[1].start, 0.8, 'start 1');
+  approx(out[2].start, 1.8, 'start 2');
+});
+
+test('remapNotesToSegments : segments vides ou invalides -> aucune note', () => {
+  assert.deepStrictEqual(audio.remapNotesToSegments([{ start: 0, dur: 1 }], []), []);
+  assert.deepStrictEqual(audio.remapNotesToSegments([{ start: 0, dur: 1 }], null), []);
+  assert.deepStrictEqual(audio.remapNotesToSegments([{ start: 0, dur: 1 }], [
+    { from: 1, to: 1, offset: 0 },
+    { from: 2, to: 1, offset: 0 },
+    { from: 3, to: 4, offset: -5 },
+  ]), []);
+});
+
+test('segmentsDuration : somme des longueurs, offsets ignorés', () => {
+  assert.strictEqual(audio.segmentsDuration(SEGMENTS), 2);
+  assert.strictEqual(audio.segmentsDuration([]), 0);
+  assert.strictEqual(audio.segmentsDuration([
+    { from: 0, to: 1.5, offset: 0 },
+    { from: 5, to: 6, offset: 1.5 },
+  ]), 2.5);
+});
+
+test('normalizePlaybackData : mode linéaire, durée écrite et notes remappées', () => {
+  const parser = {
+    parseBase64: () => ({
+      duration: 104,
+      tracks: [
+        {
+          index: 1,
+          notes: [
+            { start: 0.5, dur: 2, pitch: 60, velocity: 100 },
+            { start: 33, dur: 1, pitch: 62, velocity: 100 }, // hors segments
+            { start: 50.2, dur: 0.1, pitch: 64, velocity: 100 },
+          ],
+        },
+      ],
+    }),
+  };
+  // Le worker fournit les segments en millisecondes.
+  const segments = [
+    { measureId: 'm1', from: 0, to: 1000, offset: 0 },
+    { measureId: 'm2', from: 50000, to: 51000, offset: 1000 },
+  ];
+  const data = audio.normalizePlaybackData(
+    { midi: 'x', duration: 2000, segments, syncMarks: [{ t: 0 }] },
+    parser
+  );
+  // La durée écrite (2 s) l'emporte sur le MIDI complet (104 s)
+  approx(data.duration, 2, 'durée écrite');
+  assert.deepStrictEqual(data.notes.map((n) => n.pitch), [60, 64]);
+  approx(data.notes[0].start, 0.5, 'start 0');
+  approx(data.notes[0].dur, 0.5, 'dur 0');
+  approx(data.notes[1].start, 1.2, 'start 1');
+  approx(data.notes[1].dur, 0.1, 'dur 1');
+  assert.strictEqual(data.segments.length, 2);
+});
+
 // --- Exécution -------------------------------------------------------------
 
 let passed = 0;

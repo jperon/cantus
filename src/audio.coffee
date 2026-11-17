@@ -120,6 +120,68 @@ notesToSchedule = (notes, index, fromTime, toTime) ->
     i += 1
   {notes: out, nextIndex: i}
 
+# Remappe les notes d'un flux MIDI complet sur les segments de lecture
+# linéaire : chaque segment [from, to) est réécrit à partir de son offset.
+# Les segments sont exprimés dans l'unité des notes (secondes) ; le worker les
+# produit en millisecondes comme le reste du timemap, la conversion se fait
+# dans normalizePlaybackData.
+# Une note qui commence dans un segment est translatée et tronquée à la
+# frontière (dur' = min(dur, to - start)). Une note qui commence hors de tout
+# segment est écartée, ainsi qu'une note dont la durée restante serait nulle.
+# Le résultat est trié par start croissant puis par hauteur.
+remapNotesToSegments = (notes, segments) ->
+  return notes unless Array.isArray(notes)
+  seps = []
+  for segment in (segments ? [])
+    from = Number segment.from
+    to = Number segment.to
+    offset = Number segment.offset
+    continue unless isFinite(from) and isFinite(to) and isFinite(offset)
+    continue unless to > from and offset >= 0
+    seps.push {from, to, offset}
+  return [] unless seps.length
+  # Les segments écrits sont disjoints ; on les trie par prudence et on
+  # cherche pour chaque note le dernier segment dont from <= start.
+  seps.sort (a, b) -> a.from - b.from
+  out = []
+  for note in notes
+    start = Number note.start
+    continue unless isFinite start
+    lo = 0
+    hi = seps.length
+    while lo < hi
+      mid = (lo + hi) >> 1
+      if seps[mid].from <= start then lo = mid + 1 else hi = mid
+    continue if lo is 0
+    seg = seps[lo - 1]
+    continue if start >= seg.to
+    duration = Number note.dur
+    duration = 0 unless isFinite(duration) and duration > 0
+    remaining = seg.to - start
+    continue unless remaining > 0
+    duration = remaining if duration > remaining
+    continue unless duration > 0
+    out.push {
+      start: seg.offset + (start - seg.from)
+      dur: duration
+      pitch: note.pitch
+      velocity: note.velocity
+      track: note.track
+    }
+  out.sort (a, b) -> (a.start - b.start) or (a.pitch - b.pitch)
+  out
+
+# Durée totale couverte par des segments (offset + longueur du dernier).
+segmentsDuration = (segments) ->
+  duration = 0
+  for segment in (segments ? [])
+    to = Number segment.to
+    offset = Number segment.offset
+    continue unless isFinite(to) and isFinite(offset)
+    end = offset + Math.max 0, to - Number(segment.from)
+    duration = end if isFinite(end) and end > duration
+  duration
+
 # Analyse le MIDI une seule fois et normalise les notes en secondes, avec
 # l'indice de piste de chacune.
 normalizePlaybackData = (data, parser) ->
@@ -144,11 +206,24 @@ normalizePlaybackData = (data, parser) ->
       end = start + duration
       lastEnd = end if end > lastEnd
   notes.sort (a, b) -> (a.start - b.start) or (a.pitch - b.pitch)
+  segments = if Array.isArray(data.segments) then data.segments else []
   durationMs = Number data.duration
   duration = if isFinite(durationMs) and durationMs > 0 then durationMs / 1000 else 0
-  # La durée du timemap fait foi ; on ne descend jamais sous la fin réelle du
-  # MIDI ni sous la dernière note, pour ne pas tronquer la lecture.
-  duration = Math.max duration, Number(midi.duration) or 0, lastEnd
+  if segments.length
+    # Mode linéaire : la durée écrite fait foi, jamais la durée du MIDI
+    # complet (qui contient les reprises) ni la fin des notes d'origine.
+    # Le worker exprime les segments en millisecondes : on les ramène en
+    # secondes, l'unité de `notes`.
+    secondsSegments = for segment in segments
+      from: Number(segment.from) / 1000
+      to: Number(segment.to) / 1000
+      offset: Number(segment.offset) / 1000
+    notes = remapNotesToSegments notes, secondsSegments
+    duration = segmentsDuration secondsSegments unless duration > 0
+  else
+    # La durée du timemap fait foi ; on ne descend jamais sous la fin réelle
+    # du MIDI ni sous la dernière note, pour ne pas tronquer la lecture.
+    duration = Math.max duration, Number(midi.duration) or 0, lastEnd
   {
     midi
     tracks
@@ -157,6 +232,7 @@ normalizePlaybackData = (data, parser) ->
     trackMap: resolveTrackMap data.trackMap
     syncMarks: data.syncMarks ? []
     staffLabels: data.staffLabels ? []
+    segments
   }
 
 # --- Moteur ----------------------------------------------------------------
@@ -599,6 +675,8 @@ createEngine = (initialOptions = {}) ->
   api.samplePlaybackRate = samplePlaybackRate
   api.noteIndexAt = noteIndexAt
   api.notesToSchedule = notesToSchedule
+  api.remapNotesToSegments = remapNotesToSegments
+  api.segmentsDuration = segmentsDuration
   api.FLOOR = FLOOR
   api
 
