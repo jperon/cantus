@@ -34,8 +34,6 @@ html(lang="fr")
         #install-section.hidden
           button#btn-install Installer Cantus
           p.install-subtitle Transformez Cantus en application native
-    button#btn-library.hidden ☰
-    button#btn-settings.hidden ⚙
     #overlay-loading
       .spinner
       p Chargement…
@@ -133,19 +131,22 @@ html(lang="fr")
     #page-indicator
     #loading-indicator.hidden
       .spinner-small
-    #transport.hidden(role="group" aria-label="Lecture audio")
-      button#transport-play.transport-btn(type="button" title="Lecture / pause (p)" aria-label="Lecture") ▶
-      button#transport-stop.transport-btn(type="button" title="Arrêt (s)" aria-label="Arrêt") ■
-      input#transport-seek(type="range" min="0" max="1000" step="1" value="0" aria-label="Position de lecture")
-      span#transport-time(title="Cliquer pour se déplacer dans la lecture") 0:00 / 0:00
-    #nav-buttons
-      button.nav-btn(data-action="start" title="Début") ⏮
-      button.nav-btn(data-action="prev-mov" title="Mouvement précédent") ◀◀
-      button.nav-btn(data-action="prev-5" title="5 pages avant") −5
-      span#page-number
-      button.nav-btn(data-action="next-5" title="5 pages après") +5
-      button.nav-btn(data-action="next-mov" title="Mouvement suivant") ▶▶
-      button.nav-btn(data-action="end" title="Fin") ⏭
+    #command-bar
+      #transport.transport-group.hidden(role="group" aria-label="Lecture audio")
+        button#transport-play.transport-btn(type="button" title="Lecture / pause (p)" aria-label="Lecture") ▶
+        button#transport-stop.transport-btn(type="button" title="Arrêt (s)" aria-label="Arrêt") ■
+        span#transport-time(title="Cliquer pour se déplacer dans la lecture") 0:00 / 0:00
+      #nav-buttons.nav-group
+        button.nav-btn(data-action="start" title="Début") ⏮
+        button.nav-btn(data-action="prev-mov" title="Mouvement précédent") ◀◀
+        button.nav-btn(data-action="prev-5" title="5 pages avant") −5
+        span#page-number
+        button.nav-btn(data-action="next-5" title="5 pages après") +5
+        button.nav-btn(data-action="next-mov" title="Mouvement suivant") ▶▶
+        button.nav-btn(data-action="end" title="Fin") ⏭
+      #command-actions.icons-group
+        button#btn-library.hidden(type="button" title="Bibliothèque" aria-label="Bibliothèque") ☰
+        button#btn-settings.hidden(type="button" title="Réglages" aria-label="Réglages") ⚙
     script.
       window.__musicaBuildDate = "#{buildDate}"
       window.__musicaMsczAvailable = #{msczAvailable ? 'true' : 'false'}

@@ -28,11 +28,16 @@ async function positionGrowing(page, ms = 1000, minimum = 100) {
   return { before, after, grew: after.position > before.position + minimum };
 }
 
+// La barre de progression a été supprimée : le déplacement se fait en
+// cliquant sur le libellé de temps, proportionnellement à la position du clic
+// (même geste que l'utilisateur, sans passer par un élément qui n'existe plus).
 async function seekFraction(page, fraction) {
-  await page.$eval('#transport-seek', (el, f) => {
-    el.value = String(Math.round(f * 1000));
-    el.dispatchEvent(new Event('input', { bubbles: true }));
-  }, fraction);
+  const rect = await page.$eval('#transport-time', (el) => {
+    const r = el.getBoundingClientRect();
+    return { x: r.x, y: r.y, width: r.width, height: r.height };
+  });
+  if (!rect.width) throw new Error('libellé de temps invisible : seek impossible');
+  await page.mouse.click(rect.x + fraction * rect.width, rect.y + rect.height / 2);
 }
 
 function alignedOnSystem(snapshot) {
@@ -107,13 +112,50 @@ async function runPage(browser, url, pageName, results) {
     L.record(results, '6. Transport visible une fois la partition affichée', pageName,
       !hiddenAfter ? 'OK' : 'ÉCHEC', `hidden = ${hiddenAfter}`);
 
+    // Structure : une seule rangée en bas, trois zones, plus de barre de
+    // progression. Le libellé de temps est le seul affichage de position.
+    const layout = await page.evaluate(() => {
+      const rect = (id) => {
+        const el = document.getElementById(id);
+        if (!el) return null;
+        const r = el.getBoundingClientRect();
+        return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, centerY: r.top + r.height / 2 };
+      };
+      const left = rect('transport');
+      const center = rect('nav-buttons');
+      const right = rect('command-actions');
+      const sameRow = [left, center, right].every((r) =>
+        r && Math.abs(r.centerY - left.centerY) <= 3);
+      const noOverlap = left && center && right &&
+        left.right <= center.left + 1 && center.right <= right.left + 1;
+      return {
+        sameRow,
+        noOverlap,
+        seek: !!document.getElementById('transport-seek'),
+        time: document.getElementById('transport-time')?.textContent || '',
+        bar: !!document.getElementById('command-bar'),
+      };
+    });
+    L.record(results, '6. Barre unique : MIDI à gauche, pages au centre, actions à droite', pageName,
+      layout.bar && layout.sameRow && layout.noOverlap && !layout.seek ? 'OK' : 'ÉCHEC',
+      `même ligne ${layout.sameRow}, sans chevauchement ${layout.noOverlap}, ` +
+      `barre de progression ${layout.seek ? 'présente' : 'supprimée'}`);
+
     // Lecture
+    const timeBefore = await page.textContent('#transport-time');
     await page.click('#transport-play');
     await waitState(page, 'playing');
     const growth = await positionGrowing(page, 1000);
+    const timeAfter = await page.textContent('#transport-time');
     L.record(results, '6. Lecture : état playing et position qui progresse', pageName,
       growth.grew ? 'OK' : 'ÉCHEC',
       `position ${growth.before.position} → ${growth.after.position} ms, durée ${growth.after.duration} ms, moteur ${growth.after.engine}`);
+    const timePattern = /^\d+:\d{2} \/ \d+:\d{2}$/;
+    const timeOk = timePattern.test(timeBefore.trim()) && timePattern.test(timeAfter.trim()) &&
+      timeAfter !== timeBefore && growth.after.duration > 0;
+    L.record(results, '6. Libellé « temps courant / total » présent et progressif', pageName,
+      timeOk ? 'OK' : 'ÉCHEC',
+      `« ${timeBefore.trim()} » → « ${timeAfter.trim()} », durée ${growth.after.duration} ms`);
 
     // Pause : position stable
     await page.click('#transport-play');

@@ -722,7 +722,6 @@ currentPlaybackPosition = ->
   Math.max 0, engine.position() * 1000
 
 renderTransport = ->
-  seek = $("transport-seek")
   time = $("transport-time")
   playBtn = $("transport-play")
   duration = Math.max 0, playback.duration or 0
@@ -732,8 +731,6 @@ renderTransport = ->
   playback.position = position
   playing = playback.state is "playing"
   loading = playback.state is "loading"
-  if seek and document.activeElement isnt seek
-    seek.value = if duration > 0 then Math.round(position / duration * 1000) else 0
   time.textContent = "#{formatTime position} / #{formatTime duration}" if time
   if playBtn
     playBtn.textContent = if playing then "❚❚" else "▶"
@@ -977,13 +974,8 @@ setupTransport = ->
   $("transport-play")?.addEventListener "click", togglePlayPause
   $("transport-stop")?.addEventListener "click", stopPlayback
 
-  seek = $("transport-seek")
-  seek?.addEventListener "input", (e) ->
-    duration = Math.max 0, playback.duration or 0
-    return unless duration > 0
-    seekPlayback (Number(e.target.value) or 0) / 1000 * duration
-
   # Clic sur le libellé de temps : seek proportionnel à la position du clic
+  # (seul moyen de déplacement fin ; la barre de progression a été retirée).
   time = $("transport-time")
   time?.addEventListener "click", (e) ->
     duration = Math.max 0, playback.duration or 0
