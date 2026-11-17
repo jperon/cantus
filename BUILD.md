@@ -43,6 +43,21 @@ segments de lecture, pauses, marqueurs de synchronisation) qui serviront à la
 future migration scoretk. Le remappage des notes sur les segments reste dans
 `audio.coffee` (`remapNotesToSegments`).
 
+Champs **réellement produits par scoretk-wasm 0.1.0**, et seuls consommés :
+`timeline.division`, `ticks`, `tempo`, `measures`, `pauses` ;
+`measures[i].measure`/`ordinal`, `segment`, `tick`, `endTick`, `timeUs`,
+`endTimeUs`, `xmlId` (optionnel) ; `pauses[i].tick`, `endTick`, `timeUs`,
+`endTimeUs`, `seconds`.
+
+Il n'existe **ni `pauseBefore`**, ni `ticksPerQuarter`, ni `durationTicks` ou
+`durationUs` à la racine, ni de durée par mesure. La durée totale se dérive de
+`measures[dernier].endTimeUs` (repli sur `ticks` converti par la carte de
+tempo si `measures` est vide). Les pauses sont détectées par **coïncidence**
+entre `pause.tick` et la fin (`endTick`) d'une mesure ; la position dans
+`measures[]` et `segment` font foi, `passage` n'est pas un discriminant. Les
+fixtures versionnées sont dans `tests/fixtures/scoretk/` (provenance et
+normalisation dans son `README.md`).
+
 ## Tests Playwright
 
 `tests/lib.js` lance Chromium via `executablePath: process.env.CHROMIUM`. Le

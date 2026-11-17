@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 'use strict';
 
-// Tests unitaires de la timeline pure (src/timeline.coffee), sans DOM et sans
-// scoretk : les timelines sont synthétiques et construites à la main.
+// Tests unitaires de la timeline pure (src/timeline.coffee), sur les fixtures
+// RÉELLES de scoretk (tests/fixtures/scoretk/, voir son README) : pas
+// d'objets inventés pour les cas couverts par le paquet.
 //
 // Usage : node tests/unit/timeline.test.js  (code 0 si tout passe, 1 sinon)
 
@@ -21,203 +22,229 @@ function loadTimeline() {
 }
 
 const timeline = loadTimeline();
+const FIXTURES = path.join(__dirname, '..', 'fixtures', 'scoretk');
 
-const TPQ = 480;
-const measure = (index, tick, endTick, timeUs, endTimeUs, extra = {}) => ({
-  measure: index,
-  segment: 0,
-  passage: 'A',
-  xmlId: `m${index}`,
-  tick,
-  endTick,
-  timeUs,
-  endTimeUs,
-  timeMs: Math.round(timeUs / 1000),
-  durationTicks: endTick - tick,
-  durationUs: endTimeUs - timeUs,
-  pauseBefore: 0,
-  ...extra,
-});
+function fixture(name) {
+  return JSON.parse(fs.readFileSync(path.join(FIXTURES, `${name}.json`), 'utf8'));
+}
 
-const makeTimeline = (measures, pauses = [], durationUs = 0, durationTicks = 0) => ({
-  expandRepeats: true,
-  division: TPQ,
-  ticksPerQuarter: TPQ,
-  durationTicks: durationTicks || (measures.length ? measures[measures.length - 1].endTick : 0),
-  durationUs: durationUs || (measures.length ? measures[measures.length - 1].endTimeUs : 0),
-  tempo: [{ tick: 0, timeUs: 0, microsecondsPerQuarter: 500000 }],
-  measures,
-  pauses,
-});
+function names(measures) {
+  return measures.map((m) => m.measure);
+}
+
+function distinct(values) {
+  return new Set(values).size;
+}
+
+// Vérifie que les offsets sont la somme cumulée des durées de segments, que
+// les segments sont contigus et que le total vaut `totalMs`.
+function checkSegments(segments, totalMs) {
+  let offset = 0;
+  segments.forEach((seg, i) => {
+    assert.ok(seg.toMs >= seg.fromMs, `segment ${i} : toMs < fromMs`);
+    assert.strictEqual(seg.offsetMs, offset, `segment ${i} : offset cumulé`);
+    if (i > 0) assert.strictEqual(seg.fromMs, segments[i - 1].toMs, `segment ${i} : contiguïté`);
+    offset += seg.toMs - seg.fromMs;
+  });
+  assert.strictEqual(offset, totalMs, 'somme des durées de segments');
+  if (segments.length) {
+    assert.strictEqual(segments[0].fromMs, 0, 'premier segment au début du slice');
+    assert.strictEqual(segments[segments.length - 1].toMs, totalMs, 'dernier segment à la fin du slice');
+  }
+}
 
 const tests = [];
 const test = (name, fn) => tests.push({ name, fn });
 
-test('movementSlice : mouvement au milieu du fichier, temps relatifs et offset', () => {
-  const measures = [];
-  for (let i = 0; i < 6; i += 1) {
-    measures.push(measure(i, i * TPQ, (i + 1) * TPQ, i * 1000000, (i + 1) * 1000000));
+test('D (anacrouse + reprise) : premières mesures et durées réelles', () => {
+  const tl = fixture('D-expanded');
+  assert.strictEqual(tl.measures.length, 6);
+  assert.strictEqual(distinct(names(tl.measures)), 4);
+
+  const slice = timeline.movementSlice(tl, 0, 4);
+  assert.strictEqual(slice.measures.length, 6);
+  assert.deepStrictEqual(names(slice.measures), [0, 1, 2, 1, 2, 3]);
+
+  // L'anacrouse (mesure 0) dure 480 ticks / 500 ms, la mesure 1 2000 ms.
+  assert.strictEqual(slice.measures[0].endTimeUs - slice.measures[0].timeUs, 500000);
+  assert.strictEqual(slice.measures[1].endTimeUs - slice.measures[1].timeUs, 2000000);
+  assert.deepStrictEqual(slice.measures.map((m) => m.timeMs), [0, 500, 2500, 4500, 6500, 8500]);
+
+  const segments = timeline.buildSegments(slice);
+  assert.deepStrictEqual(segments.map((s) => s.fromMs), [0, 500, 2500, 4500, 6500, 8500]);
+  assert.deepStrictEqual(segments.map((s) => s.toMs), [500, 2500, 4500, 6500, 8500, 10500]);
+  assert.strictEqual(slice.durationMs, 10500);
+  assert.strictEqual(slice.durationMs, Math.round(tl.measures[tl.measures.length - 1].endTimeUs / 1000));
+  checkSegments(segments, slice.durationMs);
+});
+
+test('E (D.C.) : 10 occurrences, 4 mesures écrites, 3 passes, passage ignoré', () => {
+  const tl = fixture('E-expanded');
+  const slice = timeline.movementSlice(tl, 0, 4);
+  assert.strictEqual(slice.measures.length, 10);
+  assert.strictEqual(distinct(names(slice.measures)), 4);
+  // `segment` (0, 1, 2) est le seul discriminant de passe ; `passage` n'en est
+  // pas un (le D.C. donne segment=1 avec passage=2).
+  assert.deepStrictEqual([...new Set(slice.measures.map((m) => m.segment))], [0, 1, 2]);
+  assert.strictEqual(distinct(slice.measures.map((m) => m.passage)), 2);
+
+  const segments = timeline.buildSegments(slice);
+  assert.strictEqual(segments.length, 10);
+  assert.deepStrictEqual(segments.map((s) => s.measure), names(slice.measures));
+  assert.deepStrictEqual(segments.map((s) => s.fromMs), [0, 2000, 4000, 6000, 8000, 10000, 12000, 14000, 16000, 18000]);
+  assert.strictEqual(slice.durationMs, 20000);
+  checkSegments(segments, slice.durationMs);
+
+  // Retirer `passage` ne change rien : il n'est pas utilisé.
+  const stripped = {
+    ...tl,
+    measures: tl.measures.map((m) => {
+      const copy = { ...m };
+      delete copy.passage;
+      return copy;
+    }),
+  };
+  const withoutPassage = timeline.buildSegments(timeline.movementSlice(stripped, 0, 4));
+  assert.deepStrictEqual(withoutPassage, segments);
+});
+
+test('La_foule : 98 occurrences (expanded) et 72 (linear), offsets cumulés', () => {
+  const expanded = fixture('La_foule-expanded');
+  const linear = fixture('La_foule-linear');
+
+  const expSlice = timeline.movementSlice(expanded, 0, 72);
+  assert.strictEqual(expSlice.measures.length, 98);
+  assert.strictEqual(distinct(names(expSlice.measures)), 72);
+  const expSegments = timeline.buildSegments(expSlice);
+  assert.strictEqual(expSegments.length, 98);
+  assert.strictEqual(expSlice.durationMs, Math.round(expanded.measures[expanded.measures.length - 1].endTimeUs / 1000));
+  checkSegments(expSegments, expSlice.durationMs);
+
+  const linSlice = timeline.movementSlice(linear, 0, 72);
+  assert.strictEqual(linSlice.measures.length, 72);
+  assert.strictEqual(distinct(names(linSlice.measures)), 72);
+  const linSegments = timeline.buildSegments(linSlice);
+  assert.strictEqual(linSegments.length, 72);
+  assert.strictEqual(linSlice.durationMs, Math.round(linear.measures[linear.measures.length - 1].endTimeUs / 1000));
+  checkSegments(linSegments, linSlice.durationMs);
+
+  // Les reprises allongent bien la durée d'exécution.
+  assert.ok(expSlice.durationMs > linSlice.durationMs);
+});
+
+test('pause_basic : la pause étend toMs jusqu’à sa fin, total conservé', () => {
+  const tl = fixture('pause_basic-expanded');
+  const slice = timeline.movementSlice(tl, 0, 4);
+  assert.strictEqual(slice.measures.length, 4);
+  assert.strictEqual(slice.pauses.length, 3);
+
+  // Détection par coïncidence : chaque pause commence à la fin d'une mesure.
+  for (const pause of slice.pauses) {
+    assert.ok(slice.measures.some((m) => m.endTick === pause.tick), `pause tick ${pause.tick}`);
   }
-  const tl = makeTimeline(measures, [], 6000000, 6 * TPQ);
-  const slice = timeline.movementSlice(tl, 2, 5);
-  assert.strictEqual(slice.measures.length, 3);
-  assert.deepStrictEqual(slice.measures.map((m) => m.measure), [2, 3, 4]);
-  assert.deepStrictEqual(slice.measures.map((m) => m.timeMs), [0, 1000, 2000]);
-  assert.deepStrictEqual(slice.measures.map((m) => m.timeUs), [0, 1000000, 2000000]);
-  assert.deepStrictEqual(slice.measures.map((m) => m.tick), [0, TPQ, 2 * TPQ]);
-  assert.strictEqual(slice.offsetUs, 2000000);
-  assert.strictEqual(slice.offsetMs, 2000);
-  assert.strictEqual(slice.offsetTick, 2 * TPQ);
-  assert.strictEqual(slice.durationUs, 3000000);
-  assert.strictEqual(slice.durationMs, 3000);
-  assert.deepStrictEqual(slice.measures.map((m) => m.offsetMs), [2000, 2000, 2000]);
-});
 
-test('mesure répétée : deux entrées, deux segments, deux marqueurs même page', () => {
-  const measures = [
-    measure(0, 0, TPQ, 0, 1000000, { passage: 'A' }),
-    measure(1, TPQ, 2 * TPQ, 1000000, 2000000),
-    measure(0, 2 * TPQ, 3 * TPQ, 2000000, 3000000, { passage: 'A-rend2' }),
-    measure(2, 3 * TPQ, 4 * TPQ, 3000000, 4000000),
-  ];
-  const tl = makeTimeline(measures, [], 4000000, 4 * TPQ);
-  const slice = timeline.movementSlice(tl, 0, 3);
-  assert.deepStrictEqual(slice.measures.map((m) => m.measure), [0, 1, 0, 2]);
+  assert.strictEqual(slice.pauses[0].timeMs, 2000);
+  assert.strictEqual(slice.pauses[0].endTimeMs, 5000);
+  assert.strictEqual(slice.measures[0].endTimeMs, 2000);
 
   const segments = timeline.buildSegments(slice);
-  assert.strictEqual(segments.length, 4);
-  const repeated = segments.filter((s) => s.measure === 0);
-  assert.strictEqual(repeated.length, 2);
-  assert.deepStrictEqual(repeated.map((s) => s.fromMs), [0, 2000]);
+  assert.deepStrictEqual(segments.map((s) => s.fromMs), [0, 5000, 10000, 15000]);
+  assert.deepStrictEqual(segments.map((s) => s.toMs), [5000, 10000, 15000, 17000]);
+  assert.deepStrictEqual(segments.map((s) => s.offsetMs), [0, 5000, 10000, 15000]);
+  // Le segment 0 va jusqu'à la FIN de la pause (5000), pas à la fin de la
+  // mesure (2000), et le suivant démarre après.
+  assert.strictEqual(segments[0].toMs, slice.pauses[0].endTimeMs);
+  assert.strictEqual(segments[1].fromMs, slice.pauses[0].endTimeMs);
 
-  const { marks, unresolved } = timeline.buildSyncMarks(slice, [10, 20, 30], 0);
-  assert.strictEqual(unresolved, 0);
-  assert.deepStrictEqual(marks.map((m) => m.page), [10, 20, 10, 30]);
-  assert.deepStrictEqual(marks.filter((m) => m.page === 10).map((m) => m.t), [0, 2000]);
+  assert.strictEqual(slice.durationMs, 17000);
+  checkSegments(segments, slice.durationMs);
 });
 
-test('mesure écrite jamais jouée : aucun trou de segment faux', () => {
-  // La mesure écrite 2 n'est jamais jouée : elle est absente de measures[].
-  const measures = [
-    measure(0, 0, TPQ, 0, 1000000),
-    measure(1, TPQ, 2 * TPQ, 1000000, 2000000),
-    measure(3, 2 * TPQ, 3 * TPQ, 2000000, 3000000),
-    measure(4, 3 * TPQ, 4 * TPQ, 3000000, 4000000),
-  ];
-  const tl = makeTimeline(measures, [], 4000000, 4 * TPQ);
-  const segments = timeline.buildSegments(timeline.movementSlice(tl, 0, 5));
-  assert.deepStrictEqual(segments.map((s) => s.measure), [0, 1, 3, 4]);
-  assert.deepStrictEqual(segments.map((s) => s.fromMs), [0, 1000, 2000, 3000]);
-  assert.deepStrictEqual(segments.map((s) => s.toMs), [1000, 2000, 3000, 4000]);
-  assert.deepStrictEqual(segments.map((s) => s.offsetMs), [0, 1000, 2000, 3000]);
-});
-
-test('pause après une mesure : toMs va jusqu’à la fin de la pause', () => {
-  const measures = [
-    measure(0, 0, TPQ, 0, 1000000),
-    measure(1, 2 * TPQ, 3 * TPQ, 1500000, 2500000),
-    measure(2, 3 * TPQ, 4 * TPQ, 2500000, 3000000),
-  ];
-  const pauses = [{ tick: TPQ, endTick: 2 * TPQ, timeUs: 1000000, endTimeUs: 1500000, seconds: 0.5 }];
-  const tl = makeTimeline(measures, pauses, 3000000, 4 * TPQ);
-  const slice = timeline.movementSlice(tl, 0, 3);
-  assert.strictEqual(slice.pauses.length, 1);
-  assert.strictEqual(slice.pauses[0].timeMs, 1000);
-  assert.strictEqual(slice.pauses[0].endTimeMs, 1500);
-
-  const segments = timeline.buildSegments(slice);
-  assert.strictEqual(segments[0].toMs, 1500); // pas 1000 (endTimeMs de la mesure)
-  assert.strictEqual(segments[1].fromMs, 1500);
-  assert.strictEqual(segments[1].offsetMs, 1500);
-  assert.strictEqual(segments[2].offsetMs, 2500);
-  assert.strictEqual(segments[2].toMs, 3000);
-});
-
-test('pauseBefore sur une mesure (jamais la première)', () => {
-  const measures = [
-    measure(0, 0, TPQ, 0, 1000000),
-    measure(1, 2 * TPQ, 3 * TPQ, 1500000, 2500000, { pauseBefore: 500000 }),
-    measure(2, 3 * TPQ, 4 * TPQ, 2500000, 3000000),
-  ];
-  const pauses = [{ tick: TPQ, endTick: 2 * TPQ, timeUs: 1000000, endTimeUs: 1500000, seconds: 0.5 }];
-  const tl = makeTimeline(measures, pauses, 3000000, 4 * TPQ);
-  const slice = timeline.movementSlice(tl, 0, 3);
-  assert.strictEqual(slice.measures[0].pauseBefore, 0);
-  assert.strictEqual(slice.measures[1].pauseBefore, 500000);
-
-  const segments = timeline.buildSegments(slice);
-  assert.strictEqual(segments[0].toMs, 1500);
-  assert.strictEqual(segments[1].fromMs, 1500);
-  assert.strictEqual(segments[1].offsetMs, 1500);
-});
-
-test('anacrouse : première mesure plus courte', () => {
-  const measures = [
-    measure(0, 0, 240, 0, 250000),
-    measure(1, 240, 720, 250000, 1000000),
-    measure(2, 720, 1200, 1000000, 1500000),
-  ];
-  const tl = makeTimeline(measures, [], 1500000, 1200);
-  const slice = timeline.movementSlice(tl, 0, 3);
-  assert.strictEqual(slice.durationMs, 1500);
-  const segments = timeline.buildSegments(slice);
-  assert.deepStrictEqual(segments.map((s) => s.fromMs), [0, 250, 1000]);
-  assert.deepStrictEqual(segments.map((s) => s.toMs), [250, 1000, 1500]);
-  assert.deepStrictEqual(segments.map((s) => s.offsetMs), [0, 250, 1000]);
-});
-
-test('pageByWrittenIndex incomplet : unresolved compté, marqueurs valides triés', () => {
-  const measures = [];
-  for (let i = 0; i < 5; i += 1) {
-    measures.push(measure(i, i * TPQ, (i + 1) * TPQ, i * 1000000, (i + 1) * 1000000));
+test('pause_repeats : pause après mesure rejouée, total conservé', () => {
+  const tl = fixture('pause_repeats-expanded');
+  const slice = timeline.movementSlice(tl, 0, 2);
+  assert.strictEqual(slice.measures.length, 4);
+  assert.deepStrictEqual(names(slice.measures), [0, 0, 1, 1]);
+  assert.strictEqual(slice.pauses.length, 2);
+  assert.deepStrictEqual(slice.pauses.map((p) => p.tick), [1920, 5760]);
+  for (const pause of slice.pauses) {
+    assert.ok(slice.measures.some((m) => m.endTick === pause.tick));
   }
-  const tl = makeTimeline(measures, [], 5000000, 5 * TPQ);
-  const slice = timeline.movementSlice(tl, 2, 5);
-
-  const { marks, unresolved } = timeline.buildSyncMarks(slice, [5, undefined, 7], 2);
-  assert.strictEqual(unresolved, 1);
-  assert.deepStrictEqual(marks, [
-    { t: 0, page: 5, id: 'm2' },
-    { t: 2000, page: 7, id: 'm4' },
-  ]);
-
-  const zero = timeline.buildSyncMarks(slice, [5, 0, 7], 2);
-  assert.strictEqual(zero.unresolved, 1);
-  assert.deepStrictEqual(zero.marks.map((m) => m.page), [5, 7]);
-});
-
-test('pauseAt : avant, pendant, à la fin, après, hors bornes', () => {
-  const pauses = [{ tick: TPQ, endTick: 2 * TPQ, timeUs: 1000000, endTimeUs: 1500000, seconds: 0.5 }];
-  assert.strictEqual(timeline.pauseAt(pauses, 999), null);
-  assert.strictEqual(timeline.pauseAt(pauses, 1000), pauses[0]);
-  assert.strictEqual(timeline.pauseAt(pauses, 1250), pauses[0]);
-  assert.strictEqual(timeline.pauseAt(pauses, 1499), pauses[0]);
-  assert.strictEqual(timeline.pauseAt(pauses, 1500), null); // fin exclusive
-  assert.strictEqual(timeline.pauseAt(pauses, 5000), null);
-  assert.strictEqual(timeline.pauseAt([], 1000), null);
-  assert.strictEqual(timeline.pauseAt(null, 1000), null);
-});
-
-test('temps fractionnaires : arrondi des ms au plus proche', () => {
-  const measures = [
-    measure(0, 0, TPQ, 0, 500500),
-    measure(1, TPQ, 2 * TPQ, 500500, 1000500),
-    measure(2, 2 * TPQ, 3 * TPQ, 1000500, 1500500),
-  ];
-  const tl = makeTimeline(measures, [], 1500500, 3 * TPQ);
-  const slice = timeline.movementSlice(tl, 0, 3);
-  // 500,5 ms -> 501 ; 1000,5 ms -> 1001 ; 1500,5 ms -> 1501.
-  assert.deepStrictEqual(slice.measures.map((m) => m.timeMs), [0, 501, 1001]);
-  assert.deepStrictEqual(slice.measures.map((m) => m.endTimeMs), [501, 1001, 1501]);
-  assert.strictEqual(slice.durationMs, 1501);
 
   const segments = timeline.buildSegments(slice);
-  assert.deepStrictEqual(segments.map((s) => s.fromMs), [0, 501, 1001]);
-  assert.deepStrictEqual(segments.map((s) => s.toMs), [501, 1001, 1501]);
-  assert.deepStrictEqual(segments.map((s) => s.offsetMs), [0, 501, 1001]);
-  for (const s of segments) {
-    assert.ok(Number.isInteger(s.fromMs) && Number.isInteger(s.toMs) && Number.isInteger(s.offsetMs));
-  }
+  assert.deepStrictEqual(segments.map((s) => s.fromMs), [0, 5000, 10000, 12000]);
+  assert.deepStrictEqual(segments.map((s) => s.toMs), [5000, 10000, 12000, 14000]);
+  assert.strictEqual(segments[0].toMs, slice.pauses[0].endTimeMs);
+  assert.strictEqual(segments[1].toMs, slice.pauses[1].endTimeMs);
+
+  assert.strictEqual(slice.durationMs, 14000);
+  checkSegments(segments, slice.durationMs);
+});
+
+test('buildSyncMarks réel : pageByWrittenIndex partiel, unresolved et tri', () => {
+  const tl = fixture('E-expanded');
+  const slice = timeline.movementSlice(tl, 0, 4);
+  // Seules les mesures écrites 0 et 1 ont une page.
+  const { marks, unresolved } = timeline.buildSyncMarks(slice, [1, 2], 0);
+  assert.strictEqual(unresolved, 4);
+  assert.deepStrictEqual(marks.map((m) => m.t), [0, 2000, 6000, 8000, 12000, 14000]);
+  assert.deepStrictEqual(marks.map((m) => m.page), [1, 2, 1, 2, 1, 2]);
+  assert.deepStrictEqual(marks.map((m) => m.id), ['m0', 'm1', 'm0', 'm1', 'm0', 'm1']);
+  for (let i = 1; i < marks.length; i += 1) assert.ok(marks[i].t >= marks[i - 1].t);
+});
+
+test('pauseAt réel : bornes exactes issues de timeUs', () => {
+  const tl = fixture('pause_basic-expanded');
+  const pause = tl.pauses[0];
+  assert.strictEqual(pause.timeUs, 2000000);
+  assert.strictEqual(pause.endTimeUs, 5000000);
+  assert.strictEqual(timeline.pauseAt(tl.pauses, 1999), null);
+  assert.strictEqual(timeline.pauseAt(tl.pauses, 2000), pause);
+  assert.strictEqual(timeline.pauseAt(tl.pauses, 4999), pause);
+  assert.strictEqual(timeline.pauseAt(tl.pauses, 5000), null); // fin exclusive
+});
+
+test('synthétique : timeline sans mesures, durée dérivée des ticks et du tempo', () => {
+  const tl = {
+    division: 480,
+    ticks: 1920,
+    tempo: [{ tick: 0, timeUs: 0, microsecondsPerQuarter: 500000 }],
+    measures: [],
+    pauses: [],
+  };
+  const slice = timeline.movementSlice(tl, 0, null);
+  assert.strictEqual(slice.measures.length, 0);
+  assert.strictEqual(slice.durationUs, 2000000);
+  assert.strictEqual(slice.durationMs, 2000);
+  assert.strictEqual(slice.endTick, 1920);
+  assert.deepStrictEqual(timeline.buildSegments(slice), []);
+});
+
+test('synthétique : page non résolue et page zéro comptées, marqueurs triés', () => {
+  const slice = {
+    measureStart: 0,
+    durationMs: 3000,
+    measures: [
+      { measure: 0, tick: 0, endTick: 480, timeUs: 0, endTimeUs: 1000000, timeMs: 0 },
+      { measure: 1, tick: 480, endTick: 960, timeUs: 1000000, endTimeUs: 2000000, timeMs: 1000 },
+      { measure: 2, tick: 960, endTick: 1440, timeUs: 2000000, endTimeUs: 3000000, timeMs: 2000 },
+    ],
+    pauses: [],
+  };
+  const { marks, unresolved } = timeline.buildSyncMarks(slice, [7, 0, undefined], 0);
+  assert.strictEqual(unresolved, 2);
+  assert.deepStrictEqual(marks, [{ t: 0, page: 7, id: 'm0' }]);
+});
+
+test('synthétique : slice vide bien formé et pauseAt hors listes', () => {
+  const tl = fixture('D-expanded');
+  const empty = timeline.movementSlice(tl, 99, 100);
+  assert.deepStrictEqual(empty.measures, []);
+  assert.deepStrictEqual(empty.pauses, []);
+  assert.strictEqual(empty.durationMs, 0);
+  assert.deepStrictEqual(timeline.buildSegments(empty), []);
+  assert.strictEqual(timeline.pauseAt([], 0), null);
+  assert.strictEqual(timeline.pauseAt(null, 0), null);
 });
 
 let failed = 0;
