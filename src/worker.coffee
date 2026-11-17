@@ -373,17 +373,28 @@ buildTrackMap = (midiBase64, staffLabels, staffSequence) ->
     used[track.index] = true
   trackMap
 
-# Construit les marqueurs de synchronisation depuis le timemap Verovio.
-# Les ids « -rend2 » (copies de reprises) n'existent dans aucun SVG :
-# getPageWithElement vaut 0 et ils sont ignorés pour la synchronisation.
+# Durée totale d'un timemap : maximum de TOUS les tstamp, y compris les
+# entrées dont les ids ne sont pas résolubles en page (copies de reprises
+# « -rend2 »). Ces copies sont écartées des syncMarks, mais elles sont bien
+# audibles : les ignorer tronquerait la lecture.
+timemapDuration = (timemap) ->
+  duration = 0
+  for entry in timemap ? []
+    t = Number entry.tstamp
+    continue unless isFinite t
+    duration = t if t > duration
+  duration
+
 buildSyncMarks = (timemap) ->
   pageCache = new Map()
   marks = []
-  duration = 0
+  duration = timemapDuration timemap
+  # Construit les marqueurs de synchronisation depuis le timemap Verovio.
+  # Les ids « -rend2 » (copies de reprises) n'existent dans aucun SVG :
+  # getPageWithElement vaut 0 et ils sont ignorés pour la synchronisation.
   for entry in timemap
     t = Number entry.tstamp
     t = 0 unless isFinite t
-    duration = t if t > duration
     ids = entry.on
     continue unless Array.isArray(ids) and ids.length > 0
     # Les ids simultanés partagent la même date : un seul marqueur suffit
