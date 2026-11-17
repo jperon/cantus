@@ -51,12 +51,23 @@ fi
 SCENARIO_LOG=$(mktemp)
 trap 'rm -f "$SCENARIO_LOG"' EXIT
 failed=()
+# Compteurs de la campagne : le total doit être la somme des lignes
+# [OK]/[ÉCHEC]/[SAUTÉ] et concorder avec les bilans des scénarios.
+total_ok=0 total_ko=0 total_skip=0 total_assertions=0
 for script in "$@"; do
   echo
   echo "== $script =="
   : > "$SCENARIO_LOG"
   env -u LD_LIBRARY_PATH CHROMIUM="$CHROMIUM" "$NODE" "tests/$script" 2>&1 | tee "$SCENARIO_LOG"
   code=${PIPESTATUS[0]}
+  ok=$(grep -cE '^\[OK\]' "$SCENARIO_LOG" || true)
+  ko=$(grep -cE '^\[ÉCHEC\]' "$SCENARIO_LOG" || true)
+  skip=$(grep -cE '^\[SAUTÉ\]' "$SCENARIO_LOG" || true)
+  lines=$((ok + ko + skip))
+  # Bilan écrit par lib.js à la sortie du scénario (écriture synchrone).
+  bilan=$(sed -n 's/^=== BILAN .* : \([0-9][0-9]*\) assertion(s).*/\1/p' "$SCENARIO_LOG" | tail -n 1)
+  echo "   -> $script : $lines assertion(s) ($ok OK, $ko ÉCHEC, $skip SAUTÉ)"
+  total_ok=$((total_ok + ok)) total_ko=$((total_ko + ko)) total_skip=$((total_skip + skip))
   reason=""
   if [ "$code" -ne 0 ]; then
     reason="code $code"
@@ -64,12 +75,25 @@ for script in "$@"; do
   if grep -qE '^\[ÉCHEC\]|^ERREUR GÉNÉRALE' "$SCENARIO_LOG"; then
     reason="${reason:+$reason, }ÉCHEC dans la sortie"
   fi
+  # Le compte lu dans la sortie doit être celui qu'a compté record() : sinon
+  # des lignes ont été perdues (troncature, sortie brutale) et la campagne
+  # serait verte avec un décompte faux.
+  if [ -z "$bilan" ]; then
+    reason="${reason:+$reason, }bilan d'assertions absent"
+  else
+    total_assertions=$((total_assertions + bilan))
+    if [ "$bilan" -ne "$lines" ]; then
+      reason="${reason:+$reason, }comptage incohérent ($lines ligne(s) pour $bilan assertion(s))"
+    fi
+  fi
   if [ -n "$reason" ]; then
     status=1
     failed+=("$script ($reason)")
   fi
 done
 
+echo
+echo "Campagne : $total_assertions assertion(s) — $total_ok OK, $total_ko ÉCHEC, $total_skip SAUTÉ"
 if [ "${#failed[@]}" -gt 0 ]; then
   echo
   echo "Scénarios en échec : ${failed[*]}" >&2

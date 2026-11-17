@@ -318,6 +318,23 @@ process.on('beforeExit', (code) => {
   }
 });
 
+// Bilan du scénario, écrit de façon SYNCHRONE dans le descripteur 1 : il
+// part même si le processus appelle process.exit() juste après, et il ne
+// dépend pas du vidage asynchrone de stdout (tube de run.sh). run.sh relit
+// ce nombre et le compare aux lignes [OK]/[ÉCHEC]/[SAUTÉ] du journal : un
+// écart signale une sortie perdue, une assertion non journalisée ou une
+// renumérotation de la campagne. Convention : une assertion = une ligne.
+const SCRIPT = path.basename(process.argv[1] || 'scénario');
+process.on('exit', (code) => {
+  const line = `=== BILAN ${SCRIPT} : ${assertions} assertion(s), ${failures} échec(s) ===\n`;
+  try {
+    fs.writeSync(1, line);
+  } catch (e) {
+    // descripteur déjà fermé : rien à sauver
+  }
+  if (failures > 0 && code === 0) process.exitCode = 1;
+});
+
 module.exports = {
   ROOT, DIST, SCRATCH, FILES, startServer, launch, newPage,
   waitReady, waitFirstSvg, pageInfo, waitPage, waitTotalAtLeast,

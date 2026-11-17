@@ -37,6 +37,18 @@ d'attente sont tous bornés.
   oublie la convention). Le motif est ancré en début de ligne : les résumés
   JSON et les tests négatifs attendus (marqués `[OK]`, par exemple le
   rechargement hors ligne sans service worker en s4) ne sont pas comptés.
+- **Comptage des assertions** : une assertion = une ligne `[OK]`, `[ÉCHEC]`
+  ou `[SAUTÉ]`. `lib.js` écrit à la sortie du processus une ligne
+  `=== BILAN <script> : N assertion(s), F échec(s) ===` (écriture synchrone,
+  insensible au vidage des tubes), et `tests/run.sh` la compare au nombre de
+  lignes du journal : un écart rend la campagne rouge (« comptage
+  incohérent »). Le compte par scénario est affiché à la fin de chaque
+  script, et le total de la campagne en dernière ligne.
+- Attention : le préfixe numérique des titres (`6. Erreurs JS ...`) est le
+  numéro d'**exigence** de la spécification, pas celui du scénario ; compter
+  les assertions par ce préfixe fausse la répartition (s1 à s5 contiennent
+  des vérifications d'exigence 6). Compter par section `== sN ==` ou se fier
+  au bilan affiché par `run.sh`.
 - Les tests unitaires (`tests/unit/*.test.js`) sortent en 1 en cas d'échec et
   interrompent la campagne.
 
@@ -49,6 +61,9 @@ d'attente sont tous bornés.
   mesuré avec un faux `AudioContext` pour 1 et 3 pistes.
 - `tests/unit/playback.test.js` — résolution des marqueurs de synchronisation
   et suivi de page/système (`src/playback.coffee`).
+- `tests/unit/timeline.test.js` — slices de mouvement, segments de lecture,
+  pauses et marqueurs de synchronisation de la timeline pure
+  (`src/timeline.coffee`, non encore branchée).
 
 ## Sonde audio (aperçu soundfont)
 
