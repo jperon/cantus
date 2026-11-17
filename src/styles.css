@@ -773,9 +773,134 @@ body.theme-dark #page-number {
   color: #ddd;
 }
 
+#transport {
+  position: fixed;
+  bottom: 7vh;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 1vh;
+  padding: 0.8vh 1.2vh;
+  z-index: 26;
+  max-width: calc(100vw - 2vh);
+  background: rgba(255,255,255,0.92);
+  border: 1px solid #ddd;
+  border-radius: 1vh;
+  opacity: 0.85;
+  transition: opacity 0.2s;
+}
+
+#transport:hover {
+  opacity: 1;
+}
+
+#transport.hidden {
+  display: none;
+}
+
+.transport-btn {
+  min-width: 40px;
+  min-height: 40px;
+  font-size: 2vh;
+  background: #f5f5f5;
+  border: 1px solid #999;
+  border-radius: 1vh;
+  cursor: pointer;
+  color: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.transport-btn:active {
+  background: #e0e0e0;
+}
+
+.transport-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+#transport-seek {
+  width: 24vh;
+  max-width: 40vw;
+  height: 40px;
+  accent-color: #333;
+  cursor: pointer;
+}
+
+#transport-time {
+  font-size: 1.8vh;
+  color: #333;
+  min-width: 10ch;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  user-select: none;
+}
+
+body.theme-sepia #transport {
+  background: rgba(244,236,216,0.95);
+  border-color: #d8cbb0;
+}
+
+body.theme-sepia #transport-time {
+  color: #2c1810;
+}
+
+body.theme-dark #transport {
+  background: rgba(26,26,26,0.9);
+  border-color: #444;
+}
+
+body.theme-dark .transport-btn {
+  background: #333;
+  border-color: #555;
+  color: #ddd;
+}
+
+body.theme-dark .transport-btn:active {
+  background: #444;
+}
+
+body.theme-dark #transport-time {
+  color: #ddd;
+}
+
+body.theme-dark #transport-seek {
+  accent-color: #ccc;
+}
+
 /* Écrans étroits : réduire la rangée de navigation et remonter les boutons du
    coin droit, qui recouvraient le bouton « Fin ». Rien ne change au-delà. */
 @media (max-width: 700px) {
+  #transport {
+    bottom: calc(34px + 3vh);
+    gap: 6px;
+    padding: 4px 6px;
+  }
+
+  .transport-btn {
+    width: 40px;
+    height: 40px;
+    font-size: 18px;
+    border-radius: 6px;
+  }
+
+  #transport-seek {
+    width: 30vw;
+    min-width: 60px;
+    flex: 1 1 auto;
+    height: 40px;
+  }
+
+  #transport-time {
+    font-size: 13px;
+    min-width: 0;
+  }
+
   #nav-buttons {
     gap: 2px;
   }

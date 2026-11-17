@@ -41,6 +41,11 @@ html(lang="fr")
         .settings-row
           span#zoom-value 40
           input#zoom-range(type="range" min="30" max="80" step="5" value="40")
+      .settings-group
+        label.settings-label(for="master-volume-range") Volume général
+        .settings-row
+          span#master-volume-value 80
+          input#master-volume-range(type="range" min="0" max="100" step="5" value="80" aria-label="Volume général")
       #parts-group.settings-group.hidden
         label.settings-label Voix
         #parts-list
@@ -98,6 +103,11 @@ html(lang="fr")
     #page-indicator
     #loading-indicator.hidden
       .spinner-small
+    #transport.hidden(role="group" aria-label="Lecture audio")
+      button#transport-play.transport-btn(type="button" title="Lecture / pause (p)" aria-label="Lecture") ▶
+      button#transport-stop.transport-btn(type="button" title="Arrêt (s)" aria-label="Arrêt") ■
+      input#transport-seek(type="range" min="0" max="1000" step="1" value="0" aria-label="Position de lecture")
+      span#transport-time(title="Cliquer pour se déplacer dans la lecture") 0:00 / 0:00
     #nav-buttons
       button.nav-btn(data-action="start" title="Début") ⏮
       button.nav-btn(data-action="prev-mov" title="Mouvement précédent") ◀◀

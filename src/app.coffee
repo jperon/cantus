@@ -385,6 +385,19 @@ movementLoadTokens = new Map()  # movementId -> loadToken de la demande en cours
 playbackCache = new Map()  # "movementId:variante de voix" -> données de lecture
 pendingPlayback = new Map()  # même clé -> {resolve, reject}
 
+# Transport audio (lot 1) : état de la lecture du mouvement affiché.
+# position et duration sont en millisecondes ; loadToken invalide une demande
+# de données de lecture devenue obsolète (arrêt, changement de mouvement).
+playback =
+  movementId: null
+  hasData: false
+  state: "stopped"  # "stopped" | "playing" | "paused" | "loading"
+  position: 0
+  duration: 0
+  loading: false
+  loadToken: 0
+  rafId: null
+
 # Worker message handler
 worker.onmessage = (e) ->
   {type} = e.data
@@ -612,6 +625,263 @@ window.__musicaPlaybackProbe = ->
         error: err?.message or String(err)
       }
 
+# --- Transport audio (lot 1) ---------------------------------------------
+# Lecture/pause, arrêt, progression et volume général. Aucune synchronisation
+# de défilement ni volume par voix ici : ces lots viendront ensuite.
+
+audioEngine = -> window.__musicaAudio
+
+formatTime = (ms) ->
+  total = Math.max 0, Math.round((Number(ms) or 0) / 1000)
+  minutes = Math.floor total / 60
+  seconds = total % 60
+  "#{minutes}:#{if seconds < 10 then "0#{seconds}" else seconds}"
+
+showTransport = ->
+  el = $("transport")
+  el?.classList.remove "hidden"
+
+hideTransport = ->
+  el = $("transport")
+  el?.classList.add "hidden"
+
+# Position affichée : le moteur fait foi pendant la lecture
+currentPlaybackPosition = ->
+  return playback.position unless playback.state is "playing"
+  engine = audioEngine()
+  return playback.position unless engine
+  Math.max 0, engine.position() * 1000
+
+renderTransport = ->
+  seek = $("transport-seek")
+  time = $("transport-time")
+  playBtn = $("transport-play")
+  duration = Math.max 0, playback.duration or 0
+  rawPosition = currentPlaybackPosition()
+  position = Math.max 0, rawPosition
+  position = Math.min position, duration if duration > 0
+  playback.position = position
+  playing = playback.state is "playing"
+  loading = playback.state is "loading"
+  if seek and document.activeElement isnt seek
+    seek.value = if duration > 0 then Math.round(position / duration * 1000) else 0
+  time.textContent = "#{formatTime position} / #{formatTime duration}" if time
+  if playBtn
+    playBtn.textContent = if playing then "❚❚" else "▶"
+    playBtn.setAttribute "aria-label", if playing then "Pause" else "Lecture"
+    playBtn.disabled = loading
+
+cancelPlaybackFrame = ->
+  if playback.rafId?
+    cancelAnimationFrame playback.rafId
+    playback.rafId = null
+
+# Une seule boucle rAF vivante à la fois ; rien n'est écrit dans localStorage
+playbackFrame = ->
+  playback.rafId = null
+  return unless playback.state is "playing"
+  renderTransport()
+  playback.rafId = requestAnimationFrame playbackFrame
+
+startPlaybackFrame = ->
+  cancelPlaybackFrame()
+  playback.rafId = requestAnimationFrame playbackFrame
+
+seekPlayback = (ms) ->
+  duration = Math.max 0, playback.duration or 0
+  value = Math.max 0, Number(ms) or 0
+  value = duration if duration > 0 and value > duration
+  playback.position = value
+  engine = audioEngine()
+  if playback.hasData and engine
+    try
+      engine.seek value / 1000
+    catch err
+      console.warn "Déplacement de lecture impossible : #{err?.message or err}"
+  renderTransport()
+
+# Libère le moteur et oublie les données chargées (changement de mouvement,
+# rechargement, retour à la bibliothèque).
+resetPlayback = ->
+  cancelPlaybackFrame()
+  playback.loadToken++
+  engine = audioEngine()
+  if engine
+    try
+      engine.destroy()
+    catch err
+      console.warn "Arrêt du moteur audio impossible : #{err?.message or err}"
+  playback.movementId = null
+  playback.hasData = false
+  playback.state = "stopped"
+  playback.position = 0
+  playback.duration = 0
+  playback.loading = false
+  renderTransport()
+
+stopPlayback = ->
+  cancelPlaybackFrame()
+  playback.loadToken++
+  playback.loading = false
+  engine = audioEngine()
+  if engine
+    try
+      engine.stop()
+    catch err
+      console.warn "Arrêt de lecture impossible : #{err?.message or err}"
+  playback.state = "stopped"
+  playback.position = 0
+  renderTransport()
+
+pausePlayback = ->
+  return unless playback.state is "playing"
+  engine = audioEngine()
+  return unless engine
+  playback.position = Math.max 0, engine.position() * 1000
+  try
+    engine.pause()
+  catch err
+    console.warn "Pause impossible : #{err?.message or err}"
+  playback.state = "paused"
+  cancelPlaybackFrame()
+  renderTransport()
+
+beginPlayback = (engine, fromMs) ->
+  try
+    engine.play (fromMs or 0) / 1000
+  catch err
+    console.warn "Lecture impossible : #{err?.message or err}"
+    playback.state = "stopped"
+    hideTransport()
+    renderTransport()
+    return
+  playback.state = "playing"
+  renderTransport()
+  startPlaybackFrame()
+
+# Démarre la lecture du mouvement affiché : charge ses données de lecture au
+# besoin, puis lance le moteur.
+startPlayback = ->
+  engine = audioEngine()
+  unless engine
+    console.warn "Moteur audio indisponible"
+    hideTransport()
+    return
+  result = getMovementForPage displayedPage()
+  unless result
+    hideTransport()
+    return
+  movementId = result.movement.id
+  if playback.hasData and playback.movementId is movementId
+    beginPlayback engine, playback.position
+    return
+  token = ++playback.loadToken
+  playback.loading = true
+  playback.state = "loading"
+  renderTransport()
+  requestPlaybackData movementId
+    .then (data) ->
+      return unless playback.loadToken is token
+      unless data
+        playback.loading = false
+        playback.state = "stopped"
+        hideTransport()
+        renderTransport()
+        console.warn "Données de lecture indisponibles pour le mouvement #{movementId}"
+        return
+      current = getMovementForPage displayedPage()
+      unless current?.movement.id is movementId
+        playback.loading = false
+        playback.state = "stopped"
+        renderTransport()
+        return
+      playback.loading = false
+      playback.movementId = movementId
+      playback.hasData = true
+      playback.duration = Math.max 0, Number(data.duration) or 0
+      playback.position = 0
+      try
+        engine.load data
+      catch err
+        playback.hasData = false
+        playback.state = "stopped"
+        hideTransport()
+        renderTransport()
+        console.warn "Chargement audio impossible : #{err?.message or err}"
+        return
+      beginPlayback engine, 0
+    .catch (err) ->
+      return unless playback.loadToken is token
+      playback.loading = false
+      playback.state = "stopped"
+      hideTransport()
+      renderTransport()
+      console.warn "Données de lecture indisponibles : #{err?.message or err}"
+
+togglePlayPause = ->
+  return if playback.loading
+  if playback.state is "playing"
+    pausePlayback()
+  else
+    startPlayback()
+
+# Sonde de test : état du transport audio
+window.__musicaPlaybackState = ->
+  engine = audioEngine()
+  {
+    state: playback.state
+    position: Math.round currentPlaybackPosition()
+    duration: Math.round playback.duration or 0
+    engine: if engine?.getEngineMode? then engine.getEngineMode() else null
+    hasData: playback.hasData
+  }
+
+# Raccourci clavier : ne pas voler une touche saisie dans un champ, ni agir
+# quand l'overlay de réglages est ouvert.
+isFormField = (el) ->
+  return false unless el
+  tag = (el.tagName or "").toLowerCase()
+  tag in ["input", "select", "textarea"] or el.isContentEditable is true
+
+setupTransport = ->
+  $("transport-play")?.addEventListener "click", togglePlayPause
+  $("transport-stop")?.addEventListener "click", stopPlayback
+
+  seek = $("transport-seek")
+  seek?.addEventListener "input", (e) ->
+    duration = Math.max 0, playback.duration or 0
+    return unless duration > 0
+    seekPlayback (Number(e.target.value) or 0) / 1000 * duration
+
+  # Clic sur le libellé de temps : seek proportionnel à la position du clic
+  time = $("transport-time")
+  time?.addEventListener "click", (e) ->
+    duration = Math.max 0, playback.duration or 0
+    return unless duration > 0
+    rect = time.getBoundingClientRect()
+    ratio = if rect.width > 0 then (e.clientX - rect.left) / rect.width else 0
+    seekPlayback Math.max(0, Math.min(1, ratio)) * duration
+
+  engine = audioEngine()
+  engine?.onEnd ->
+    playback.state = "stopped"
+    playback.position = 0
+    cancelPlaybackFrame()
+    renderTransport()
+
+  document.addEventListener "keydown", (e) ->
+    return unless fileLoaded
+    return if e.ctrlKey or e.metaKey or e.altKey
+    return if isFormField e.target
+    return unless $("settings-overlay").classList.contains "hidden"
+    switch e.key.toLowerCase()
+      when "p"
+        e.preventDefault()
+        togglePlayPause()
+      when "s"
+        e.preventDefault()
+        stopPlayback()
+
 # Get movement and local page from global page number
 # Only returns loaded movements, falls back to movement 1 if not loaded
 getMovementForPage = (globalPage) ->
@@ -627,12 +897,14 @@ getMovementForPage = (globalPage) ->
   null
 
 # Settings defaults
-defaultSettings = { zoom: 40, theme: "white", tapSize: 30, scrollUnit: "page", overlap: 0 }
+defaultSettings = { zoom: 40, theme: "white", tapSize: 30, scrollUnit: "page", overlap: 0, masterVolume: 80 }
 
 loadSettings = ->
   try
     saved = localStorage.getItem "musica-settings"
-    if saved then JSON.parse(saved) else Object.assign({}, defaultSettings)
+    parsed = if saved then JSON.parse(saved) else {}
+    # Les réglages ajoutés depuis une version antérieure prennent leur défaut
+    Object.assign {}, defaultSettings, parsed
   catch
     Object.assign({}, defaultSettings)
 
@@ -666,12 +938,24 @@ applyScrollSettings = (unit, overlap) ->
   $("overlap-select").value = String overlap
   $("overlap-row").classList.toggle "hidden", unit isnt "page"
 
+applyMasterVolume = (volume) ->
+  value = parseInt volume
+  value = 80 unless isFinite value
+  value = Math.max 0, Math.min 100, value
+  engine = audioEngine()
+  engine?.setMasterVolume value
+  range = $("master-volume-range")
+  range.value = value if range
+  label = $("master-volume-value")
+  label.textContent = value if label
+
 applyAllSettings = ->
   settings = loadSettings()
   applyTheme settings.theme
   applyTapSize settings.tapSize
   applyZoom settings.zoom
   applyScrollSettings settings.scrollUnit or "page", settings.overlap or 0
+  applyMasterVolume settings.masterVolume
 
 # Parties masquées et leurs tailles, propres à chaque fichier
 loadHiddenParts = ->
@@ -723,6 +1007,8 @@ showImport = ->
   $("import-section").classList.remove "hidden"
   $("btn-library").classList.add "hidden"
   $("btn-settings").classList.add "hidden"
+  hideTransport()
+  resetPlayback()
 
 hideImport = ->
   $("import-section").classList.add "hidden"
@@ -825,6 +1111,10 @@ detectScrollMode = (svgString) ->
   scrollMode
 
 displayView = ->
+  # Un autre mouvement est affiché : la lecture en cours ne le concerne plus
+  if fileLoaded and playback.movementId?
+    current = getMovementForPage displayedPage()
+    resetPlayback() if current? and current.movement.id isnt playback.movementId
   slot = $("page-current")
   topPage = Math.floor(scrollPos / 2) + 1
   bottomPage = topPage + 1
@@ -1534,6 +1824,10 @@ reloadScore = (startPage) ->
 # Reset the render state and start converting the first source
 startLoad = (startPage = 1) ->
   token = ++loadToken
+  # Nouveau chargement (fichier, rechargement, zoom, voix) : le transport
+  # repart de zéro et le moteur audio libère son contexte.
+  hideTransport()
+  resetPlayback()
   partsChanged = false
   loadHiddenParts()
   scrollPos = 0
@@ -1593,6 +1887,7 @@ loadFirstSource = (token) ->
       fileLoaded = true
       hideImport()
       showLibraryBtn()
+      showTransport()
     .catch (err) ->
       return unless token is loadToken
       reportSourceError index, err
@@ -1739,6 +2034,10 @@ renderLibrary = ->
         list.appendChild item
 
 showLibrary = ->
+  # Retour à la bibliothèque : la lecture s'arrête et le contexte audio est
+  # libéré.
+  hideTransport()
+  resetPlayback()
   renderLibrary()
   $("library-overlay").classList.remove "hidden"
 
@@ -2136,6 +2435,18 @@ setupSettings = ->
     settings.overlap = parseInt e.target.value
     saveSettings settings
 
+  # Volume général : appliqué en direct, conservé à la fin du glissement
+  volumeRange = $("master-volume-range")
+  if volumeRange
+    volumeRange.addEventListener "input", (e) ->
+      applyMasterVolume parseInt e.target.value
+    volumeRange.addEventListener "change", (e) ->
+      value = parseInt e.target.value
+      applyMasterVolume value
+      settings = loadSettings()
+      settings.masterVolume = value
+      saveSettings settings
+
   # Storage management button
   storageBtn = $("btn-storage")
   if storageBtn
@@ -2335,6 +2646,7 @@ showError = (message) ->
 document.addEventListener "DOMContentLoaded", ->
   applyAllSettings()
   setupNavigation()
+  setupTransport()
   setupImport()
   setupLibrary()
   setupSettings()

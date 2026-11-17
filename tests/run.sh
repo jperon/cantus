@@ -26,7 +26,7 @@ echo "== Build SPA =="
 nix-shell -p nodejs --run "node build.js --spa" || exit 1
 
 if [ "$#" -eq 0 ]; then
-  set -- s1-import.js s2-folder.js s3-settings.js s4-offline.js s5-nopkg.js
+  set -- s1-import.js s2-folder.js s3-settings.js s4-offline.js s5-nopkg.js s6-audio.js
 fi
 
 status=0
