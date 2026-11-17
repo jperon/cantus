@@ -13,7 +13,7 @@ dans `dist/`, sans modifier `src/`, `pwa/` ni `build.js`.
 ## Lancement
 
 ```sh
-tests/run.sh              # construit dist/, lance les tests unitaires puis s1 à s6
+tests/run.sh              # construit dist/, lance les tests unitaires puis s1 à s7
 tests/run.sh s1-import.js # un seul scénario navigateur
 node --test tests/unit/*.test.js  # tests unitaires seuls (sans navigateur)
 ```
@@ -73,6 +73,17 @@ Si `pwa/soundfonts/piano-fluidr3-13notes.js` est absent, le build passe
   fichier ou redimensionnement pendant la lecture, erreur de données de
   lecture, MIDI vide, voix mémorisée absente du MIDI. `index.html` et
   `spa.html`.
+- `s7-share.js` — partage Android (`share_target` POST multipart). Le test
+  envoie depuis la page un `fetch('share', { method: 'POST', body: FormData })`
+  avec un `File`, exactement comme le navigateur Android ; le service worker
+  actif l'intercepte, stocke le fichier dans IndexedDB et redirige vers
+  `?shared=<jeton>`. Couvre : `.musicxml` valide (partition ouverte, nom
+  conservé), `.mscz` annoncé en `application/octet-stream` si le fichier de
+  test est présent (sinon cas sauté), fichier incompatible refusé proprement,
+  jeton consommé et retiré de l'URL (rechargement sans réimport), non-régression
+  du protocole `web+musicxml` (`?file=`), et manifeste servi en POST
+  multipart. `index.html` et `spa.html` (le `.mscz` seulement sur
+  `index.html`).
 
 ## Réglages de lecture
 
