@@ -16,6 +16,13 @@ clearMovements = ->
   currentMovement = null
   playbackCache = {}
 
+# Les données de lecture sont mises en cache par mouvement ET par mode
+# (déroulé / linéaire) : invalider un mouvement doit oublier ses deux entrées.
+invalidatePlaybackCache = (movementId) ->
+  prefix = "#{movementId}:"
+  for own key of playbackCache
+    delete playbackCache[key] if key.startsWith prefix
+
 # Load Verovio dynamically and initialize
 loadVerovio = (url) ->
   new Promise (resolve, reject) ->
@@ -147,7 +154,7 @@ loadMovement = (movementId, xmlString, pageWidth, pageHeight, scale = 40) ->
     options
   }
   # Les données de lecture dépendent du contenu chargé : recharger invalide
-  delete playbackCache[movementId]
+  invalidatePlaybackCache movementId
   currentMovement = movementId
   # Only the first pages are pushed now; the rest are rendered on demand
   # (renderMovementPage), so a big file is not rendered and cached entirely
@@ -174,7 +181,7 @@ switchToMovement = (movementId) ->
     return false
   currentMovement = movementId
   # loadData remplace les données du toolkit : le cache de lecture est périmé
-  delete playbackCache[movementId]
+  invalidatePlaybackCache movementId
   true
 
 # --- Données de lecture (MIDI + synchronisation) -----------------------------
@@ -439,9 +446,146 @@ buildSyncMarks = (timemap) ->
     syncMarks.push mark
   {syncMarks, duration}
 
+# --- Lecture linéaire (dérouler les reprises décoché) ----------------------
+#
+# Le timemap demandé avec {includeMeasures: true} porte un champ `measureOn`
+# sur l'entrée qui DÉBUTE chaque mesure, à son tstamp. Les passages suivants
+# d'une mesure répétée reçoivent un suffixe « -rend2 », « -rend3 »… Ce sont les
+# mêmes entrées que sans l'option, avec seulement ce champ en plus.
+
+# Id de base d'une mesure ou d'un élément : « m12-rend3 » -> « m12 »
+normalizeMeasureId = (id) ->
+  String(id).replace /-rend\d+$/, ''
+
+# Flux des mesures réellement jouées, dans l'ordre du timemap.
+# Renvoie [{id, base, t, entry, timemapIndex, flowIndex}].
+buildMeasureFlow = (timemap) ->
+  flow = []
+  for entry, timemapIndex in (timemap ? [])
+    continue unless entry?.measureOn?
+    t = Number entry.tstamp
+    continue unless isFinite t
+    id = String entry.measureOn
+    flow.push {
+      id
+      base: normalizeMeasureId id
+      t
+      entry
+      timemapIndex
+      flowIndex: flow.length
+    }
+  flow
+
+# Ordre écrit des mesures : celui du MEI. C'est la seule source qui contient
+# aussi les mesures jamais jouées (volta sautée, D.S. qui repart en arrière).
+# Les doublons éventuels sont écartés en conservant la première occurrence.
+measureIdsFromMei = (mei) ->
+  ids = []
+  seen = new Set()
+  pattern = /<measure\b[^>]*\b(?:xml:)?id="([^"]+)"/g
+  text = mei ? ""
+  while match = pattern.exec text
+    id = normalizeMeasureId match[1]
+    continue if seen.has id
+    seen.add id
+    ids.push id
+  ids
+
+# Segments de lecture linéaire : un segment par mesure ÉCRITE, dans l'ordre
+# écrit, avec un offset cumulé. La durée d'une mesure est l'écart entre son
+# occurrence retenue et l'entrée suivante du flux (ou la fin du timemap pour
+# la dernière). Un segment ne se chevauche jamais avec le suivant.
+#
+# Une mesure écrite absente du flux n'a jamais été jouée : elle est signalée
+# dans `missing` et simplement omise, sans décaler les autres. L'appelant
+# journalise un avertissement explicite.
+buildLinearSegments = (flow, totalDuration, writtenIds) ->
+  byBase = new Map()
+  for item in flow
+    byBase.set item.base, item unless byBase.has item.base
+  total = Number totalDuration
+  total = 0 unless isFinite(total) and total >= 0
+  segments = []
+  entries = []
+  missing = []
+  offset = 0
+  for id in writtenIds ? []
+    item = byBase.get id
+    unless item
+      missing.push id
+      continue
+    next = flow[item.flowIndex + 1]
+    to = if next? then next.t else total
+    duration = to - item.t
+    duration = 0 unless duration > 0
+    to = item.t + duration
+    segments.push {measureId: id, from: item.t, to, offset}
+    entries.push {
+      id
+      from: item.t
+      to
+      offset
+      occurrenceId: item.id
+      entry: item.entry
+      timemapIndex: item.timemapIndex
+    }
+    offset += duration
+  {segments, entries, missing, duration: offset}
+
+# Marqueurs de synchronisation du mode linéaire : un par mesure écrite, à
+# l'offset cumulé. L'id choisi est le premier élément de l'occurrence retenue
+# qui existe dans le SVG (les copies « -rendN » sont ramenées à l'id de base) ;
+# à défaut, l'id de la mesure elle-même, qui est aussi un élément du SVG.
+buildLinearSyncMarks = (timemap, entries) ->
+  pageCache = new Map()
+  pageOf = (id) ->
+    return pageCache.get(id) if pageCache.has id
+    page = tk.getPageWithElement id
+    pageCache.set id, page
+    page
+  syncMarks = []
+  for item in entries
+    candidates = []
+    addEntry = (entry) ->
+      return unless entry?
+      candidates.push id for id in (entry.on ? []) when id?
+      candidates.push id for id in (entry.off ? []) when id?
+    addEntry item.entry
+    # Une mesure silencieuse peut n'avoir aucun on/off sur son entrée de
+    # début : on cherche aussi les événements qui tombent dans son intervalle.
+    index = item.timemapIndex + 1
+    while index < timemap.length and (Number(timemap[index].tstamp) or 0) < item.to
+      addEntry timemap[index]
+      index += 1
+    mark = null
+    for raw in candidates
+      candidate = String raw
+      page = pageOf candidate
+      resolved = candidate
+      unless page > 0
+        base = normalizeMeasureId candidate
+        if base isnt candidate
+          resolved = base
+          page = pageOf base
+      if page > 0
+        mark = {t: item.offset, page, id: resolved}
+        break
+    unless mark
+      base = normalizeMeasureId item.id
+      page = pageOf base
+      mark = {t: item.offset, page, id: base} if page > 0
+    syncMarks.push mark if mark
+  syncMarks.sort (a, b) -> a.t - b.t
+  syncMarks
+
+# Clé du cache de lecture : le mode (déroulé / linéaire) change le contenu.
+playbackCacheKey = (movementId, linearRepeats) ->
+  "#{movementId}:#{if linearRepeats then 'linear' else 'expanded'}"
+
 # Données de lecture d'un mouvement déjà chargé (cache invalidé par loadData)
-buildPlaybackData = (movementId) ->
-  cached = playbackCache[movementId]
+buildPlaybackData = (movementId, linearRepeats = false) ->
+  cacheKey = playbackCacheKey movementId, linearRepeats
+  cached = playbackCache[cacheKey]
   return cached if cached
   mv = movements[movementId]
   throw new Error "Mouvement #{movementId} non chargé" unless mv?.loaded
@@ -450,10 +594,23 @@ buildPlaybackData = (movementId) ->
   midi = tk.renderToMIDI()
   unless midi
     throw new Error "Verovio n'a produit aucune donnée MIDI pour le mouvement #{movementId}"
-  timemap = tk.renderToTimemap({})
+  # Toujours demander les mesures : le coût est nul et `measureOn` ne gêne pas
+  # le mode déroulé, qui ignore simplement ce champ.
+  timemap = tk.renderToTimemap({includeMeasures: true})
   unless Array.isArray timemap
     throw new Error "Verovio n'a produit aucun timemap pour le mouvement #{movementId}"
-  {syncMarks, duration} = buildSyncMarks timemap
+  segments = []
+  if linearRepeats
+    flow = buildMeasureFlow timemap
+    writtenIds = measureIdsFromMei tk.getMEI({})
+    layout = buildLinearSegments flow, (timemapDuration timemap), writtenIds
+    for missingId in layout.missing
+      console.warn "Mesure écrite jamais jouée, ignorée en lecture linéaire : #{missingId} (mouvement #{movementId})"
+    segments = layout.segments
+    duration = layout.duration
+    syncMarks = buildLinearSyncMarks timemap, layout.entries
+  else
+    {syncMarks, duration} = buildSyncMarks timemap
   {parts, staves} = readPartInfo mv.xml
   staffLabels = (part.label for part in parts)
   staffSequence = []
@@ -462,8 +619,8 @@ buildPlaybackData = (movementId) ->
     count = 1 unless count > 0
     staffSequence.push part.label for n in [1..count]
   trackMap = buildTrackMap midi, staffLabels, staffSequence
-  data = {midi, syncMarks, staffLabels, trackMap, duration}
-  playbackCache[movementId] = data
+  data = {midi, syncMarks, staffLabels, trackMap, duration, segments, linearRepeats: !!linearRepeats}
+  playbackCache[cacheKey] = data
   data
 
 renderMovementPage = (movementId, pageNumber) ->
@@ -548,10 +705,10 @@ handleMessage = (e) ->
         renderMovementPage movementId, page
 
       when "getPlaybackData"
-        {movementId} = e.data
+        {movementId, linearRepeats} = e.data
         # Une erreur de lecture ne doit jamais bloquer le rendu des pages
         try
-          data = buildPlaybackData movementId
+          data = buildPlaybackData movementId, !!linearRepeats
           self.postMessage {
             type: "playbackData"
             movementId
@@ -560,6 +717,8 @@ handleMessage = (e) ->
             staffLabels: data.staffLabels
             trackMap: data.trackMap
             duration: data.duration
+            segments: data.segments ? []
+            linearRepeats: !!data.linearRepeats
           }
         catch playbackErr
           self.postMessage {
@@ -586,3 +745,15 @@ notifyReady = ->
   flushPending()
 
 self.onmessage = handleMessage
+
+# Tests unitaires Node : le worker n'est pas un module, on expose seulement les
+# fonctions pures de construction des segments. En Worker, `module` n'existe
+# pas et cette branche est ignorée.
+if typeof module isnt 'undefined' and module?.exports?
+  module.exports = {
+    normalizeMeasureId
+    buildMeasureFlow
+    measureIdsFromMei
+    buildLinearSegments
+    playbackCacheKey
+  }
