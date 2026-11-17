@@ -1,0 +1,311 @@
+// Harnais de test Cantus — serveur local et aides Playwright.
+// Aucun fichier de src/, pwa/ ni build.js n'est modifié par ces tests.
+const path = require('path');
+const fs = require('fs');
+const http = require('http');
+
+const ROOT = path.resolve(__dirname, '..');
+const DIST = path.join(ROOT, 'dist');
+const PW = '/home/jacques/programmes/musique/cantus/node_modules/playwright';
+const { chromium } = require(PW);
+
+const SCRATCH = '/tmp/claude-1000/-home-jacques-programmes-musique-cantus/73505585-ba9d-4437-9275-b28fef3b2ac0/scratchpad';
+const FILES = {
+  telemannXml: path.join(SCRATCH, 'telemann/telemann-sonatas-for-two-recorders.xml'),
+  bachXml: path.join(SCRATCH, 'bach/Magnificat_Bach.xml'),
+  bachMxl: path.join(process.env.HOME, 'Téléchargements/Magnificat_Bach.mxl'),
+  byrdMscz: path.join(process.env.HOME, 'Téléchargements/Ave_Verum_Corpus_-_William_Byrd.mscz'),
+  faureMscz: path.join(process.env.HOME, 'Téléchargements/Cantique de Jean Racine - Fauré.mscz'),
+  laFouleMxl: '/home/jacques/programmes/musique/cantus/La_foule.mxl',
+  magnificatDir: path.join(SCRATCH, 'magnificat'),
+};
+
+const MIME = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'application/javascript',
+  '.json': 'application/json',
+  '.wasm': 'application/wasm',
+  '.png': 'image/png',
+  '.ico': 'image/x-icon',
+  '.svg': 'image/svg+xml',
+  '.css': 'text/css',
+};
+
+// Sert un dossier dist. Les requêtes sont journalisées pour diagnostiquer
+// les tests hors ligne.
+function startServer(dist = DIST, { log = false } = {}) {
+  const requests = [];
+  const server = http.createServer((req, res) => {
+    const urlPath = decodeURIComponent((req.url || '/').split('?')[0]);
+    let rel = urlPath === '/' ? '/index.html' : urlPath;
+    const file = path.normalize(path.join(dist, rel));
+    if (!file.startsWith(dist)) {
+      res.writeHead(403);
+      return res.end();
+    }
+    if (log) requests.push(urlPath);
+    if (!fs.existsSync(file) || fs.statSync(file).isDirectory()) {
+      res.writeHead(404, { 'Content-Type': 'text/plain' });
+      return res.end('404');
+    }
+    res.writeHead(200, {
+      'Content-Type': MIME[path.extname(file)] || 'application/octet-stream',
+      'Cache-Control': 'no-store',
+    });
+    fs.createReadStream(file).pipe(res);
+  });
+  return new Promise((resolve) => {
+    server.listen(0, '127.0.0.1', () => {
+      resolve({ server, requests, url: `http://127.0.0.1:${server.address().port}` });
+    });
+  });
+}
+
+async function launch() {
+  return chromium.launch({ executablePath: process.env.CHROMIUM });
+}
+
+// Ouvre une page et collecte les erreurs JS (pageerror + console.error)
+async function newPage(browser, url, { pageName = 'index.html', viewport = { width: 500, height: 900 }, context } = {}) {
+  const ctx = context || await browser.newContext({ viewport });
+  if (context) await context.setDefaultTimeout?.(0).catch?.(() => {});
+  const page = await ctx.newPage();
+  await page.setViewportSize(viewport);
+  const errors = [];
+  // Erreurs JS seules : un échec réseau (attendu hors ligne) n'en est pas une
+  const netFailures = [];
+  page.on('pageerror', (e) => errors.push('pageerror: ' + (e.stack || e.message)));
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push('console: ' + m.text());
+  });
+  page.on('requestfailed', (r) => {
+    netFailures.push(`${r.url()} ${r.failure()?.errorText || ''}`);
+  });
+  const target = `${url}/${pageName}`;
+  await page.goto(target, { waitUntil: 'domcontentloaded', timeout: 60000 });
+  return { page, ctx, errors, netFailures, target };
+}
+
+async function waitReady(page, timeout = 60000) {
+  await page.waitForFunction(() => {
+    const el = document.getElementById('overlay-loading');
+    return el && el.classList.contains('hidden');
+  }, null, { timeout });
+}
+
+// Attend le premier SVG affiché. Renvoie aussi l'état du chargement de fond
+// au moment où le SVG apparaît.
+async function waitFirstSvg(page, timeout = 120000) {
+  const t0 = Date.now();
+  await page.waitForSelector('#page-current .scroll-page svg', { timeout });
+  const state = await page.evaluate(() => ({
+    pageNumber: document.getElementById('page-number')?.textContent || '',
+    backgroundLoading: !document.getElementById('loading-indicator')?.classList.contains('hidden'),
+    svgCount: document.querySelectorAll('#page-current .scroll-page svg').length,
+  }));
+  return { ms: Date.now() - t0, ...state };
+}
+
+async function pageInfo(page) {
+  return page.evaluate(() => {
+    const txt = document.getElementById('page-number')?.textContent || '';
+    const m = txt.match(/(\d+)\s*\/\s*(\d+)/);
+    const slot = document.getElementById('page-current');
+    return {
+      page: m ? parseInt(m[1], 10) : null,
+      total: m ? parseInt(m[2], 10) : null,
+      scrollTop: Math.round(slot.scrollTop),
+      scrollHeight: slot.scrollHeight,
+      clientHeight: slot.clientHeight,
+      svgCount: slot.querySelectorAll('.scroll-page svg').length,
+      loadingHidden: document.getElementById('loading-indicator')?.classList.contains('hidden'),
+      overlayHidden: document.getElementById('overlay-loading')?.classList.contains('hidden'),
+      importHidden: document.getElementById('import-section')?.classList.contains('hidden'),
+      libraryHidden: document.getElementById('library-overlay')?.classList.contains('hidden'),
+      errorText: document.getElementById('protocol-error')?.textContent || '',
+      errorVisible: document.getElementById('protocol-error')?.style.display === 'block',
+    };
+  });
+}
+
+async function waitPage(page, expected, timeout = 60000) {
+  await page.waitForFunction((p) => {
+    const txt = document.getElementById('page-number')?.textContent || '';
+    const m = txt.match(/(\d+)\s*\/\s*\d+/);
+    return m && parseInt(m[1], 10) === p;
+  }, expected, { timeout, polling: 200 });
+}
+
+async function waitTotalAtLeast(page, n, timeout = 300000) {
+  await page.waitForFunction((minimum) => {
+    const txt = document.getElementById('page-number')?.textContent || '';
+    const m = txt.match(/\d+\s*\/\s*(\d+)/);
+    return m && parseInt(m[1], 10) >= minimum;
+  }, n, { timeout, polling: 300 });
+}
+
+async function waitBackgroundLoaded(page, timeout = 300000) {
+  await page.waitForFunction(() => {
+    const el = document.getElementById('loading-indicator');
+    return el && el.classList.contains('hidden');
+  }, null, { timeout, polling: 300 });
+}
+
+async function importFile(page, file) {
+  await page.setInputFiles('#file-input', file);
+}
+
+async function importFiles(page, files) {
+  await page.setInputFiles('#file-input', files);
+}
+
+async function importFolder(page, dir) {
+  await page.setInputFiles('#folder-input', dir);
+}
+
+async function openLibrary(page) {
+  const visible = await page.evaluate(() => !document.getElementById('library-overlay').classList.contains('hidden'));
+  if (!visible) await page.click('#btn-library');
+  await page.waitForFunction(() => !document.getElementById('library-overlay').classList.contains('hidden'), null, { timeout: 10000 });
+  await page.waitForSelector('#library-list .library-item, #library-list .library-empty', { timeout: 10000 });
+}
+
+async function libraryEntries(page) {
+  return page.$$eval('#library-list .library-item', (items) => items.map((it) => ({
+    name: it.querySelector('.library-item-name')?.textContent?.trim(),
+    meta: it.querySelector('.library-item-date')?.textContent?.trim(),
+  })));
+}
+
+async function openLibraryEntry(page, index = 0) {
+  await openLibrary(page);
+  await page.click(`#library-list .library-item:nth-child(${index + 1}) .library-item-info`);
+}
+
+async function deleteLibraryEntry(page, index = 0) {
+  await openLibrary(page);
+  await page.click(`#library-list .library-item:nth-child(${index + 1}) .library-item-delete`);
+  await page.waitForTimeout(300);
+}
+
+async function openSettings(page) {
+  const visible = await page.evaluate(() => !document.getElementById('settings-overlay').classList.contains('hidden'));
+  if (!visible) await page.click('#btn-settings');
+  await page.waitForFunction(() => !document.getElementById('settings-overlay').classList.contains('hidden'), null, { timeout: 10000 });
+}
+
+async function closeSettings(page) {
+  await page.click('#settings-close');
+  await page.waitForFunction(() => document.getElementById('settings-overlay').classList.contains('hidden'), null, { timeout: 10000 });
+}
+
+async function staffHeights(page) {
+  return page.evaluate(() => {
+    const svg = document.querySelector('#page-current .scroll-page svg');
+    if (!svg) return null;
+    return Array.from(svg.querySelectorAll('g.staff')).map((s) => Math.round(s.getBoundingClientRect().height * 100) / 100);
+  });
+}
+
+async function partRows(page) {
+  return page.$$eval('#parts-list label', (labels) => labels.map((l) => ({
+    name: l.querySelector('span')?.textContent?.trim(),
+    checked: l.querySelector('input')?.checked,
+    disabled: l.querySelector('input')?.disabled,
+    size: l.querySelector('select')?.value,
+    sizeDisabled: l.querySelector('select')?.disabled,
+  })));
+}
+
+// Marque le SVG affiché pour prouver qu'il n'est pas re-rendu.
+async function markSvg(page) {
+  return page.evaluate(() => {
+    const svg = document.querySelector('#page-current .scroll-page svg');
+    if (!svg) return false;
+    svg.setAttribute('data-test-mark', '1');
+    return true;
+  });
+}
+
+async function markerPresent(page) {
+  return page.evaluate(() => !!document.querySelector('#page-current .scroll-page svg[data-test-mark="1"]'));
+}
+
+// État du défilement : positions des systèmes et des pages, en coordonnées
+// de défilement du slot.
+async function scrollState(page) {
+  return page.evaluate(() => {
+    const slot = document.getElementById('page-current');
+    const base = slot.getBoundingClientRect().top - slot.scrollTop;
+    const systems = [...slot.querySelectorAll('.scroll-page svg g.system')]
+      .map((g) => Math.round((g.getBoundingClientRect().top - base) * 10) / 10);
+    const pages = [...slot.querySelectorAll('.scroll-page')].map((d) => ({
+      page: parseInt(d.dataset.page, 10),
+      top: Math.round(d.getBoundingClientRect().top - base),
+      hasSvg: !!d.querySelector('svg'),
+    }));
+    const txt = document.getElementById('page-number')?.textContent || '';
+    const m = txt.match(/(\d+)\s*\/\s*(\d+)/);
+    return {
+      page: m ? parseInt(m[1], 10) : null,
+      total: m ? parseInt(m[2], 10) : null,
+      top: Math.round(slot.scrollTop),
+      clientHeight: slot.clientHeight,
+      scrollHeight: slot.scrollHeight,
+      systems,
+      pages,
+    };
+  });
+}
+
+async function resetScrollTop(page) {
+  await page.evaluate(() => { document.getElementById('page-current').scrollTop = 0; });
+  await page.waitForTimeout(300);
+}
+
+async function staffCount(page) {
+  return page.evaluate(() => {
+    const svg = document.querySelector('#page-current .scroll-page svg');
+    return svg ? svg.querySelectorAll('g.staff').length : 0;
+  });
+}
+
+async function tap(page, side) {
+  const box = { x: side === 'left' ? 60 : 440, y: 450 };
+  await page.mouse.click(box.x, box.y);
+}
+
+async function pressArrow(page, dir) {
+  await page.keyboard.press(dir === 'right' ? 'ArrowRight' : 'ArrowLeft');
+}
+
+// Attend que la page affichée change (utile pour la navigation)
+async function waitPageChange(page, from, timeout = 30000) {
+  await page.waitForFunction((prev) => {
+    const txt = document.getElementById('page-number')?.textContent || '';
+    const m = txt.match(/(\d+)\s*\/\s*\d+/);
+    return m && parseInt(m[1], 10) !== prev;
+  }, from, { timeout, polling: 100 });
+}
+
+function summarize(errors) {
+  // Les 404 de favicon n'ont pas d'incidence ; on garde tout le reste.
+  return errors.filter((e) => !/favicon\.ico.*404|404.*favicon\.ico/i.test(e));
+}
+
+function record(results, scenario, pageName, outcome, detail = '') {
+  results.push({ scenario, page: pageName, outcome, detail });
+  const line = `[${outcome}] ${scenario} (${pageName})${detail ? ' — ' + detail : ''}`;
+  console.log(line);
+}
+
+module.exports = {
+  ROOT, DIST, SCRATCH, FILES, startServer, launch, newPage,
+  waitReady, waitFirstSvg, pageInfo, waitPage, waitTotalAtLeast,
+  waitBackgroundLoaded, importFile, importFiles, importFolder,
+  openLibrary, libraryEntries, openLibraryEntry, deleteLibraryEntry,
+  openSettings, closeSettings, staffHeights, partRows,
+  markSvg, markerPresent, tap, pressArrow, waitPageChange,
+  scrollState, resetScrollTop, staffCount,
+  summarize, record,
+};
