@@ -408,6 +408,12 @@ html, body {
   accent-color: #333;
 }
 
+.settings-hint {
+  margin: 0 0 4px 28px;
+  font-size: 12px;
+  color: #666;
+}
+
 #zoom-range {
   flex: 1;
   height: 4px;

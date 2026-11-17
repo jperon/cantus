@@ -3,14 +3,19 @@
 # DISTINCT pour pouvoir le purger et le préserver indépendamment des SVG.
 #
 # La clé inclut tout ce qui change la géométrie du rendu Verovio : fichier,
-# mouvement, largeur, hauteur, échelle et variante de voix (masquage/tailles).
-# Un zoom, une rotation, un redimensionnement ou un masquage produit donc une
-# autre clé et ne sert jamais des marqueurs désalignés.
+# mouvement, largeur, hauteur, échelle et variante (voix masquées/tailles et
+# mode de reprise). Un zoom, une rotation, un redimensionnement, un masquage
+# ou « Dérouler les reprises » produit donc une autre clé : les données des
+# modes déroulé et linéaire ne se mélangent jamais.
+#
+# v3 : la forme des données change (segments/linearRepeats) et la variante
+# porte le mode de reprise. Bumper le cache garantit qu'aucune entrée v2
+# (sans ces champs, toujours déroulée) ne soit resservie après la mise à jour.
 
 # IIFE : les modules inline partagent la portée globale. Sans cela, `cache`,
 # `get`, `set`… écraseraient ceux de svgCache.coffee (même page, scripts inline).
 do ->
-  CACHE_NAME = "musica-playback-cache-v2"
+  CACHE_NAME = "musica-playback-cache-v3"
   MAX_STORAGE_BYTES = 50 * 1024 * 1024  # 50 MB
 
   cache = null

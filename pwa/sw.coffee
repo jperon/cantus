@@ -56,7 +56,7 @@ self.addEventListener 'install', (event) ->
 PRESERVED_CACHES = [
   'musica-structure-cache-v1'
   'musica-svg-cache-v1'
-  'musica-playback-cache-v2'
+  'musica-playback-cache-v3'
 ]
 
 # Un cache est ancien s'il appartient à ce service worker mais pas à cette

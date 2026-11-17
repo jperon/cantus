@@ -361,6 +361,7 @@ partSizes = {}  # Libellé de voix -> taille en % (100 = taille normale)
 partVolumes = {}  # Libellé de voix -> volume en % (100 = volume normal)
 partsChanged = false  # Réglages de voix modifiés, à appliquer à la fermeture
 followPlaybackEnabled = true  # Suivi du défilement pendant la lecture
+expandRepeats = true  # Dérouler les reprises (false : lecture linéaire écrite)
 currentScrollUnit = "page"  # Dernier réglage « Défilement » appliqué
 
 # Pages pre-rendered around the displayed one
@@ -499,9 +500,9 @@ worker.onmessage = (e) ->
         pending.reject new Error message
 
     when "playbackData"
-      {movementId, midi, syncMarks, staffLabels, trackMap, duration} = e.data
+      {movementId, midi, syncMarks, staffLabels, trackMap, duration, segments, linearRepeats} = e.data
       key = playbackKey movementId
-      data = {midi, syncMarks, staffLabels, trackMap, duration}
+      data = {midi, syncMarks, staffLabels, trackMap, duration, segments: segments ? [], linearRepeats: !!linearRepeats}
       playbackCache.set key, data
       pending = pendingPlayback.get key
       if pending
@@ -567,7 +568,8 @@ requestFromWorker = (movementId, localPage) ->
 # Clé du cache de lecture : une sélection de voix différente (masquage ou
 # taille) produit un autre rendu Verovio, donc d'autres données de lecture.
 playbackKey = (movementId) ->
-  "#{movementId}:#{partsVariant()}"
+  mode = if expandRepeats then "expanded" else "linear"
+  "#{movementId}:#{partsVariant()}:#{mode}"
 
 # Demande les données de lecture (MIDI, synchronisation) : cache mémoire,
 # cache persistant (compressé, clé géométrique) puis worker. La clé persistante
@@ -581,7 +583,9 @@ requestPlaybackData = (movementId) ->
   width = currentPageWidth
   height = currentPageHeight
   scale = currentScale
-  variant = partsVariant()
+  # Le mode de reprise fait partie de la clé persistante : les données des
+  # deux modes ne se servent jamais l'une pour l'autre.
+  variant = "#{partsVariant()}|#{if expandRepeats then 'expanded' else 'linear'}"
   promise = new Promise (resolve, reject) ->
     pendingPlayback.set key, {resolve, reject}
     cached = if playbackStore?.get? and fileId
@@ -602,6 +606,7 @@ requestPlaybackData = (movementId) ->
         worker.postMessage
           type: "getPlaybackData"
           movementId: movementId
+          linearRepeats: not expandRepeats
   # Écrire le résultat dans le cache persistant, sans retarder la lecture
   promise.then (data) ->
     if data and playbackStore?.set? and fileId
@@ -632,6 +637,8 @@ window.__musicaPlaybackProbe = ->
       syncMarksCount: 0
       firstMarks: []
       duration: 0
+      segmentsCount: 0
+      linearRepeats: false
       staffLabels: []
       trackMap: {}
       midiBytes: 0
@@ -645,6 +652,8 @@ window.__musicaPlaybackProbe = ->
         syncMarksCount: data.syncMarks?.length ? 0
         firstMarks: (data.syncMarks ? []).slice 0, 5
         duration: data.duration ? 0
+        segmentsCount: data.segments?.length ? 0
+        linearRepeats: !!data.linearRepeats
         staffLabels: data.staffLabels ? []
         trackMap: data.trackMap ? {}
         midiBytes: base64Bytes data.midi
@@ -656,6 +665,8 @@ window.__musicaPlaybackProbe = ->
         syncMarksCount: 0
         firstMarks: []
         duration: 0
+        segmentsCount: 0
+        linearRepeats: false
         staffLabels: []
         trackMap: {}
         midiBytes: 0
@@ -995,7 +1006,7 @@ getMovementForPage = (globalPage) ->
   null
 
 # Settings defaults
-defaultSettings = { zoom: 40, theme: "white", tapSize: 30, scrollUnit: "page", overlap: 0, masterVolume: 80, followPlayback: true }
+defaultSettings = { zoom: 40, theme: "white", tapSize: 30, scrollUnit: "page", overlap: 0, masterVolume: 80, followPlayback: true, expandRepeats: true }
 
 loadSettings = ->
   try
@@ -1042,6 +1053,11 @@ applyFollowPlayback = (enabled) ->
   box = $("follow-playback")
   box.checked = followPlaybackEnabled if box
 
+applyExpandRepeats = (enabled) ->
+  expandRepeats = enabled isnt false
+  box = $("expand-repeats")
+  box.checked = expandRepeats if box
+
 applyMasterVolume = (volume) ->
   value = parseInt volume
   value = 80 unless isFinite value
@@ -1061,6 +1077,7 @@ applyAllSettings = ->
   applyScrollSettings settings.scrollUnit or "page", settings.overlap or 0
   applyMasterVolume settings.masterVolume
   applyFollowPlayback settings.followPlayback
+  applyExpandRepeats settings.expandRepeats
 
 # Applique les volumes et masquages enregistrés au moteur audio, par libellé.
 # Les libellés inconnus du mouvement chargé sont acceptés sans erreur : une
@@ -2612,6 +2629,19 @@ setupSettings = ->
       settings = loadSettings()
       settings.followPlayback = enabled
       saveSettings settings
+
+  # Dérouler les reprises : le mode change le contenu des données de lecture.
+  # On arrête la lecture en cours et on oublie les données du mouvement ; la
+  # clé de cache inclut le mode, la prochaine lecture demandera les bonnes.
+  expandBox = $("expand-repeats")
+  if expandBox
+    expandBox.addEventListener "change", (e) ->
+      enabled = e.target.checked
+      applyExpandRepeats enabled
+      settings = loadSettings()
+      settings.expandRepeats = enabled
+      saveSettings settings
+      resetPlayback()
 
   # Volume général : appliqué en direct, conservé à la fin du glissement
   volumeRange = $("master-volume-range")
