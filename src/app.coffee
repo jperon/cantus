@@ -376,6 +376,13 @@ systemHeight = 0  # Height of a single system in vertical mode
 movements = []  # [{id, pageCount, pushed, loaded}]
 pendingRenders = new Map()  # "movementId:page" -> resolve function
 pushedPages = {}  # movementId -> last page of the initial push received (in order)
+# Variante de voix du XML chargé dans le worker, par mouvement. Un rendu (SVG
+# ou données de lecture) dépend du XML chargé, pas de l'état courant des
+# réglages : c'est cette variante qui doit servir de clé de cache. Quand une
+# taille change dans les réglages, partSizes est mis à jour tout de suite mais
+# le XML du worker ne l'est qu'au rechargement.
+movementVariants = {}  # movementId -> variante du XML chargé
+memoryVariant = null  # variante des entrées de memoryCache
 pendingMovementLoads = new Map()  # movementId -> resolve function
 pendingMscz = new Map()  # MuseScore conversion id -> {resolve, reject}
 msczRequestId = 0
@@ -462,23 +469,31 @@ worker.onmessage = (e) ->
       globalPage = page
       for m in movements when m.id < movementId
         globalPage += m.pageCount or 0
-      memoryCache.set globalPage, svg
       # Pushes arrive in page order: remember how far the worker got
       pushedPages[movementId] = page if page > (pushedPages[movementId] or 0)
-      # Store in persistent cache (async, non-blocking)
-      if currentFileId and currentPageWidth and currentPageHeight
-        svgStore.set(currentFileId, globalPage, svg, currentPageWidth, currentPageHeight, partsVariant()).catch (err) ->
-          console.error "Erreur stockage SVG:", err
+      # Le SVG a été rendu à partir du XML chargé dans le worker : il vaut
+      # pour la variante de ce XML, pas pour les réglages courants. Après un
+      # changement de tailles non encore appliqué, une page en vol ne doit ni
+      # entrer dans les caches sous la nouvelle variante (elle y resterait
+      # périmée et serait resservie), ni être affichée.
+      variant = loadedVariant movementId
+      stale = variant isnt partsVariant()
+      unless stale
+        memoryCache.set globalPage, svg
+        # Store in persistent cache (async, non-blocking)
+        if currentFileId and currentPageWidth and currentPageHeight
+          svgStore.set(currentFileId, globalPage, svg, currentPageWidth, currentPageHeight, variant).catch (err) ->
+            console.error "Erreur stockage SVG:", err
       # Resolve pending render if any
       key = "#{movementId}:#{page}"
       if pendingRenders.has(key)
-        pendingRenders.get(key)(svg)
+        pendingRenders.get(key)(if stale then "" else svg)
         pendingRenders.delete(key)
       # Note: displayView() is now async, so we don't call it here
       # The async displayView will update when pages are loaded
 
       # Hide loading indicator once the whole score is loaded and cached
-      if allSourcesLoaded and memoryCache.size >= pageCount and pageCount > 0
+      if not stale and allSourcesLoaded and memoryCache.size >= pageCount and pageCount > 0
         hideLoadingIndicator()
 
     when "error"
@@ -530,6 +545,7 @@ getGlobalPage = (movementId, localPage) ->
 # Checks caches first
 requestPage = (movementId, localPage) ->
   globalPage = getGlobalPage(movementId, localPage)
+  syncMemoryVariant()
 
   # Check memory cache first
   if memoryCache.has(globalPage)
@@ -539,7 +555,10 @@ requestPage = (movementId, localPage) ->
   pendingKey = "page:#{globalPage}"
   return pendingRequests.get(pendingKey) if pendingRequests.has(pendingKey)
 
-  promise = svgStore.get(currentFileId, globalPage, currentPageWidth, currentPageHeight, partsVariant()).then (svg) ->
+  # La page sera rendue à partir du XML chargé pour ce mouvement : sa clé de
+  # cache est la variante de ce XML, pas les réglages courants.
+  variant = loadedVariant movementId
+  promise = svgStore.get(currentFileId, globalPage, currentPageWidth, currentPageHeight, variant).then (svg) ->
     if svg
       memoryCache.set(globalPage, svg)
       return svg
@@ -567,9 +586,11 @@ requestFromWorker = (movementId, localPage) ->
 
 # Clé du cache de lecture : une sélection de voix différente (masquage ou
 # taille) produit un autre rendu Verovio, donc d'autres données de lecture.
+# Les données sont calculées à partir du XML chargé dans le worker : c'est sa
+# variante qui compte, pas l'état courant des réglages.
 playbackKey = (movementId) ->
   mode = if expandRepeats then "expanded" else "linear"
-  "#{movementId}:#{partsVariant()}:#{mode}"
+  "#{movementId}:#{loadedVariant movementId}:#{mode}"
 
 # Demande les données de lecture (MIDI, synchronisation) : cache mémoire,
 # cache persistant (compressé, clé géométrique) puis worker. La clé persistante
@@ -585,7 +606,7 @@ requestPlaybackData = (movementId) ->
   scale = currentScale
   # Le mode de reprise fait partie de la clé persistante : les données des
   # deux modes ne se servent jamais l'une pour l'autre.
-  variant = "#{partsVariant()}|#{if expandRepeats then 'expanded' else 'linear'}"
+  variant = "#{loadedVariant movementId}|#{if expandRepeats then 'expanded' else 'linear'}"
   promise = new Promise (resolve, reject) ->
     pendingPlayback.set key, {resolve, reject}
     cached = if playbackStore?.get? and fileId
@@ -1139,6 +1160,22 @@ partsVariant = ->
   return hidden if sizes.length is 0  # clé inchangée quand toutes les voix sont à 100 %
   "#{hidden}|#{sizes.join ','}"
 
+# Variante du XML que le worker a chargé pour un mouvement (voir
+# movementVariants). Tant qu'un mouvement n'a pas été chargé, les réglages
+# courants font foi.
+loadedVariant = (movementId) -> movementVariants[movementId] ? partsVariant()
+
+# Le cache mémoire ne porte pas la variante dans sa clé : dès que les réglages
+# de voix changent, ses pages ne valent plus (le rechargement le vide aussi,
+# mais une page peut être demandée entre le changement et le rechargement).
+syncMemoryVariant = ->
+  variant = partsVariant()
+  return variant if variant is memoryVariant
+  memoryVariant = variant
+  memoryCache.clear()
+  pendingRequests.clear()
+  variant
+
 # DOM refs
 $ = (id) -> document.getElementById id
 
@@ -1219,6 +1256,7 @@ showIndicator = ->
   , 1500
 
 renderPageAsync = (globalPage) ->
+  syncMemoryVariant()
   return Promise.resolve(memoryCache.get(globalPage)) if memoryCache.has(globalPage)
   result = getMovementForPage(globalPage)
   return Promise.resolve("") unless result
@@ -1984,6 +2022,8 @@ startLoad = (startPage = 1) ->
   # Drop the displayed pages: they belong to the previous render
   $("page-current").innerHTML = ""
   memoryCache.clear()
+  memoryVariant = partsVariant()
+  movementVariants = {}
   pendingRequests.clear()
   pendingRenders.clear()
   pendingMovementLoads.clear()
@@ -2009,6 +2049,12 @@ startLoad = (startPage = 1) ->
 
   currentPageWidth = Math.round(window.innerWidth * 100 / currentScale)
   currentPageHeight = Math.round(window.innerHeight * 100 / currentScale)
+
+  # Les pages des autres variantes de voix ne seront plus demandées : les
+  # purger évite que le cache enfle à chaque essai de taille.
+  if currentFileId
+    svgStore.pruneVariants(currentFileId, partsVariant()).catch (err) ->
+      console.warn "Purge du cache SVG impossible : #{err?.message or err}"
 
   # Clear previous movements before loading new file
   worker.postMessage { type: "clearMovements" }
@@ -2130,6 +2176,9 @@ loadMovementAndWait = (movementId, xmlString, pageWidth, pageHeight) ->
     pendingMovementLoads.set movementId, resolve
     # Retain the load this reply belongs to, so a superseded one is ignored
     movementLoadTokens.set movementId, loadToken
+    # Le XML envoyé porte les tailles de voix courantes : les pages que le
+    # worker va produire pour ce mouvement vaudront pour cette variante.
+    movementVariants[movementId] = partsVariant()
 
     worker.postMessage
       type: "loadMovement"

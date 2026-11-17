@@ -55,7 +55,7 @@ self.addEventListener 'install', (event) ->
 # recalculés à chaque déploiement.
 PRESERVED_CACHES = [
   'musica-structure-cache-v1'
-  'musica-svg-cache-v1'
+  'musica-svg-cache-v2'
   'musica-playback-cache-v3'
 ]
 
