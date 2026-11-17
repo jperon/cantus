@@ -9,8 +9,6 @@
 # CommonJS pour les tests Node) :
 #   markAt(marks, tMs)             -> dernier marqueur dont t <= tMs, ou null
 #   firstMarkOfPage(marks, page)   -> premier marqueur d'une page, ou null
-#   firstMarkOfSystem(marks, sys)  -> premier marqueur du système `system`
-#                                     (champ facultatif des marqueurs), ou null
 #   planFollow(marks, tMs, opts)   -> {page, id} ou null
 #
 # `opts.scrollUnit` vaut "system" ou "page" (défaut). En mode page, l'id choisi
@@ -39,12 +37,6 @@ firstMarkOfPage = (marks, page) ->
     return mark
   null
 
-firstMarkOfSystem = (marks, system) ->
-  return null unless Array.isArray(marks) and marks.length and system?
-  for mark in marks when mark.system is system
-    return mark
-  null
-
 planFollow = (marks, tMs, options = {}) ->
   return null unless Array.isArray(marks) and marks.length
   base = markAt(marks, tMs) ? marks[0]
@@ -56,7 +48,7 @@ planFollow = (marks, tMs, options = {}) ->
     first = firstMarkOfPage marks, page
     {page, id: (first ? base).id}
 
-api = {markAt, firstMarkOfPage, firstMarkOfSystem, planFollow}
+api = {markAt, firstMarkOfPage, planFollow}
 
 window.__musicaPlayback = api if typeof window isnt 'undefined'
 module.exports = api if typeof module isnt 'undefined' and module.exports?

@@ -47,12 +47,9 @@ test('markAt : avant le premier marqueur, liste vide ou temps invalide -> null',
   assert.strictEqual(playback.markAt(MARKS, NaN), null);
 });
 
-test('firstMarkOfPage / firstMarkOfSystem', () => {
+test('firstMarkOfPage', () => {
   assert.strictEqual(playback.firstMarkOfPage(MARKS, 2).id, 'm3');
   assert.strictEqual(playback.firstMarkOfPage(MARKS, 9), null);
-  const withSystems = MARKS.map((m, i) => ({ ...m, system: Math.floor(i / 2) + 1 }));
-  assert.strictEqual(playback.firstMarkOfSystem(withSystems, 2).id, 'm3');
-  assert.strictEqual(playback.firstMarkOfSystem(MARKS, 2), null);
 });
 
 test('planFollow : mode page -> première page du marqueur courant', () => {
