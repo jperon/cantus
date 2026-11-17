@@ -103,6 +103,14 @@ async function playbackSample(page, movementId = 1, linearRepeats = false) {
 
 // Après un rechargement, le worker peut encore démarrer : attendre que la
 // bibliothèque soit proposée avant de cliquer dessus.
+async function displayedPageNumber(page) {
+  return page.evaluate(() => {
+    const txt = document.getElementById('page-number')?.textContent || '';
+    const m = txt.match(/(\d+)\s*\//);
+    return m ? parseInt(m[1], 10) : null;
+  });
+}
+
 async function waitLibraryReady(page, timeout = 60000) {
   await page.waitForFunction(() => {
     const overlay = document.getElementById('library-overlay');
@@ -445,6 +453,181 @@ async function runPage(browser, url, pageName, results) {
     const relevant = L.summarize(errors3);
     L.record(results, '6. Erreurs JS (suivi horizontal)', pageName, relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
     await ctx3.close();
+  }
+
+  // Cale de la tête de lecture sur la page affichée : un changement de page
+  // (défilement manuel, boutons, goto) amène la lecture au premier marqueur de
+  // cette page, après un debounce. Le suivi automatique ne doit pas provoquer
+  // de seek en retour (drapeau anti-boucle).
+  {
+    const { page, ctx: ctxSeek, errors: errorsSeek } = await L.newPage(browser, url, { pageName });
+    try {
+      await L.waitReady(page);
+      await L.importFile(page, L.FILES.telemannXml);
+      await L.waitFirstSvg(page, 180000);
+      await L.waitBackgroundLoaded(page, 180000);
+      await page.waitForTimeout(800);
+
+      // Temps du premier marqueur de chaque page (telemann : une page par
+      // mouvement de 30 s). Les marqueurs sont en ms, la page est locale au
+      // mouvement.
+      const sample = await playbackSample(page, 1);
+      const firstOfPage = {};
+      for (const mark of sample.syncMarks) {
+        if (!(mark.page in firstOfPage)) firstOfPage[mark.page] = mark.t;
+      }
+
+      // 1. Aucune donnée de lecture chargée : changer de page ne doit déclencher
+      // ni chargement (getPlaybackData) ni déplacement.
+      await page.evaluate(() => {
+        const w = window.__musicaWorker;
+        window.__pbRequestsAfterChange = 0;
+        const orig = w.postMessage.bind(w);
+        w.__testPostMessage = orig;
+        w.postMessage = function (msg) {
+          if (msg && msg.type === 'getPlaybackData') window.__pbRequestsAfterChange += 1;
+          return orig(msg);
+        };
+      });
+      await L.tap(page, 'right');
+      await L.waitPageChange(page, 1, 30000);
+      await page.waitForTimeout(700);
+      const noData = await page.evaluate(() => ({
+        page: (() => {
+          const m = (document.getElementById('page-number')?.textContent || '').match(/(\d+)\s*\//);
+          return m ? parseInt(m[1], 10) : null;
+        })(),
+        state: window.__musicaPlaybackState(),
+        requests: window.__pbRequestsAfterChange,
+      }));
+      const noDataOk = noData.page === 2 && noData.state.state === 'stopped' &&
+        noData.state.position === 0 && noData.state.hasData === false && noData.requests === 0;
+      L.record(results, '6. Sans données : changer de page ne charge rien et ne déplace pas la lecture', pageName,
+        noDataOk ? 'OK' : 'ÉCHEC',
+        `page ${noData.page}, état ${noData.state.state}, position ${noData.state.position} ms, ` +
+        `données ${noData.state.hasData}, demandes getPlaybackData ${noData.requests}`);
+
+      // 2. Lecture en cours + page suivante : la tête se cale au premier
+      // marqueur de la nouvelle page et la lecture continue. La page de départ
+      // est lue après stabilisation du suivi (il peut ramener l'écran sur la
+      // page de la position courante, ici le début).
+      await page.click('#transport-play');
+      await waitState(page, 'playing');
+      await page.waitForTimeout(600);
+      const playingStartPage = await displayedPageNumber(page);
+      await L.tap(page, 'right');
+      const targetPlayingPage = playingStartPage + 1;
+      const targetPlaying = firstOfPage[targetPlayingPage];
+      let reachedPlaying = null;
+      try {
+        reachedPlaying = await page.waitForFunction(({ target, expected }) => {
+          const s = window.__musicaPlaybackState ? window.__musicaPlaybackState() : null;
+          const m = (document.getElementById('page-number')?.textContent || '').match(/(\d+)\s*\//);
+          const shown = m ? parseInt(m[1], 10) : null;
+          if (!s || shown !== expected) return false;
+          return Math.abs(s.position - target) <= 150 ? { position: s.position, state: s.state } : false;
+        }, { target: targetPlaying, expected: targetPlayingPage }, { timeout: 5000, polling: 20 }).then((h) => h.jsonValue());
+      } catch {
+        reachedPlaying = null;
+      }
+      const playingAfter = await state(page);
+      const playingPage = await displayedPageNumber(page);
+      L.record(results, '6. Lecture en cours + page suivante : tête calée au premier marqueur, lecture poursuivie', pageName,
+        reachedPlaying && reachedPlaying.state === 'playing' && playingPage === targetPlayingPage ? 'OK' : 'ÉCHEC',
+        `page ${playingStartPage} → ${targetPlayingPage}, cible ${targetPlaying} ms, ` +
+        `position atteinte ${reachedPlaying ? reachedPlaying.position : 'aucune'} ms ` +
+        `(constatée ${playingAfter.position} ms), état ${playingAfter.state}`);
+      await page.click('#transport-stop');
+      await waitState(page, 'stopped');
+
+      // 3. Lecture arrêtée + page suivante : la position est calée sur le début
+      // de la page, et un appui sur lecture démarre à cet endroit.
+      const stoppedStartPage = await displayedPageNumber(page);
+      const targetStoppedPage = stoppedStartPage + 1;
+      const targetStopped = firstOfPage[targetStoppedPage];
+      await L.tap(page, 'right');
+      await page.waitForTimeout(700);
+      const stoppedSeek = await state(page);
+      const stoppedPage = await displayedPageNumber(page);
+      const stoppedOk = stoppedPage === targetStoppedPage && stoppedSeek.state === 'stopped' &&
+        Math.abs(stoppedSeek.position - targetStopped) <= 150;
+      L.record(results, '6. Lecture arrêtée + page suivante : position calée sur le début de page', pageName,
+        stoppedOk ? 'OK' : 'ÉCHEC',
+        `page ${stoppedStartPage} → ${stoppedPage}, position ${stoppedSeek.position} ms ` +
+        `(cible ${targetStopped} ms), état ${stoppedSeek.state}`);
+      await page.click('#transport-play');
+      await waitState(page, 'playing');
+      const resumed = await state(page);
+      const resumedOk = Math.abs(resumed.position - targetStopped) <= 150;
+      L.record(results, '6. Lecture après cale : démarre au début de la page affichée', pageName,
+        resumedOk ? 'OK' : 'ÉCHEC',
+        `position ${resumed.position} ms (cible ${targetStopped} ms), état ${resumed.state}`);
+
+      // 4. Pas d'oscillation : après un changement de page en pause, la page et
+      // la position restent stables sans nouvelle action.
+      await page.waitForTimeout(400);
+      await page.click('#transport-play');
+      await waitState(page, 'paused');
+      const pausedStartPage = await displayedPageNumber(page);
+      const targetPausedPage = pausedStartPage + 1;
+      const targetPaused = firstOfPage[targetPausedPage];
+      await L.tap(page, 'right');
+      await page.waitForTimeout(700);
+      const stable1 = { state: await state(page), page: await displayedPageNumber(page) };
+      await page.waitForTimeout(1000);
+      const stable2 = { state: await state(page), page: await displayedPageNumber(page) };
+      const stableOk = stable1.page === targetPausedPage && stable2.page === targetPausedPage &&
+        stable1.state.state === 'paused' && stable2.state.state === 'paused' &&
+        Math.abs(stable1.state.position - targetPaused) <= 150 &&
+        Math.abs(stable2.state.position - stable1.state.position) <= 100;
+      L.record(results, '6. Pas d’oscillation : page et position stables après la cale', pageName,
+        stableOk ? 'OK' : 'ÉCHEC',
+        `page ${pausedStartPage} → p.${stable1.page}/${stable1.state.position} ms → p.${stable2.page}/${stable2.state.position} ms ` +
+        `(cible ${targetPaused} ms, états ${stable1.state.state}/${stable2.state.state})`);
+
+      // 5. Suivi désactivé : la cale manuelle reste active (comportement
+      // indépendant du réglage followPlayback).
+      await page.click('#transport-stop');
+      await waitState(page, 'stopped');
+      await L.openSettings(page);
+      await page.$eval('#follow-playback', (el) => {
+        el.checked = false;
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+      await L.closeSettings(page);
+      const followOffStartPage = await displayedPageNumber(page);
+      const targetFollowOffPage = followOffStartPage + 1;
+      const targetFollowOff = firstOfPage[targetFollowOffPage];
+      await L.tap(page, 'right');
+      await page.waitForTimeout(700);
+      const followOffSeek = await state(page);
+      const followOffPage = await displayedPageNumber(page);
+      await page.click('#transport-play');
+      await waitState(page, 'playing');
+      const followOffPlay = await state(page);
+      const followOffOk = followOffPage === targetFollowOffPage && followOffSeek.state === 'stopped' &&
+        Math.abs(followOffSeek.position - targetFollowOff) <= 150 &&
+        Math.abs(followOffPlay.position - targetFollowOff) <= 150;
+      L.record(results, '6. followPlayback=false : la cale manuelle sur la page reste active', pageName,
+        followOffOk ? 'OK' : 'ÉCHEC',
+        `page ${followOffStartPage} → ${followOffPage}, arrêté ${followOffSeek.position} ms, ` +
+        `lecture ${followOffPlay.position} ms (cible ${targetFollowOff} ms)`);
+      await page.click('#transport-stop');
+      // Réactiver le suivi pour ne pas laisser de réglage inattendu
+      await L.openSettings(page);
+      await page.$eval('#follow-playback', (el) => {
+        el.checked = true;
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+      await L.closeSettings(page);
+    } catch (e) {
+      L.record(results, '6. Cale de la lecture sur la page affichée', pageName, 'ÉCHEC',
+        'exception du test : ' + e.message);
+    }
+    const relevant = L.summarize(errorsSeek);
+    L.record(results, '6. Erreurs JS (cale de lecture sur la page)', pageName,
+      relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
+    await ctxSeek.close();
   }
 
   // Volume par voix : gain immédiat, aucun re-rendu, persistance et

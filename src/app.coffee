@@ -362,6 +362,21 @@ partVolumes = {}  # Libellé de voix -> volume en % (100 = volume normal)
 partsChanged = false  # Réglages de voix modifiés, à appliquer à la fermeture
 followPlaybackEnabled = true  # Suivi du défilement pendant la lecture
 expandRepeats = true  # Dérouler les reprises (false : lecture linéaire écrite)
+# Cale de la tête de lecture sur la page affichée ---------------------------------
+# Un changement de page (défilement, boutons, goto) place la tête de lecture au
+# premier marqueur de synchronisation de cette page, après un court debounce le
+# temps que le geste se stabilise. Drapeau anti-boucle : vrai pendant que le
+# suivi automatique applique lui-même son déplacement ; les changements de page
+# qu'il provoque ne doivent pas re-déclencher un seek (oscillation, blocage).
+pageSeekTimer = null
+pageSeekDebounceMs = 250
+lastDisplayedPage = null
+followSuppressSeek = false
+# Une cale de lecture est en attente après un changement de page manuel : le
+# suivi automatique est suspendu jusque-là, sinon il ramènerait le défilement
+# sur la page de la position courante avant le debounce et le geste serait
+# perdu (la page ne changerait jamais vraiment).
+pageSeekPending = false
 currentScrollUnit = "page"  # Dernier réglage « Défilement » appliqué
 
 # Pages pre-rendered around the displayed one
@@ -777,52 +792,124 @@ horizontalHalfPage = (page, id) ->
   # dernière page atteignable.
   Math.max 0, Math.min maxScrollPos(), base + half
 
+# Mémorise la page affichée et, si elle a changé, programme la cale de la tête
+# de lecture. Appelé une fois par frame de défilement et après chaque saut
+# explicite (setScrollPos : boutons de page, ±5, goto). Le debounce évite de
+# bouger la lecture à chaque frame d'un geste de défilement.
+schedulePageSeek = (page) ->
+  return if lastDisplayedPage is null
+  return if page is lastDisplayedPage
+  # Pendant le suivi automatique, c'est followPlaybackFrame qui mémorise la
+  # page visée (la page effectivement mesurée peut être en retard d'une frame) :
+  # ne rien programmer ici.
+  return if followSuppressSeek
+  lastDisplayedPage = page
+  pageSeekPending = true
+  clearTimeout pageSeekTimer if pageSeekTimer
+  pageSeekTimer = setTimeout (-> seekToDisplayedPage page), pageSeekDebounceMs
+
+noteDisplayedPage = ->
+  page = displayedPage()
+  # Premier affichage (ou rechargement) : simple prise de référence, sinon on
+  # déplacerait la lecture au chargement sans geste de l'utilisateur.
+  if lastDisplayedPage is null
+    lastDisplayedPage = page
+    return
+  schedulePageSeek page
+
+# Place la tête de lecture au temps du premier marqueur de la page affichée.
+# Les données de lecture ne sont jamais demandées ici : sans données déjà
+# chargées pour le mouvement affiché, on ne fait rien (un chargement implicite
+# serait coûteux et surprenant ; le prochain appui sur lecture s'en charge).
+seekToDisplayedPage = (page) ->
+  pageSeekTimer = null
+  pageSeekPending = false
+  return unless fileLoaded
+  result = getMovementForPage page
+  return unless result
+  # La page des marqueurs est locale au mouvement : on réutilise la conversion
+  # déjà faite par getMovementForPage au lieu d'en écrire une seconde.
+  return unless playback.hasData and playback.movementId is result.movement.id
+  marks = playback.marks
+  return unless Array.isArray(marks) and marks.length
+  api = window.__musicaPlayback
+  return unless api?.firstMarkOfPage?
+  mark = api.firstMarkOfPage marks, result.localPage
+  return unless mark
+  t = Number mark.t
+  return unless isFinite t
+  # Même en pause ou à l'arrêt : la position est mémorisée, un appui sur
+  # lecture repartira du début de la page.
+  seekPlayback t
+
 # Suivi de partition : amène à l'écran le marqueur courant. Appelé depuis la
 # boucle de lecture ; ne fait rien quand le réglage est désactivé. Une page
 # absente du DOM est demandée puis réalignée à la frame suivante : l'écran
 # n'est jamais vidé, la page existante reste affichée en attendant son SVG.
 followPlaybackFrame = ->
   return unless followPlaybackEnabled
-  return unless playback.movementId?
+  # Une cale manuelle attend son debounce : ne pas la contredire en ramenant
+  # l'écran sur la page de la position courante avant qu'elle s'applique.
+  return if pageSeekPending
+  followSuppressSeek = true
+  try
+    target = applyFollowScroll()
+    # Mémoriser la page visée, pas la page mesurée (qui peut être en retard
+    # d'une frame) : les événements `scroll` différés du suivi tombent alors
+    # sur la même page. Sans déplacement, on ne touche à rien, sinon un
+    # changement manuel survenu avant l'événement `scroll` serait avalé.
+    if target
+      lastDisplayedPage = target
+      clearTimeout pageSeekTimer if pageSeekTimer
+      pageSeekTimer = null
+  finally
+    followSuppressSeek = false
+
+# Applique le suivi et renvoie la page globale visée, ou null si le défilement
+# n'a pas bougé.
+applyFollowScroll = ->
+  return null unless playback.movementId?
   marks = playback.marks
-  return unless Array.isArray(marks) and marks.length
+  return null unless Array.isArray(marks) and marks.length
   api = window.__musicaPlayback
-  return unless api?.planFollow?
+  return null unless api?.planFollow?
   vertical = scrollMode is "vertical"
   # Horizontal : l'id du marqueur courant (et non celui du début de page)
   # permet de choisir entre les deux demi-pages ; vertical : réglage inchangé.
   plan = api.planFollow marks, currentPlaybackPosition(),
     scrollUnit: if vertical then currentScrollUnit else "system"
-  return unless plan
+  return null unless plan
   target = getGlobalPage playback.movementId, plan.page
-  return unless target >= 1
+  return null unless target >= 1
   slot = $("page-current")
   pageEl = slot.querySelector ".scroll-page[data-page=\"#{target}\"]"
 
   # Horizontal : viser la demi-page qui contient l'élément courant. Si son SVG
   # n'est pas encore rendu, replier sur le début de page puis réaligner à la
   # frame suivante (clé « pending » pour réessayer sans attendre un changement
-  # de marqueur).
+  # de marqueur). Le déplacement passe par setScrollPos, donc reste couvert par
+  # followSuppressSeek : il ne re-déclenche pas de cale de lecture.
   unless vertical
     pos = horizontalHalfPage target, plan.id
     if pos?
-      return if scrollPos is pos
+      return null if scrollPos is pos
       setScrollPos pos
       playback.followKey = "half:#{pos}"
     else
       pos = (target - 1) * 2
       key = "pending:#{target}"
-      return if scrollPos is pos and playback.followKey is key
+      return null if scrollPos is pos and playback.followKey is key
       setScrollPos pos
       playback.followKey = key
-    return
+    return target
 
   # Vertical : la page doit être rendue avant de viser un système.
   unless pageEl?.querySelector "svg"
     unless pageEl
       setScrollPos (target - 1) * 2
       playback.followKey = "pending:#{target}"
-    return
+      return target
+    return null
 
   system = null
   if currentScrollUnit is "system" and plan.id?
@@ -832,15 +919,17 @@ followPlaybackFrame = ->
     # Même arithmétique que systemTops()/verticalTarget()
     base = slot.getBoundingClientRect().top - slot.scrollTop
     top = system.getBoundingClientRect().top - base
-    return if Math.abs(slot.scrollTop - top) <= SYSTEM_TOLERANCE
+    return null if Math.abs(slot.scrollTop - top) <= SYSTEM_TOLERANCE
     slot.scrollTo top: Math.max(0, top), behavior: "instant"
     playback.followKey = "system:#{target}:#{plan.id}"
+    target
   else
     # Sans système résoluble (id absent du SVG) : au moins la page en haut.
     key = "page:#{target}"
-    return if playback.followKey is key
+    return null if playback.followKey is key
     scrollToPageTop target
     playback.followKey = key
+    target
 
 # Une seule boucle rAF vivante à la fois ; rien n'est écrit dans localStorage
 playbackFrame = ->
@@ -1540,6 +1629,8 @@ setScrollPos = (pos) ->
   showIndicator()
   prefetch()
   savePositionDebounced()
+  # Saut explicite (boutons de page, ±5, goto) : cale la lecture sur la page
+  noteDisplayedPage()
 
 # Tolérance (px) : un système plus proche que ça du haut de l'écran y est
 # considéré comme déjà amené
@@ -1614,6 +1705,8 @@ goNext = ->
     checkAndLoadMorePages()
     showIndicator()
     savePositionDebounced()
+    # goNext vertical ne passe pas par setScrollPos : signaler le saut explicite
+    schedulePageSeek displayedPage()
   else
     return if scrollPos >= maxScrollPos()
     captureVerticalScroll()
@@ -1628,6 +1721,7 @@ goPrev = ->
     verticalPos = Math.max(0, verticalPos - 1)
     showIndicator()
     savePositionDebounced()
+    schedulePageSeek displayedPage()
   else
     return if scrollPos <= 0
     captureVerticalScroll()
@@ -2058,6 +2152,11 @@ startLoad = (startPage = 1) ->
   loadHiddenParts()
   scrollPos = 0
   pendingPageScroll = null
+  clearTimeout pageSeekTimer if pageSeekTimer
+  pageSeekTimer = null
+  lastDisplayedPage = null
+  followSuppressSeek = false
+  pageSeekPending = false
   lastWidth = window.innerWidth
   # Drop the displayed pages: they belong to the previous render
   $("page-current").innerHTML = ""
@@ -3011,6 +3110,9 @@ document.addEventListener "DOMContentLoaded", ->
     requestAnimationFrame ->
       scrollScheduled = false
       applyVerticalAlignment()
+      # Défilement manuel : seule une page affichée différente déclenche la
+      # cale (après debounce), pas chaque frame du geste.
+      noteDisplayedPage()
       if scrollMode is "vertical"
         showIndicator()
         prefetch()
