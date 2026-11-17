@@ -215,6 +215,170 @@ async function runBach(browser, url, pageName, results) {
   await ctx.close();
 }
 
+// Signature stable d'une page affichée : nombre de portées, hauteur médiane et
+// nombre de systèmes. Le SVG lui-même ne convient pas (Verovio tire des ids
+// aléatoires à chaque rendu) mais cette géométrie est reproductible.
+async function pageSignature(page) {
+  return page.evaluate(() => [...document.querySelectorAll('#page-current .scroll-page')].map((d) => {
+    const svg = d.querySelector('svg');
+    const heights = svg
+      ? [...svg.querySelectorAll('g.staff')].map((g) => Math.round(g.getBoundingClientRect().height * 10) / 10).sort((a, b) => a - b)
+      : [];
+    return {
+      page: d.dataset.page,
+      staves: heights.length,
+      median: heights.length ? heights[Math.floor(heights.length / 2)] : 0,
+      systems: svg ? svg.querySelectorAll('g.system').length : 0,
+    };
+  }));
+}
+
+const signatureKey = (list) => list.map((p) => `${p.page}:${p.staves}:${p.median}:${p.systems}`).join(',');
+
+// Variantes de voix présentes dans le cache SVG persistant.
+async function svgVariants(page) {
+  return page.evaluate(async () => {
+    const urls = await window.__svgCache.keys();
+    return [...new Set(urls.map((u) => decodeURIComponent(u.split('/').slice(-1)[0])))];
+  });
+}
+
+// Attend qu'une page de cette variante soit en cache : le rechargement est
+// asynchrone et sa durée varie avec la charge de la machine.
+async function waitVariantCached(page, variant, timeout = 180000) {
+  const t0 = Date.now();
+  while (Date.now() - t0 < timeout) {
+    const ok = await page.evaluate(async (v) => {
+      const urls = await window.__svgCache.keys();
+      return urls.some((u) => decodeURIComponent(u.split('/').slice(-1)[0]) === v);
+    }, variant);
+    if (ok) return true;
+    await page.waitForTimeout(500);
+  }
+  return false;
+}
+
+// Ouvre une page dont le worker est ralenti : les SVG rendus avant un
+// changement de tailles arrivent après, ce qui rend la course déterministe
+// (elle se produit sur un appareil lent, pendant qu'on manipule les réglages).
+async function newDelayedWorkerPage(browser, url, pageName) {
+  const ctx = await browser.newContext({ viewport: { width: 500, height: 900 } });
+  await ctx.addInitScript(() => {
+    const Native = window.Worker;
+    window.__workerDelay = 0;
+    window.Worker = class extends Native {
+      constructor(...args) {
+        super(...args);
+        this.__handler = null;
+        super.onmessage = (e) => {
+          const data = e.data;
+          setTimeout(() => this.__handler && this.__handler({ data }), window.__workerDelay || 0);
+        };
+      }
+      set onmessage(fn) { this.__handler = fn; }
+      get onmessage() { return this.__handler; }
+    };
+  });
+  const page = await ctx.newPage();
+  const errors = [];
+  page.on('pageerror', (e) => errors.push('pageerror: ' + (e.stack || e.message)));
+  page.on('console', (m) => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
+  await page.goto(`${url}/${pageName}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+  return { page, ctx, errors };
+}
+
+// Pages déjà rendues hors écran au moment d'un changement de taille : elles
+// doivent être mises en cache sous la variante du XML qui les a produites, et
+// jamais sous la nouvelle clé (sinon elles y restent périmées pour toujours).
+async function runPartSizeCacheRace(browser, url, pageName, results) {
+  const { page, ctx, errors } = await newDelayedWorkerPage(browser, url, pageName);
+  try {
+    await importLoaded(page, L.FILES.bachXml, 300000);
+    // Les libellés de voix n'existent qu'une fois la liste des réglages remplie
+    await L.openSettings(page);
+    const labels = (await L.partRows(page)).map((r) => r.name);
+    await L.closeSettings(page);
+    const resized = labels.slice(0, 2).sort();
+    const variant70 = '|' + resized.map((l) => `${l}=70`).join(',');
+    const variant80 = '|' + [resized[0] + '=80', resized[1] + '=70'].join(',');
+    // Le cache ne contient que la variante d'origine (aucune taille réglée)
+    const variants0 = await svgVariants(page);
+    L.record(results, '3. Cache SVG : une seule variante avant tout réglage', pageName,
+      variants0.length === 1 && variants0[0] === '' ? 'OK' : 'ÉCHEC',
+      `variantes ${JSON.stringify(variants0)}`);
+
+    // Aller sur des pages non encore rendues, puis changer deux tailles avant
+    // que leurs SVG n'arrivent (worker ralenti).
+    await page.evaluate(() => { window.__workerDelay = 1500; });
+    await page.click('.nav-btn[data-action="next-5"]');
+    await page.waitForTimeout(200);
+    await page.click('.nav-btn[data-action="next-5"]');
+    await page.waitForTimeout(200);
+    await L.openSettings(page);
+    await page.selectOption('#parts-list select.part-size >> nth=0', '70');
+    await page.selectOption('#parts-list select.part-size >> nth=1', '70');
+    await page.waitForTimeout(3000); // les SVG en vol arrivent ici
+    await page.evaluate(() => { window.__workerDelay = 0; });
+    await L.closeSettings(page);
+    await waitVariantCached(page, variant70);
+    await page.waitForTimeout(3000);
+    const info = await L.pageInfo(page);
+    const distant = await pageSignature(page);
+    const distantPage = info.page;
+    const variants1 = await svgVariants(page);
+    L.record(results, '3. Cache SVG : un rendu en vol n’entre pas sous la nouvelle variante', pageName,
+      variants1.length === 1 && variants1[0] === variant70 ? 'OK' : 'ÉCHEC',
+      `p.${distantPage}/${info.total}, variantes ${JSON.stringify(variants1)} (attendu ${JSON.stringify([variant70])}), ` +
+      `${distant.length} pages rendues, signature p.${distant[0]?.page} ${JSON.stringify(distant[0])}`);
+
+    // Quitter la partition et revenir : les pages lointaines doivent être
+    // identiques à un rendu refait sans cache (sinon le cache sert une page
+    // d'une autre variante).
+    await page.reload({ waitUntil: 'domcontentloaded', timeout: 60000 });
+    await L.waitReady(page, 60000);
+    await page.waitForTimeout(500);
+    await L.openLibraryEntry(page, 0);
+    await L.waitFirstSvg(page, 300000);
+    await L.waitBackgroundLoaded(page, 300000);
+    await page.waitForTimeout(3000);
+    const restored = await pageSignature(page);
+    await page.evaluate(() => window.__svgCache.clearAll());
+    await page.reload({ waitUntil: 'domcontentloaded', timeout: 60000 });
+    await L.waitReady(page, 60000);
+    await page.waitForTimeout(500);
+    await L.openLibraryEntry(page, 0);
+    await L.waitFirstSvg(page, 300000);
+    await L.waitBackgroundLoaded(page, 300000);
+    await page.waitForTimeout(3000);
+    const fresh = await pageSignature(page);
+    L.record(results, '3. Cache SVG : les pages lointaines servies sont un rendu valide', pageName,
+      signatureKey(restored) === signatureKey(fresh) ? 'OK' : 'ÉCHEC',
+      `cache ${JSON.stringify(restored.slice(0, 2))} ; rendu neuf ${JSON.stringify(fresh.slice(0, 2))} ; ` +
+      `pages ${restored.length} ; ${signatureKey(restored) === signatureKey(fresh) ? 'identiques' : 'DIFFÉRENTES'}`);
+
+    // Le rapport d'utilisateur : une seule voix repasse de 70 à 80 %.
+    const sigBefore = await pageSignature(page);
+    await L.openSettings(page);
+    await page.selectOption('#parts-list select.part-size >> nth=0', '80');
+    await L.closeSettings(page);
+    await waitVariantCached(page, variant80);
+    await page.waitForTimeout(3000);
+    const info2 = await L.pageInfo(page);
+    const sigAfter = await pageSignature(page);
+    const variants2 = await svgVariants(page);
+    L.record(results, '3. Taille d’une seule voix : nouveau rendu et cache purgé des anciennes variantes', pageName,
+      variants2.length === 1 && variants2[0] === variant80 &&
+        (info2.total !== info.total || signatureKey(sigAfter) !== signatureKey(sigBefore)) ? 'OK' : 'ÉCHEC',
+      `pages ${info.total} → ${info2.total}, rendu ${signatureKey(sigBefore) === signatureKey(sigAfter) ? 'inchangé' : 'modifié'}, ` +
+      `variantes ${JSON.stringify(variants2)} (attendu ${JSON.stringify([variant80])})`);
+    const relevant = L.summarize(errors);
+    L.record(results, '6. Erreurs JS (cache des tailles)', pageName, relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
+  } catch (e) {
+    L.record(results, '3. Cache SVG et tailles de voix', pageName, 'ÉCHEC', 'exception du test : ' + e.message);
+  }
+  await ctx.close();
+}
+
 async function runFolderVoices(browser, url, pageName, results) {
   const { page, ctx, errors } = await L.newPage(browser, url, { pageName });
   try {
@@ -265,6 +429,7 @@ async function runFolderVoices(browser, url, pageName, results) {
       await runTelemann(browser, url, pageName, results);
       await runZoomAndScroll(browser, url, pageName, results);
       await runBach(browser, url, pageName, results);
+      await runPartSizeCacheRace(browser, url, pageName, results);
       await runFolderVoices(browser, url, pageName, results);
     }
   } catch (e) {

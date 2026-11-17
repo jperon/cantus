@@ -338,6 +338,7 @@ setupServiceWorker()
 storage = window.__musicaStorage
 worker = window.__musicaWorker
 svgStore = window.__svgCache  # Persistent cache with compression
+playbackStore = window.__playbackCache  # Données de lecture persistantes
 scrollPos = 0
 pageCount = 0
 pendingPageScroll = null  # page à amener en haut après un saut (mode vertical)
@@ -357,7 +358,11 @@ currentPageWidth = 0
 currentPageHeight = 0
 hiddenParts = new Set()  # Libellés des voix masquées pour le fichier courant
 partSizes = {}  # Libellé de voix -> taille en % (100 = taille normale)
+partVolumes = {}  # Libellé de voix -> volume en % (100 = volume normal)
 partsChanged = false  # Réglages de voix modifiés, à appliquer à la fermeture
+followPlaybackEnabled = true  # Suivi du défilement pendant la lecture
+expandRepeats = true  # Dérouler les reprises (false : lecture linéaire écrite)
+currentScrollUnit = "page"  # Dernier réglage « Défilement » appliqué
 
 # Pages pre-rendered around the displayed one
 PREFETCH_AHEAD = 6
@@ -371,6 +376,13 @@ systemHeight = 0  # Height of a single system in vertical mode
 movements = []  # [{id, pageCount, pushed, loaded}]
 pendingRenders = new Map()  # "movementId:page" -> resolve function
 pushedPages = {}  # movementId -> last page of the initial push received (in order)
+# Variante de voix du XML chargé dans le worker, par mouvement. Un rendu (SVG
+# ou données de lecture) dépend du XML chargé, pas de l'état courant des
+# réglages : c'est cette variante qui doit servir de clé de cache. Quand une
+# taille change dans les réglages, partSizes est mis à jour tout de suite mais
+# le XML du worker ne l'est qu'au rechargement.
+movementVariants = {}  # movementId -> variante du XML chargé
+memoryVariant = null  # variante des entrées de memoryCache
 pendingMovementLoads = new Map()  # movementId -> resolve function
 pendingMscz = new Map()  # MuseScore conversion id -> {resolve, reject}
 msczRequestId = 0
@@ -382,6 +394,23 @@ nextSourceToLoad = 0  # prochaine source à convertir
 allSourcesLoaded = false  # toutes les sources sont converties et leurs mouvements connus
 loadToken = 0  # incrémenté à chaque chargement : arrête les chaînes de conversion en cours
 movementLoadTokens = new Map()  # movementId -> loadToken de la demande en cours
+playbackCache = new Map()  # "movementId:variante de voix" -> données de lecture
+pendingPlayback = new Map()  # même clé -> {resolve, reject}
+
+# Transport audio (lot 1) : état de la lecture du mouvement affiché.
+# position et duration sont en millisecondes ; loadToken invalide une demande
+# de données de lecture devenue obsolète (arrêt, changement de mouvement).
+playback =
+  movementId: null
+  hasData: false
+  state: "stopped"  # "stopped" | "playing" | "paused" | "loading"
+  position: 0
+  duration: 0
+  loading: false
+  loadToken: 0
+  rafId: null
+  marks: []  # syncMarks du mouvement chargé (t en ms, page locale)
+  followKey: null  # dernière cible de suivi appliquée
 
 # Worker message handler
 worker.onmessage = (e) ->
@@ -440,23 +469,31 @@ worker.onmessage = (e) ->
       globalPage = page
       for m in movements when m.id < movementId
         globalPage += m.pageCount or 0
-      memoryCache.set globalPage, svg
       # Pushes arrive in page order: remember how far the worker got
       pushedPages[movementId] = page if page > (pushedPages[movementId] or 0)
-      # Store in persistent cache (async, non-blocking)
-      if currentFileId and currentPageWidth and currentPageHeight
-        svgStore.set(currentFileId, globalPage, svg, currentPageWidth, currentPageHeight, partsVariant()).catch (err) ->
-          console.error "Erreur stockage SVG:", err
+      # Le SVG a été rendu à partir du XML chargé dans le worker : il vaut
+      # pour la variante de ce XML, pas pour les réglages courants. Après un
+      # changement de tailles non encore appliqué, une page en vol ne doit ni
+      # entrer dans les caches sous la nouvelle variante (elle y resterait
+      # périmée et serait resservie), ni être affichée.
+      variant = loadedVariant movementId
+      stale = variant isnt partsVariant()
+      unless stale
+        memoryCache.set globalPage, svg
+        # Store in persistent cache (async, non-blocking)
+        if currentFileId and currentPageWidth and currentPageHeight
+          svgStore.set(currentFileId, globalPage, svg, currentPageWidth, currentPageHeight, variant).catch (err) ->
+            console.error "Erreur stockage SVG:", err
       # Resolve pending render if any
       key = "#{movementId}:#{page}"
       if pendingRenders.has(key)
-        pendingRenders.get(key)(svg)
+        pendingRenders.get(key)(if stale then "" else svg)
         pendingRenders.delete(key)
       # Note: displayView() is now async, so we don't call it here
       # The async displayView will update when pages are loaded
 
       # Hide loading indicator once the whole score is loaded and cached
-      if allSourcesLoaded and memoryCache.size >= pageCount and pageCount > 0
+      if not stale and allSourcesLoaded and memoryCache.size >= pageCount and pageCount > 0
         hideLoadingIndicator()
 
     when "error"
@@ -477,6 +514,26 @@ worker.onmessage = (e) ->
       else
         pending.reject new Error message
 
+    when "playbackData"
+      {movementId, midi, syncMarks, staffLabels, trackMap, duration, segments, linearRepeats} = e.data
+      key = playbackKey movementId
+      data = {midi, syncMarks, staffLabels, trackMap, duration, segments: segments ? [], linearRepeats: !!linearRepeats}
+      playbackCache.set key, data
+      pending = pendingPlayback.get key
+      if pending
+        pendingPlayback.delete key
+        pending.resolve data
+
+    when "playbackError"
+      {movementId, message} = e.data
+      # PR 1 : aucune UI de lecture, une erreur ici ne doit rien casser
+      console.warn "Données de lecture indisponibles pour le mouvement #{movementId}: #{message}"
+      key = playbackKey movementId
+      pending = pendingPlayback.get key
+      if pending
+        pendingPlayback.delete key
+        pending.reject new Error message
+
 # Calculate global page from movementId and localPage
 getGlobalPage = (movementId, localPage) ->
   offset = 0
@@ -488,6 +545,7 @@ getGlobalPage = (movementId, localPage) ->
 # Checks caches first
 requestPage = (movementId, localPage) ->
   globalPage = getGlobalPage(movementId, localPage)
+  syncMemoryVariant()
 
   # Check memory cache first
   if memoryCache.has(globalPage)
@@ -497,7 +555,10 @@ requestPage = (movementId, localPage) ->
   pendingKey = "page:#{globalPage}"
   return pendingRequests.get(pendingKey) if pendingRequests.has(pendingKey)
 
-  promise = svgStore.get(currentFileId, globalPage, currentPageWidth, currentPageHeight, partsVariant()).then (svg) ->
+  # La page sera rendue à partir du XML chargé pour ce mouvement : sa clé de
+  # cache est la variante de ce XML, pas les réglages courants.
+  variant = loadedVariant movementId
+  promise = svgStore.get(currentFileId, globalPage, currentPageWidth, currentPageHeight, variant).then (svg) ->
     if svg
       memoryCache.set(globalPage, svg)
       return svg
@@ -523,6 +584,426 @@ requestFromWorker = (movementId, localPage) ->
       movementId: movementId
       page: localPage
 
+# Clé du cache de lecture : une sélection de voix différente (masquage ou
+# taille) produit un autre rendu Verovio, donc d'autres données de lecture.
+# Les données sont calculées à partir du XML chargé dans le worker : c'est sa
+# variante qui compte, pas l'état courant des réglages.
+playbackKey = (movementId) ->
+  mode = if expandRepeats then "expanded" else "linear"
+  "#{movementId}:#{loadedVariant movementId}:#{mode}"
+
+# Demande les données de lecture (MIDI, synchronisation) : cache mémoire,
+# cache persistant (compressé, clé géométrique) puis worker. La clé persistante
+# inclut fichier, mouvement, dimensions, échelle et variante de voix, donc un
+# zoom, une rotation ou un masquage ne réutilise jamais des marqueurs périmés.
+requestPlaybackData = (movementId) ->
+  key = playbackKey movementId
+  return Promise.resolve(playbackCache.get key) if playbackCache.has key
+  return pendingPlayback.get(key).promise if pendingPlayback.has key
+  fileId = currentFileId
+  width = currentPageWidth
+  height = currentPageHeight
+  scale = currentScale
+  # Le mode de reprise fait partie de la clé persistante : les données des
+  # deux modes ne se servent jamais l'une pour l'autre.
+  variant = "#{loadedVariant movementId}|#{if expandRepeats then 'expanded' else 'linear'}"
+  promise = new Promise (resolve, reject) ->
+    pendingPlayback.set key, {resolve, reject}
+    cached = if playbackStore?.get? and fileId
+      playbackStore.get(fileId, movementId, width, height, scale, variant).catch ->
+        null
+    else
+      Promise.resolve null
+    cached.then (data) ->
+      if data and playbackCache.has(key)
+        # Une autre demande a déjà rempli le cache mémoire entre-temps
+        pendingPlayback.delete key
+        resolve playbackCache.get key
+      else if data
+        pendingPlayback.delete key
+        playbackCache.set key, data
+        resolve data
+      else
+        worker.postMessage
+          type: "getPlaybackData"
+          movementId: movementId
+          linearRepeats: not expandRepeats
+  # Écrire le résultat dans le cache persistant, sans retarder la lecture
+  promise.then (data) ->
+    if data and playbackStore?.set? and fileId
+      playbackStore.set(fileId, movementId, data, width, height, scale, variant).catch (err) ->
+        console.warn "Cache de lecture non enregistré : #{err?.message or err}"
+  .catch ->
+    # L'échec est traité par startPlayback ; cette branche ne doit pas créer
+    # de rejet non géré.
+    null
+  # Conserver la promesse pour dédupliquer une seconde demande identique
+  pendingPlayback.get(key)?.promise = promise
+  promise
+
+# Longueur estimée du base64 décodé (sans dépendance)
+base64Bytes = (b64) ->
+  return 0 unless b64
+  padding = 0
+  padding += 1 if b64.endsWith "="
+  padding += 1 if b64.endsWith "=="
+  Math.floor(b64.length * 3 / 4) - padding
+
+# Sonde de debug pour les tests : données de lecture du mouvement affiché.
+window.__musicaPlaybackProbe = ->
+  result = getMovementForPage displayedPage()
+  unless result
+    return {
+      hasData: false
+      syncMarksCount: 0
+      firstMarks: []
+      duration: 0
+      segmentsCount: 0
+      linearRepeats: false
+      staffLabels: []
+      trackMap: {}
+      midiBytes: 0
+      error: "aucun mouvement affiché"
+    }
+  requestPlaybackData result.movement.id
+    .then (data) ->
+      {
+        hasData: true
+        movementId: result.movement.id
+        syncMarksCount: data.syncMarks?.length ? 0
+        firstMarks: (data.syncMarks ? []).slice 0, 5
+        duration: data.duration ? 0
+        segmentsCount: data.segments?.length ? 0
+        linearRepeats: !!data.linearRepeats
+        staffLabels: data.staffLabels ? []
+        trackMap: data.trackMap ? {}
+        midiBytes: base64Bytes data.midi
+      }
+    .catch (err) ->
+      {
+        hasData: false
+        movementId: result.movement.id
+        syncMarksCount: 0
+        firstMarks: []
+        duration: 0
+        segmentsCount: 0
+        linearRepeats: false
+        staffLabels: []
+        trackMap: {}
+        midiBytes: 0
+        error: err?.message or String(err)
+      }
+
+# --- Transport audio (lot 1) ---------------------------------------------
+# Lecture/pause, arrêt, progression et volume général. Aucune synchronisation
+# de défilement ni volume par voix ici : ces lots viendront ensuite.
+
+audioEngine = -> window.__musicaAudio
+
+formatTime = (ms) ->
+  total = Math.max 0, Math.round((Number(ms) or 0) / 1000)
+  minutes = Math.floor total / 60
+  seconds = total % 60
+  "#{minutes}:#{if seconds < 10 then "0#{seconds}" else seconds}"
+
+showTransport = ->
+  el = $("transport")
+  el?.classList.remove "hidden"
+
+hideTransport = ->
+  el = $("transport")
+  el?.classList.add "hidden"
+
+# Position affichée : le moteur fait foi pendant la lecture
+currentPlaybackPosition = ->
+  return playback.position unless playback.state is "playing"
+  engine = audioEngine()
+  return playback.position unless engine
+  Math.max 0, engine.position() * 1000
+
+renderTransport = ->
+  time = $("transport-time")
+  playBtn = $("transport-play")
+  duration = Math.max 0, playback.duration or 0
+  rawPosition = currentPlaybackPosition()
+  position = Math.max 0, rawPosition
+  position = Math.min position, duration if duration > 0
+  playback.position = position
+  playing = playback.state is "playing"
+  loading = playback.state is "loading"
+  time.textContent = "#{formatTime position} / #{formatTime duration}" if time
+  if playBtn
+    playBtn.textContent = if playing then "❚❚" else "▶"
+    playBtn.setAttribute "aria-label", if playing then "Pause" else "Lecture"
+    playBtn.disabled = loading
+
+cancelPlaybackFrame = ->
+  if playback.rafId?
+    cancelAnimationFrame playback.rafId
+    playback.rafId = null
+
+# Suivi de partition : amène à l'écran le marqueur courant. Appelé depuis la
+# boucle de lecture ; ne fait rien quand le réglage est désactivé. Une page
+# absente du DOM est demandée puis réalignée à la frame suivante : l'écran
+# n'est jamais vidé, la page existante reste affichée en attendant son SVG.
+followPlaybackFrame = ->
+  return unless followPlaybackEnabled
+  return unless playback.movementId?
+  marks = playback.marks
+  return unless Array.isArray(marks) and marks.length
+  api = window.__musicaPlayback
+  return unless api?.planFollow?
+  plan = api.planFollow marks, currentPlaybackPosition(),
+    scrollUnit: if scrollMode is "vertical" then currentScrollUnit else "page"
+  return unless plan
+  target = getGlobalPage playback.movementId, plan.page
+  return unless target >= 1
+  slot = $("page-current")
+  pageEl = slot.querySelector ".scroll-page[data-page=\"#{target}\"]"
+
+  # Horizontal : une page = un système, on ramène la page en haut.
+  if scrollMode isnt "vertical"
+    key = "page:#{target}"
+    return if playback.followKey is key
+    setScrollPos (target - 1) * 2
+    playback.followKey = key
+    return
+
+  # Vertical : la page doit être rendue avant de viser un système.
+  unless pageEl?.querySelector "svg"
+    unless pageEl
+      setScrollPos (target - 1) * 2
+      playback.followKey = "pending:#{target}"
+    return
+
+  system = null
+  if currentScrollUnit is "system" and plan.id?
+    element = document.getElementById plan.id
+    system = element.closest("g.system") if element?.closest?
+  if system
+    # Même arithmétique que systemTops()/verticalTarget()
+    base = slot.getBoundingClientRect().top - slot.scrollTop
+    top = system.getBoundingClientRect().top - base
+    return if Math.abs(slot.scrollTop - top) <= SYSTEM_TOLERANCE
+    slot.scrollTo top: Math.max(0, top), behavior: "instant"
+    playback.followKey = "system:#{target}:#{plan.id}"
+  else
+    # Sans système résoluble (id absent du SVG) : au moins la page en haut.
+    key = "page:#{target}"
+    return if playback.followKey is key
+    scrollToPageTop target
+    playback.followKey = key
+
+# Une seule boucle rAF vivante à la fois ; rien n'est écrit dans localStorage
+playbackFrame = ->
+  playback.rafId = null
+  return unless playback.state is "playing"
+  renderTransport()
+  followPlaybackFrame()
+  playback.rafId = requestAnimationFrame playbackFrame
+
+startPlaybackFrame = ->
+  cancelPlaybackFrame()
+  playback.rafId = requestAnimationFrame playbackFrame
+
+seekPlayback = (ms) ->
+  duration = Math.max 0, playback.duration or 0
+  value = Math.max 0, Number(ms) or 0
+  value = duration if duration > 0 and value > duration
+  playback.position = value
+  engine = audioEngine()
+  if playback.hasData and engine
+    try
+      engine.seek value / 1000
+    catch err
+      console.warn "Déplacement de lecture impossible : #{err?.message or err}"
+  renderTransport()
+
+# Libère le moteur et oublie les données chargées (changement de mouvement,
+# rechargement, retour à la bibliothèque).
+resetPlayback = ->
+  cancelPlaybackFrame()
+  playback.loadToken++
+  engine = audioEngine()
+  if engine
+    try
+      engine.destroy()
+    catch err
+      console.warn "Arrêt du moteur audio impossible : #{err?.message or err}"
+  playback.movementId = null
+  playback.hasData = false
+  playback.state = "stopped"
+  playback.position = 0
+  playback.duration = 0
+  playback.loading = false
+  playback.marks = []
+  playback.followKey = null
+  renderTransport()
+
+stopPlayback = ->
+  cancelPlaybackFrame()
+  playback.loadToken++
+  playback.loading = false
+  engine = audioEngine()
+  if engine
+    try
+      engine.stop()
+    catch err
+      console.warn "Arrêt de lecture impossible : #{err?.message or err}"
+  playback.state = "stopped"
+  playback.position = 0
+  # Les marqueurs restent : les données de lecture sont toujours chargées
+  # après un arrêt, une reprise doit pouvoir suivre immédiatement.
+  playback.followKey = null
+  renderTransport()
+
+pausePlayback = ->
+  return unless playback.state is "playing"
+  engine = audioEngine()
+  return unless engine
+  playback.position = Math.max 0, engine.position() * 1000
+  try
+    engine.pause()
+  catch err
+    console.warn "Pause impossible : #{err?.message or err}"
+  playback.state = "paused"
+  cancelPlaybackFrame()
+  renderTransport()
+
+beginPlayback = (engine, fromMs) ->
+  try
+    engine.play (fromMs or 0) / 1000
+  catch err
+    console.warn "Lecture impossible : #{err?.message or err}"
+    playback.state = "stopped"
+    hideTransport()
+    renderTransport()
+    return
+  playback.state = "playing"
+  renderTransport()
+  startPlaybackFrame()
+
+# Démarre la lecture du mouvement affiché : charge ses données de lecture au
+# besoin, puis lance le moteur.
+startPlayback = ->
+  engine = audioEngine()
+  unless engine
+    console.warn "Moteur audio indisponible"
+    hideTransport()
+    return
+  result = getMovementForPage displayedPage()
+  unless result
+    hideTransport()
+    return
+  movementId = result.movement.id
+  if playback.hasData and playback.movementId is movementId
+    beginPlayback engine, playback.position
+    return
+  token = ++playback.loadToken
+  playback.loading = true
+  playback.state = "loading"
+  renderTransport()
+  requestPlaybackData movementId
+    .then (data) ->
+      return unless playback.loadToken is token
+      unless data?.midi and (Number(data.duration) or 0) > 0
+        playback.loading = false
+        playback.state = "stopped"
+        hideTransport()
+        renderTransport()
+        console.warn "Données de lecture vides ou incomplètes pour le mouvement #{movementId}"
+        return
+      current = getMovementForPage displayedPage()
+      unless current?.movement.id is movementId
+        playback.loading = false
+        playback.state = "stopped"
+        renderTransport()
+        return
+      playback.loading = false
+      playback.movementId = movementId
+      playback.hasData = true
+      playback.duration = Math.max 0, Number(data.duration) or 0
+      playback.position = 0
+      playback.marks = data.syncMarks ? []
+      playback.followKey = null
+      try
+        engine.load data
+        applyVoiceAudio data.staffLabels
+      catch err
+        playback.hasData = false
+        playback.state = "stopped"
+        hideTransport()
+        renderTransport()
+        console.warn "Chargement audio impossible : #{err?.message or err}"
+        return
+      beginPlayback engine, 0
+    .catch (err) ->
+      return unless playback.loadToken is token
+      playback.loading = false
+      playback.state = "stopped"
+      hideTransport()
+      renderTransport()
+      console.warn "Données de lecture indisponibles : #{err?.message or err}"
+
+togglePlayPause = ->
+  return if playback.loading
+  if playback.state is "playing"
+    pausePlayback()
+  else
+    startPlayback()
+
+# Sonde de test : état du transport audio
+window.__musicaPlaybackState = ->
+  engine = audioEngine()
+  {
+    state: playback.state
+    position: Math.round currentPlaybackPosition()
+    duration: Math.round playback.duration or 0
+    engine: if engine?.getEngineMode? then engine.getEngineMode() else null
+    hasData: playback.hasData
+  }
+
+# Raccourci clavier : ne pas voler une touche saisie dans un champ, ni agir
+# quand l'overlay de réglages est ouvert.
+isFormField = (el) ->
+  return false unless el
+  tag = (el.tagName or "").toLowerCase()
+  tag in ["input", "select", "textarea"] or el.isContentEditable is true
+
+setupTransport = ->
+  $("transport-play")?.addEventListener "click", togglePlayPause
+  $("transport-stop")?.addEventListener "click", stopPlayback
+
+  # Clic sur le libellé de temps : seek proportionnel à la position du clic
+  # (seul moyen de déplacement fin ; la barre de progression a été retirée).
+  time = $("transport-time")
+  time?.addEventListener "click", (e) ->
+    duration = Math.max 0, playback.duration or 0
+    return unless duration > 0
+    rect = time.getBoundingClientRect()
+    ratio = if rect.width > 0 then (e.clientX - rect.left) / rect.width else 0
+    seekPlayback Math.max(0, Math.min(1, ratio)) * duration
+
+  engine = audioEngine()
+  engine?.onEnd ->
+    playback.state = "stopped"
+    playback.position = 0
+    cancelPlaybackFrame()
+    renderTransport()
+
+  document.addEventListener "keydown", (e) ->
+    return unless fileLoaded
+    return if e.ctrlKey or e.metaKey or e.altKey
+    return if isFormField e.target
+    return unless $("settings-overlay").classList.contains "hidden"
+    switch e.key.toLowerCase()
+      when "p"
+        e.preventDefault()
+        togglePlayPause()
+      when "s"
+        e.preventDefault()
+        stopPlayback()
+
 # Get movement and local page from global page number
 # Only returns loaded movements, falls back to movement 1 if not loaded
 getMovementForPage = (globalPage) ->
@@ -538,12 +1019,14 @@ getMovementForPage = (globalPage) ->
   null
 
 # Settings defaults
-defaultSettings = { zoom: 40, theme: "white", tapSize: 30, scrollUnit: "page", overlap: 0 }
+defaultSettings = { zoom: 40, theme: "white", tapSize: 30, scrollUnit: "page", overlap: 0, masterVolume: 80, followPlayback: true, expandRepeats: true }
 
 loadSettings = ->
   try
     saved = localStorage.getItem "musica-settings"
-    if saved then JSON.parse(saved) else Object.assign({}, defaultSettings)
+    parsed = if saved then JSON.parse(saved) else {}
+    # Les réglages ajoutés depuis une version antérieure prennent leur défaut
+    Object.assign {}, defaultSettings, parsed
   catch
     Object.assign({}, defaultSettings)
 
@@ -572,10 +1055,32 @@ applyZoom = (zoom) ->
   $("zoom-value").textContent = zoom
 
 applyScrollSettings = (unit, overlap) ->
+  currentScrollUnit = unit or "page"
   for btn in document.querySelectorAll ".scroll-unit-btn"
     btn.classList.toggle "active", btn.dataset.unit is unit
   $("overlap-select").value = String overlap
   $("overlap-row").classList.toggle "hidden", unit isnt "page"
+
+applyFollowPlayback = (enabled) ->
+  followPlaybackEnabled = enabled isnt false
+  box = $("follow-playback")
+  box.checked = followPlaybackEnabled if box
+
+applyExpandRepeats = (enabled) ->
+  expandRepeats = enabled isnt false
+  box = $("expand-repeats")
+  box.checked = expandRepeats if box
+
+applyMasterVolume = (volume) ->
+  value = parseInt volume
+  value = 80 unless isFinite value
+  value = Math.max 0, Math.min 100, value
+  engine = audioEngine()
+  engine?.setMasterVolume value
+  range = $("master-volume-range")
+  range.value = value if range
+  label = $("master-volume-value")
+  label.textContent = value if label
 
 applyAllSettings = ->
   settings = loadSettings()
@@ -583,11 +1088,39 @@ applyAllSettings = ->
   applyTapSize settings.tapSize
   applyZoom settings.zoom
   applyScrollSettings settings.scrollUnit or "page", settings.overlap or 0
+  applyMasterVolume settings.masterVolume
+  applyFollowPlayback settings.followPlayback
+  applyExpandRepeats settings.expandRepeats
 
-# Parties masquées et leurs tailles, propres à chaque fichier
+# Applique les volumes et masquages enregistrés au moteur audio, par libellé.
+# Les libellés inconnus du mouvement chargé sont acceptés sans erreur : une
+# voix masquée peut avoir disparu du MIDI, et le volume reste mémorisé pour
+# son retour. Aucun re-rendu n'est déclenché ici.
+applyVoiceAudio = (labels) ->
+  engine = audioEngine()
+  return unless engine?.setVoiceVolume?
+  list = []
+  seen = new Set()
+  add = (label) ->
+    return unless label? and not seen.has label
+    seen.add label
+    list.push label
+  add label for label in (labels ? [])
+  add label for label in Object.keys partVolumes
+  add label for label in Array.from hiddenParts
+  for label in list
+    volume = parseInt partVolumes[label] ? 100
+    volume = 100 unless isFinite volume
+    engine.setVoiceVolume label, volume
+    engine.setVoiceMuted label, hiddenParts.has(label) if engine.setVoiceMuted?
+
+# Parties masquées, leurs tailles et leurs volumes, propres à chaque fichier.
+# Le format historique (tableau d'ids) reste lu ; le champ `volumes` est
+# absent des anciens réglages et vaut alors 100 % partout.
 loadHiddenParts = ->
   hiddenParts = new Set()
   partSizes = {}
+  partVolumes = {}
   return unless currentFileId
   try
     saved = localStorage.getItem "musica-hidden-parts-#{currentFileId}"
@@ -599,13 +1132,14 @@ loadHiddenParts = ->
     else
       hiddenParts = new Set data.hidden or []
       partSizes = data.sizes or {}
+      partVolumes = data.volumes or {}
   catch
     # localStorage unavailable (file:// on some browsers)
 
 saveHiddenParts = ->
   return unless currentFileId
   try
-    data = {hidden: Array.from(hiddenParts), sizes: partSizes}
+    data = {hidden: Array.from(hiddenParts), sizes: partSizes, volumes: partVolumes}
     localStorage.setItem "musica-hidden-parts-#{currentFileId}", JSON.stringify(data)
   catch
     # localStorage unavailable (file:// on some browsers)
@@ -617,6 +1151,22 @@ partsVariant = ->
     "#{id}=#{partSizes[id]}")
   return hidden if sizes.length is 0  # clé inchangée quand toutes les voix sont à 100 %
   "#{hidden}|#{sizes.join ','}"
+
+# Variante du XML que le worker a chargé pour un mouvement (voir
+# movementVariants). Tant qu'un mouvement n'a pas été chargé, les réglages
+# courants font foi.
+loadedVariant = (movementId) -> movementVariants[movementId] ? partsVariant()
+
+# Le cache mémoire ne porte pas la variante dans sa clé : dès que les réglages
+# de voix changent, ses pages ne valent plus (le rechargement le vide aussi,
+# mais une page peut être demandée entre le changement et le rechargement).
+syncMemoryVariant = ->
+  variant = partsVariant()
+  return variant if variant is memoryVariant
+  memoryVariant = variant
+  memoryCache.clear()
+  pendingRequests.clear()
+  variant
 
 # DOM refs
 $ = (id) -> document.getElementById id
@@ -634,6 +1184,8 @@ showImport = ->
   $("import-section").classList.remove "hidden"
   $("btn-library").classList.add "hidden"
   $("btn-settings").classList.add "hidden"
+  hideTransport()
+  resetPlayback()
 
 hideImport = ->
   $("import-section").classList.add "hidden"
@@ -696,6 +1248,7 @@ showIndicator = ->
   , 1500
 
 renderPageAsync = (globalPage) ->
+  syncMemoryVariant()
   return Promise.resolve(memoryCache.get(globalPage)) if memoryCache.has(globalPage)
   result = getMovementForPage(globalPage)
   return Promise.resolve("") unless result
@@ -736,6 +1289,10 @@ detectScrollMode = (svgString) ->
   scrollMode
 
 displayView = ->
+  # Un autre mouvement est affiché : la lecture en cours ne le concerne plus
+  if fileLoaded and playback.movementId?
+    current = getMovementForPage displayedPage()
+    resetPlayback() if current? and current.movement.id isnt playback.movementId
   slot = $("page-current")
   topPage = Math.floor(scrollPos / 2) + 1
   bottomPage = topPage + 1
@@ -1445,6 +2002,10 @@ reloadScore = (startPage) ->
 # Reset the render state and start converting the first source
 startLoad = (startPage = 1) ->
   token = ++loadToken
+  # Nouveau chargement (fichier, rechargement, zoom, voix) : le transport
+  # repart de zéro et le moteur audio libère son contexte.
+  hideTransport()
+  resetPlayback()
   partsChanged = false
   loadHiddenParts()
   scrollPos = 0
@@ -1453,9 +2014,16 @@ startLoad = (startPage = 1) ->
   # Drop the displayed pages: they belong to the previous render
   $("page-current").innerHTML = ""
   memoryCache.clear()
+  memoryVariant = partsVariant()
+  movementVariants = {}
   pendingRequests.clear()
   pendingRenders.clear()
   pendingMovementLoads.clear()
+  # Les données de lecture du chargement précédent ne sont plus valides. Les
+  # demandes en cours sont rejetées : leur réponse pourrait arriver trop tard.
+  pendingPlayback.forEach (pending) -> pending.reject new Error "Chargement remplacé"
+  pendingPlayback.clear()
+  playbackCache.clear()
   pushedPages = {}
   movements = []
   awaitingLoad = true
@@ -1473,6 +2041,12 @@ startLoad = (startPage = 1) ->
 
   currentPageWidth = Math.round(window.innerWidth * 100 / currentScale)
   currentPageHeight = Math.round(window.innerHeight * 100 / currentScale)
+
+  # Les pages des autres variantes de voix ne seront plus demandées : les
+  # purger évite que le cache enfle à chaque essai de taille.
+  if currentFileId
+    svgStore.pruneVariants(currentFileId, partsVariant()).catch (err) ->
+      console.warn "Purge du cache SVG impossible : #{err?.message or err}"
 
   # Clear previous movements before loading new file
   worker.postMessage { type: "clearMovements" }
@@ -1499,6 +2073,7 @@ loadFirstSource = (token) ->
       fileLoaded = true
       hideImport()
       showLibraryBtn()
+      showTransport()
     .catch (err) ->
       return unless token is loadToken
       reportSourceError index, err
@@ -1593,6 +2168,9 @@ loadMovementAndWait = (movementId, xmlString, pageWidth, pageHeight) ->
     pendingMovementLoads.set movementId, resolve
     # Retain the load this reply belongs to, so a superseded one is ignored
     movementLoadTokens.set movementId, loadToken
+    # Le XML envoyé porte les tailles de voix courantes : les pages que le
+    # worker va produire pour ce mouvement vaudront pour cette variante.
+    movementVariants[movementId] = partsVariant()
 
     worker.postMessage
       type: "loadMovement"
@@ -1645,6 +2223,10 @@ renderLibrary = ->
         list.appendChild item
 
 showLibrary = ->
+  # Retour à la bibliothèque : la lecture s'arrête et le contexte audio est
+  # libéré.
+  hideTransport()
+  resetPlayback()
   renderLibrary()
   $("library-overlay").classList.remove "hidden"
 
@@ -1822,6 +2404,13 @@ handleFileImport = (file) ->
 handleImportFiles = (fileList) ->
   files = Array.from fileList or []
   return unless files.length > 0
+  # Un fichier seul est filtré ici aussi (partage Android, sélection directe) :
+  # une extension inconnue est refusée proprement au lieu d'échouer au rendu.
+  files = files.filter (file) -> isCompatibleFile file.name
+  unless files.length > 0
+    showError "Aucun fichier compatible (.xml, .musicxml, .mxl, .mscz, .mscx)"
+    showImport()
+    return
   if files.length is 1
     handleFileImport files[0]
   else
@@ -1915,15 +2504,29 @@ renderPartsList = ->
         sizeSel.appendChild opt
       sizeSel.value = partSizes[partLabel] or 100
       sizeSel.disabled = hiddenParts.has partLabel
+      volumeSel = document.createElement "select"
+      volumeSel.className = "part-volume"
+      volumeSel.title = "Volume de la voix"
+      volumeSel.setAttribute "aria-label", "Volume de #{partLabel}"
+      for pct in [10..100] by 10
+        opt = document.createElement "option"
+        opt.value = pct
+        opt.textContent = "Vol. #{pct} %"
+        volumeSel.appendChild opt
+      volumeSel.value = partVolumes[partLabel] or 100
+      volumeSel.disabled = hiddenParts.has partLabel
       row.appendChild box
       row.appendChild nameEl
       row.appendChild sizeSel
+      row.appendChild volumeSel
       box.addEventListener "change", ->
         if box.checked then hiddenParts.delete partLabel else hiddenParts.add partLabel
         sizeSel.disabled = not box.checked
+        volumeSel.disabled = not box.checked
         saveHiddenParts()
         updatePartsDisabled()
-        # Recalcul différé à la fermeture des réglages
+        # Masquage audible immédiat ; le rendu reste différé à la fermeture
+        applyVoiceAudio [partLabel]
         partsChanged = true
       sizeSel.addEventListener "change", ->
         pct = parseInt sizeSel.value
@@ -1931,9 +2534,19 @@ renderPartsList = ->
         saveHiddenParts()
         updatePartsSizesReset()
         partsChanged = true
+      volumeSel.addEventListener "change", ->
+        pct = parseInt volumeSel.value
+        pct = 100 unless isFinite pct
+        if pct is 100 then delete partVolumes[partLabel] else partVolumes[partLabel] = pct
+        saveHiddenParts()
+        updatePartsVolumesReset()
+        # Application immédiate au moteur : jamais de partsChanged ni de rendu
+        engine = audioEngine()
+        engine?.setVoiceVolume partLabel, pct
       list.appendChild row
   updatePartsDisabled()
   updatePartsSizesReset()
+  updatePartsVolumesReset()
 
 # Au moins une partie reste affichée : on désactive la dernière cochée
 updatePartsDisabled = ->
@@ -1944,11 +2557,17 @@ updatePartsDisabled = ->
   for box in boxes
     box.disabled = checked.length is 1 and box.checked
 
-# Bouton « Toutes les voix à 100 % » : actif dès qu'une taille diffère de 100
+# Bouton « Tailles à 100 % » : actif dès qu'une taille diffère de 100
 updatePartsSizesReset = ->
   btn = $("parts-sizes-reset")
   return unless btn
   btn.disabled = Object.keys(partSizes).every (id) -> partSizes[id] is 100
+
+# Bouton « Volumes à 100 % » : actif dès qu'un volume diffère de 100
+updatePartsVolumesReset = ->
+  btn = $("parts-volumes-reset")
+  return unless btn
+  btn.disabled = Object.keys(partVolumes).every (id) -> parseInt(partVolumes[id]) is 100
 
 # Fermer les réglages : applique en une seule fois les changements de voix
 closeSettings = ->
@@ -1992,6 +2611,13 @@ setupSettings = ->
     saveHiddenParts()
     renderPartsList()
     partsChanged = true if changed
+
+  # Remet tous les volumes de voix à 100 % : aucun re-rendu, seulement le moteur
+  $("parts-volumes-reset").addEventListener "click", ->
+    partVolumes = {}
+    saveHiddenParts()
+    renderPartsList()
+    applyVoiceAudio()
 
   # Zoom slider: live label, apply on release
   $("zoom-range").addEventListener "input", (e) ->
@@ -2042,11 +2668,58 @@ setupSettings = ->
     settings.overlap = parseInt e.target.value
     saveSettings settings
 
-  # Storage management button
+  # Suivi du défilement : appliqué immédiatement, sans re-rendu
+  followBox = $("follow-playback")
+  if followBox
+    followBox.addEventListener "change", (e) ->
+      enabled = e.target.checked
+      applyFollowPlayback enabled
+      settings = loadSettings()
+      settings.followPlayback = enabled
+      saveSettings settings
+
+  # Dérouler les reprises : le mode change le contenu des données de lecture.
+  # On arrête la lecture en cours et on oublie les données du mouvement ; la
+  # clé de cache inclut le mode, la prochaine lecture demandera les bonnes.
+  expandBox = $("expand-repeats")
+  if expandBox
+    expandBox.addEventListener "change", (e) ->
+      enabled = e.target.checked
+      applyExpandRepeats enabled
+      settings = loadSettings()
+      settings.expandRepeats = enabled
+      saveSettings settings
+      resetPlayback()
+
+  # Volume général : appliqué en direct, conservé à la fin du glissement
+  volumeRange = $("master-volume-range")
+  if volumeRange
+    volumeRange.addEventListener "input", (e) ->
+      applyMasterVolume parseInt e.target.value
+    volumeRange.addEventListener "change", (e) ->
+      value = parseInt e.target.value
+      applyMasterVolume value
+      settings = loadSettings()
+      settings.masterVolume = value
+      saveSettings settings
+
+  # Vidage des caches de rendu (SVG et données de lecture). Les fichiers de
+  # la bibliothèque (IndexedDB) ne sont pas touchés.
   storageBtn = $("btn-storage")
   if storageBtn
     storageBtn.addEventListener "click", ->
-      requestStorageQuota()
+      tasks = []
+      tasks.push svgStore.clearAll() if svgStore?.clearAll?
+      tasks.push playbackStore.clearAll() if playbackStore?.clearAll?
+      Promise.all(tasks).then ->
+        memoryCache.clear()
+        playbackCache.clear()
+        pendingRequests.clear()
+        updateStorageInfo()
+        showStorageMessage "Caches de rendu vidés", "success"
+      .catch (err) ->
+        console.warn "Vidage des caches impossible : #{err?.message or err}"
+        showStorageMessage "Vidage impossible", "error"
 
 # Request increased storage quota for MusicXML files
 requestStorageQuota = ->
@@ -2127,11 +2800,12 @@ handleProtocolParameters = ->
       # Direct file path or base64 data
       loadFileFromParameter fileParam
 
-  # Handle shared files via Web Share API
-  sharedFile = urlParams.get('shared')
-  if sharedFile
-    console.log "Shared file detected"
-    loadFileFromParameter sharedFile
+  # Fichier(s) partagé(s) via Android : le service worker a écrit l'entrée
+  # dans IndexedDB puis redirigé vers ?shared=<jeton>.
+  sharedToken = urlParams.get('shared')
+  if sharedToken
+    console.log "Shared file detected: #{sharedToken}"
+    importSharedEntry sharedToken
 
 # Fetch file from remote URL
 fetchFileFromUrl = (url) ->
@@ -2237,10 +2911,40 @@ showError = (message) ->
     errorEl.style.display = 'none'
   , 5000
 
+# Retire le jeton de partage de l'URL : un rechargement ne doit pas réimporter
+removeSharedParam = ->
+  url = new URL window.location.href
+  url.searchParams.delete 'shared'
+  history.replaceState null, '', url.pathname + url.search + url.hash
+
+# Consomme une entrée déposée par le share_target (POST multipart du service
+# worker). Les fichiers sont relus depuis IndexedDB puis confiés au pipeline
+# d'import habituel (handleImportFiles : bouton d'import, glisser-déposer).
+# L'entrée temporaire est supprimée : l'import crée sa propre entrée.
+importSharedEntry = (token) ->
+  storage.getFile(token).then (entry) ->
+    unless entry?.files?.length
+      removeSharedParam()
+      showError "Fichier partagé introuvable"
+      return
+
+    files = for source in entry.files
+      new File [source.data], source.name or "#{entry.name}.musicxml"
+
+    storage.deleteFile(token).catch (err) ->
+      console.warn "Entrée de partage non supprimée : #{err?.message or err}"
+
+    removeSharedParam()
+    handleImportFiles files
+  .catch (error) ->
+    removeSharedParam()
+    showError "Impossible de lire le fichier partagé : #{error?.message or error}"
+
 # Init
 document.addEventListener "DOMContentLoaded", ->
   applyAllSettings()
   setupNavigation()
+  setupTransport()
   setupImport()
   setupLibrary()
   setupSettings()

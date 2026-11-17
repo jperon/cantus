@@ -20,6 +20,7 @@
     "verovio": "^4.4.0"
   },
   "dependencies": {
-    "fflate": "^0.8.2"
+    "fflate": "^0.8.2",
+    "soundfont-player": "^0.12.0"
   }
 }

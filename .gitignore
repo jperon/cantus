@@ -4,3 +4,11 @@ dist/
 *.musicxml
 *.mxl
 2026/
+
+# Build Android local : contient android.keystore, ne doit jamais être versionné.
+/apk/
+# Outillage local de l’éditeur.
+/.windsurf/
+
+# Environnement direnv du flake (use flake).
+/.direnv/

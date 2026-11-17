@@ -1,3 +1,17 @@
+/* Police de texte des partitions. Verovio calcule l'espacement des paroles
+   avec les métriques de Times ; les appareils Android n'ont pas Times et
+   utilisent Noto Serif, plus large, ce qui fait chevaucher les syllabes.
+   Embarquer cette police (Liberation Serif renommée, cf. pwa/fonts/OFL.txt)
+   garantit les mêmes métriques partout. Le build remplace le jeton par une
+   data URI pour que les builds normal et SPA restent autonomes. */
+@font-face {
+  font-family: "Cantus Serif";
+  src: url("__CANTUS_SERIF_WOFF__") format("woff");
+  font-weight: normal;
+  font-style: normal;
+  font-display: block;
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -102,6 +116,11 @@ html, body {
 .scroll-page svg {
   max-width: 100%;
   height: auto;
+}
+
+/* Texte intérieur de la partition (paroles, libellés, numéros de mesure). */
+.scroll-page svg.definition-scale {
+  font-family: "Cantus Serif", "Liberation Serif", "Times New Roman", serif;
 }
 
 #page-prev {
@@ -274,21 +293,28 @@ html, body {
   display: none;
 }
 
+#command-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  justify-self: end;
+  gap: 0.4vh;
+  pointer-events: auto;
+}
+
+#btn-library,
 #btn-settings {
-  position: fixed;
-  bottom: 1vh;
-  right: 1vh;
-  z-index: 30;
   background: rgba(255,255,255,0.85);
   border: 1px solid #ddd;
   border-radius: 1vh;
-  padding: 1vh 1.5vh;
-  font-size: 2.5vh;
+  padding: 0.7vh 1vh;
+  font-size: 2.2vh;
   cursor: pointer;
   color: #333;
   line-height: 1;
 }
 
+#btn-library.hidden,
 #btn-settings.hidden {
   display: none;
 }
@@ -372,11 +398,46 @@ html, body {
   cursor: pointer;
 }
 
+#parts-list label span {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 #parts-list select {
   margin-left: auto;
   font-size: 13px;
   padding: 2px;
   color: #333;
+}
+
+#parts-list select.part-volume {
+  margin-left: 0;
+  min-width: 88px;
+}
+
+.settings-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  font-size: 14px;
+  color: #333;
+  cursor: pointer;
+}
+
+.settings-check input {
+  width: 20px;
+  height: 20px;
+  accent-color: #333;
+}
+
+.settings-hint {
+  margin: 0 0 4px 28px;
+  font-size: 12px;
+  color: #666;
 }
 
 #zoom-range {
@@ -638,25 +699,6 @@ body.theme-dark #page-indicator {
   font-size: 14px;
 }
 
-#btn-library {
-  position: fixed;
-  bottom: 1vh;
-  right: 7vh;
-  z-index: 30;
-  background: rgba(255,255,255,0.85);
-  border: 1px solid #ddd;
-  border-radius: 1vh;
-  padding: 1vh 1.5vh;
-  font-size: 2.5vh;
-  cursor: pointer;
-  color: #333;
-  line-height: 1;
-}
-
-#btn-library.hidden {
-  display: none;
-}
-
 #page-indicator {
   display: none;
 }
@@ -667,7 +709,7 @@ body.theme-dark #page-indicator {
 
 #loading-indicator {
   position: fixed;
-  bottom: 1vh;
+  bottom: 7vh;
   left: 1vh;
   z-index: 30;
   background: rgba(255,255,255,0.85);
@@ -702,14 +744,32 @@ body.theme-dark .spinner-small {
   border-top-color: #ccc;
 }
 
-#nav-buttons {
+/* Barre de commandes unique en bas de l'écran : MIDI à gauche, pages au
+   centre, actions (bibliothèque, réglages) à droite. Les trois zones partagent
+   la même ligne ; la grille garde le groupe de pages réellement centré. */
+#command-bar {
   position: fixed;
-  bottom: 1vh;
-  left: 50%;
-  transform: translateX(-50%);
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 30;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  column-gap: 0.4vh;
+  padding: 0.5vh 0.6vh calc(0.5vh + env(safe-area-inset-bottom, 0px));
+  pointer-events: none;
+}
+
+#command-bar > * {
+  pointer-events: auto;
+}
+
+#nav-buttons {
   display: flex;
-  gap: 0.5vh;
-  z-index: 25;
+  align-items: center;
+  justify-self: center;
+  gap: 0.35vh;
   opacity: 0.6;
   transition: opacity 0.2s;
 }
@@ -773,9 +833,135 @@ body.theme-dark #page-number {
   color: #ddd;
 }
 
-/* Écrans étroits : réduire la rangée de navigation et remonter les boutons du
-   coin droit, qui recouvraient le bouton « Fin ». Rien ne change au-delà. */
+#transport {
+  display: flex;
+  align-items: center;
+  justify-self: start;
+  gap: 0.6vh;
+  padding: 0.4vh 0.7vh;
+  max-width: 100%;
+  background: rgba(255,255,255,0.92);
+  border: 1px solid #ddd;
+  border-radius: 1vh;
+  opacity: 0.85;
+  transition: opacity 0.2s;
+}
+
+#transport:hover {
+  opacity: 1;
+}
+
+#transport.hidden {
+  display: none;
+}
+
+.transport-btn {
+  width: 3.8vh;
+  height: 3.8vh;
+  font-size: 1.7vh;
+  background: #f5f5f5;
+  border: 1px solid #999;
+  border-radius: 0.8vh;
+  cursor: pointer;
+  color: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.transport-btn:active {
+  background: #e0e0e0;
+}
+
+.transport-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+#transport-time {
+  font-size: 1.6vh;
+  color: #333;
+  min-width: 10ch;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+body.theme-sepia #transport {
+  background: rgba(244,236,216,0.95);
+  border-color: #d8cbb0;
+}
+
+body.theme-sepia #transport-time {
+  color: #2c1810;
+}
+
+body.theme-dark #transport {
+  background: rgba(26,26,26,0.9);
+  border-color: #444;
+}
+
+body.theme-dark .transport-btn {
+  background: #333;
+  border-color: #555;
+  color: #ddd;
+}
+
+body.theme-dark .transport-btn:active {
+  background: #444;
+}
+
+body.theme-dark #transport-time {
+  color: #ddd;
+}
+
+/* Écrans étroits : la barre reste sur une seule ligne ; les boutons MIDI et
+   les icônes se resserrent, le libellé de temps devient plus petit. Rien ne
+   change au-delà. */
 @media (max-width: 700px) {
+  /* Voix : deux lignes (case + nom, puis taille + volume) plutôt qu'une
+     rangée illisible sur mobile. */
+  #parts-list label {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+
+  #parts-list label span {
+    flex: 1 1 calc(100% - 32px);
+  }
+
+  #parts-list select {
+    flex: 1 1 0;
+    min-width: 0;
+    margin-left: 0;
+  }
+
+  #command-bar {
+    column-gap: 2px;
+    padding: 3px 4px calc(3px + env(safe-area-inset-bottom, 0px));
+  }
+
+  #transport {
+    gap: 4px;
+    padding: 2px 4px;
+  }
+
+  .transport-btn {
+    width: 34px;
+    height: 34px;
+    font-size: 15px;
+    border-radius: 6px;
+  }
+
+  #transport-time {
+    font-size: 12px;
+    min-width: 0;
+  }
+
   #nav-buttons {
     gap: 2px;
   }
@@ -796,6 +982,57 @@ body.theme-dark #page-number {
 
   #btn-library,
   #btn-settings {
-    bottom: calc(34px + 2.5vh);
+    padding: 6px 8px;
+    font-size: 18px;
+    border-radius: 6px;
+  }
+}
+
+/* En dessous de 560 px, tout doit encore tenir sur une ligne à trois zones :
+   les boutons se resserrent sans descendre sous 30 px de côté. */
+@media (max-width: 560px) {
+  #transport {
+    gap: 3px;
+    padding: 2px 3px;
+  }
+
+  .transport-btn {
+    width: 30px;
+    height: 30px;
+    font-size: 14px;
+  }
+
+  #transport-time {
+    font-size: 11px;
+  }
+
+  #nav-buttons {
+    gap: 1px;
+  }
+
+  .nav-btn {
+    width: 32px;
+    height: 32px;
+    font-size: 14px;
+  }
+
+  #page-number {
+    min-width: 34px;
+    height: 32px;
+    font-size: 13px;
+  }
+
+  #btn-library,
+  #btn-settings {
+    padding: 5px 6px;
+    font-size: 17px;
+  }
+}
+
+/* Très étroit : le libellé de temps s'efface pour laisser la priorité aux
+   contrôles de page plutôt que de les écraser ou de les faire chevaucher. */
+@media (max-width: 480px) {
+  #transport-time {
+    display: none;
   }
 }

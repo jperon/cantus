@@ -34,8 +34,6 @@ html(lang="fr")
         #install-section.hidden
           button#btn-install Installer Cantus
           p.install-subtitle Transformez Cantus en application native
-    button#btn-library.hidden ☰
-    button#btn-settings.hidden ⚙
     #overlay-loading
       .spinner
       p Chargement…
@@ -50,11 +48,27 @@ html(lang="fr")
         .settings-row
           span#zoom-value 40
           input#zoom-range(type="range" min="30" max="80" step="5" value="40")
+      .settings-group
+        label.settings-label(for="master-volume-range") Volume général
+        .settings-row
+          span#master-volume-value 80
+          input#master-volume-range(type="range" min="0" max="100" step="5" value="80" aria-label="Volume général")
       #parts-group.settings-group.hidden
         label.settings-label Voix
         #parts-list
         .settings-row
-          button#parts-sizes-reset.settings-btn(type="button" disabled) Toutes les voix à 100 %
+          button#parts-sizes-reset.settings-btn(type="button" disabled) Tailles à 100 %
+          button#parts-volumes-reset.settings-btn(type="button" disabled) Volumes à 100 %
+      .settings-group
+        label.settings-label Lecture
+        .settings-row
+          label.settings-check
+            input#follow-playback(type="checkbox" checked)
+            span Suivre le défilement
+          label.settings-check
+            input#expand-repeats(type="checkbox" checked)
+            span Dérouler les reprises
+          p.settings-hint Décoché : lecture linéaire, dans l'ordre écrit (sans reprises, D.C./D.S., coda ni voltes).
       .settings-group
         label.settings-label Thème
         .settings-row
@@ -85,7 +99,7 @@ html(lang="fr")
         label.settings-label Stockage
         .settings-row
           span#storage-info 0MB / 16MB
-          button#btn-storage Demander plus
+          button#btn-storage Vider le cache
       .settings-group
         label.settings-label À propos
         .settings-row
@@ -99,6 +113,11 @@ html(lang="fr")
             a(href="https://github.com/jperon/cantus" target="_blank" rel="noopener") Code source
           small
             a(href="https://github.com/jperon/cantus/blob/master/THIRD-PARTY.md" target="_blank" rel="noopener") Composants tiers
+        .settings-row
+          small
+            | Échantillons piano FluidR3 par Frank Wen, rendu MIDI.js par Benjamin Gleitzman —
+            = ' '
+            a(href="https://creativecommons.org/licenses/by/3.0/" target="_blank" rel="noopener") CC-BY 3.0
     #library-overlay.hidden
       #library-header
         h2 Bibliothèque
@@ -112,14 +131,22 @@ html(lang="fr")
     #page-indicator
     #loading-indicator.hidden
       .spinner-small
-    #nav-buttons
-      button.nav-btn(data-action="start" title="Début") ⏮
-      button.nav-btn(data-action="prev-mov" title="Mouvement précédent") ◀◀
-      button.nav-btn(data-action="prev-5" title="5 pages avant") −5
-      span#page-number
-      button.nav-btn(data-action="next-5" title="5 pages après") +5
-      button.nav-btn(data-action="next-mov" title="Mouvement suivant") ▶▶
-      button.nav-btn(data-action="end" title="Fin") ⏭
+    #command-bar
+      #transport.transport-group.hidden(role="group" aria-label="Lecture audio")
+        button#transport-play.transport-btn(type="button" title="Lecture / pause (p)" aria-label="Lecture") ▶
+        button#transport-stop.transport-btn(type="button" title="Arrêt (s)" aria-label="Arrêt") ■
+        span#transport-time(title="Cliquer pour se déplacer dans la lecture") 0:00 / 0:00
+      #nav-buttons.nav-group
+        button.nav-btn(data-action="start" title="Début") ⏮
+        button.nav-btn(data-action="prev-mov" title="Mouvement précédent") ◀◀
+        button.nav-btn(data-action="prev-5" title="5 pages avant") −5
+        span#page-number
+        button.nav-btn(data-action="next-5" title="5 pages après") +5
+        button.nav-btn(data-action="next-mov" title="Mouvement suivant") ▶▶
+        button.nav-btn(data-action="end" title="Fin") ⏭
+      #command-actions.icons-group
+        button#btn-library.hidden(type="button" title="Bibliothèque" aria-label="Bibliothèque") ☰
+        button#btn-settings.hidden(type="button" title="Réglages" aria-label="Réglages") ⚙
     script.
       window.__musicaBuildDate = "#{buildDate}"
       window.__musicaMsczAvailable = #{msczAvailable ? 'true' : 'false'}
@@ -128,4 +155,12 @@ html(lang="fr")
     script !{mxlJs}
     script !{storageJs}
     script !{svgCacheJs}
+    script !{playbackCacheJs}
+    script !{midiJs}
+    script !{audioJs}
+    script !{playbackJs}
+    script !{soundfontPlayerJs}
+    if soundfontsAvailable
+      //- Échantillons MIDI.js chargés en différé : le moteur audio les lit au moment de jouer
+      script(src="soundfonts/piano-fluidr3-13notes.js" defer)
     script !{appJs}

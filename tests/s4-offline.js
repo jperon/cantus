@@ -34,6 +34,25 @@ async function cachedMscz(page) {
   });
 }
 
+// Lecture hors ligne : le transport doit apparaître, la lecture démarrer et la
+// position progresser. Que les échantillons soient précachés (soundfont) ou
+// non (repli oscillateur), seule la lecture compte ici.
+async function offlinePlayback(page) {
+  await page.waitForFunction(() => {
+    const el = document.getElementById('transport');
+    return el && !el.classList.contains('hidden');
+  }, null, { timeout: 30000, polling: 100 });
+  await page.click('#transport-play');
+  await page.waitForFunction(() => {
+    const s = window.__musicaPlaybackState ? window.__musicaPlaybackState() : null;
+    return s && s.state === 'playing';
+  }, null, { timeout: 30000, polling: 100 });
+  const before = await page.evaluate(() => window.__musicaPlaybackState());
+  await page.waitForTimeout(1100);
+  const after = await page.evaluate(() => window.__musicaPlaybackState());
+  return { before, after, grew: after.position > before.position + 100 };
+}
+
 (async () => {
   const { server, url, requests } = await L.startServer(L.DIST, { log: true });
   const browser = await L.launch();
@@ -95,6 +114,10 @@ async function cachedMscz(page) {
           L.record(results, '4. Hors ligne réel (setOffline + rechargement + import .mscz), SW enregistré manuellement', 'index.html',
             first.svgCount > 0 && info.page >= 1 ? 'OK' : 'ÉCHEC',
             `1er SVG en ${first.ms} ms, page ${info.page}/${info.total} ; cache ${JSON.stringify(diag.cached.found)}`);
+          const play = await offlinePlayback(page);
+          L.record(results, '4. Lecture après rechargement hors ligne (SW manuel)', 'index.html',
+            play.grew ? 'OK' : 'ÉCHEC',
+            `moteur ${play.after.engine}, position ${play.before.position} → ${play.after.position} ms, durée ${play.after.duration} ms`);
         } catch (e) {
           diag.offlineManualError = e.message;
           L.record(results, '4. Hors ligne réel avec SW enregistré manuellement', 'index.html', 'ÉCHEC', e.message);
@@ -127,6 +150,10 @@ async function cachedMscz(page) {
           const info = await L.pageInfo(page);
           L.record(results, '4. Hors ligne réel (setOffline + rechargement + import .mscz)', 'index.html',
             first.svgCount > 0 ? 'OK' : 'ÉCHEC', `1er SVG en ${first.ms} ms, page ${info.page}/${info.total}`);
+          const play = await offlinePlayback(page);
+          L.record(results, '4. Lecture après rechargement hors ligne', 'index.html',
+            play.grew ? 'OK' : 'ÉCHEC',
+            `moteur ${play.after.engine}, position ${play.before.position} → ${play.after.position} ms, durée ${play.after.duration} ms`);
         } catch (e) {
           L.record(results, '4. Hors ligne réel', 'index.html', 'ÉCHEC', e.message);
         }

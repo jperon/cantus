@@ -28,16 +28,27 @@
         "application/vnd.recordare.musicxml+xml": [".musicxml", ".xml"],
         "application/vnd.recordare.musicxml": [".mxl"],
         "text/xml": [".xml"],
-        "application/xml": [".xml"]
+        "application/xml": [".xml"],
+        "application/x-musescore": [".mscz", ".mscx"],
+        "application/octet-stream": [".mscz", ".mscx"]
       }
     }
   ],
   "share_target": {
-    "action": "./",
-    "method": "GET",
-    "enctype": "application/x-www-form-urlencoded",
+    "action": "./share",
+    "method": "POST",
+    "enctype": "multipart/form-data",
     "params": {
-      "url": "file"
+      "title": "title",
+      "text": "text",
+      "files": [
+        {
+          "name": "file",
+          "accept": ["application/vnd.recordare.musicxml+xml", "application/vnd.recordare.musicxml",
+                     "application/xml", "text/xml", "application/octet-stream", "application/zip",
+                     "audio/x-musescore", "application/x-musescore", ".musicxml", ".mxl", ".mscz", ".mscx"]
+        }
+      ]
     }
   },
   "icons": [
