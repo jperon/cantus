@@ -128,4 +128,9 @@ html(lang="fr")
     script !{mxlJs}
     script !{storageJs}
     script !{svgCacheJs}
+    script !{midiJs}
+    script !{soundfontPlayerJs}
+    if soundfontsAvailable
+      //- Échantillons MIDI.js chargés en différé : le moteur audio les lit au moment de jouer
+      script(src="soundfonts/piano-fluidr3-13notes.js" defer)
     script !{appJs}

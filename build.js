@@ -14,6 +14,9 @@ const MSCZ2XML_CLASSIC = path.join(
   process.env.MSCZ2XML_PKG || path.join(__dirname, '..', 'musescore', 'result-wasm'),
   'classic'
 );
+// Échantillons audio (sous-ensemble FluidR3_GM, format MIDI.js)
+const SOUNDFONTS_SRC = path.join(PWA, 'soundfonts');
+const SOUNDFONT_SAMPLES = path.join(SOUNDFONTS_SRC, 'piano-fluidr3-13notes.js');
 
 // Minification (désactivée en --watch ou --no-minify pour déboguer)
 const MINIFY = !process.argv.includes('--watch') && !process.argv.includes('--no-minify');
@@ -87,6 +90,51 @@ function readMscz2xml() {
   };
 }
 
+// Copie les assets d'échantillons dans dist/soundfonts ; renvoie false s'il
+// n'y en a aucun (le build reste valide, le moteur audio se rabat sur OSC).
+function copySoundfontSamples() {
+  if (!fs.existsSync(SOUNDFONTS_SRC)) {
+    console.warn(`  Attention : ${SOUNDFONTS_SRC} introuvable, échantillons audio désactivés`);
+    return false;
+  }
+  const files = fs.readdirSync(SOUNDFONTS_SRC).filter((file) => file.endsWith('.js'));
+  if (!files.length) {
+    console.warn('  Attention : aucun échantillon audio dans pwa/soundfonts, aperçu audio désactivé');
+    return false;
+  }
+  console.log('  Copying soundfont samples...');
+  ensureDir(path.join(DIST, 'soundfonts'));
+  for (const file of files) {
+    const dest = path.join(DIST, 'soundfonts', file);
+    // Même précaution que copyMscz2xml : la destination peut être en lecture seule
+    fs.rmSync(dest, { force: true });
+    fs.copyFileSync(path.join(SOUNDFONTS_SRC, file), dest);
+    fs.chmodSync(dest, 0o644);
+    console.log(`  -> dist/soundfonts/${file}`);
+  }
+  return true;
+}
+
+// Librairie soundfont-player (UMD déjà minifié) exposée comme window.Soundfont
+function readSoundfontPlayer() {
+  console.log('  Reading soundfont-player...');
+  const src = fs.readFileSync(
+    path.join(__dirname, 'node_modules', 'soundfont-player', 'dist', 'soundfont-player.min.js'),
+    'utf-8'
+  );
+  return minify(`(function(){${src}; window.__musicaSoundfontPlayer = window.Soundfont;})()`);
+}
+
+// Échantillons pour le SPA (file:// interdit fetch) ; null si absents
+function readSoundfontSamples() {
+  if (!fs.existsSync(SOUNDFONT_SAMPLES)) {
+    console.warn(`  Attention : ${SOUNDFONT_SAMPLES} introuvable, échantillons audio désactivés`);
+    return null;
+  }
+  console.log('  Reading soundfont samples...');
+  return fs.readFileSync(SOUNDFONT_SAMPLES, 'utf-8');
+}
+
 // Le contenu d'un <script type="text/plain"> est du texte brut : un
 // '</script' y fermerait la balise. L'échappement est sans effet sur le JS.
 function escapeScript(source) {
@@ -101,6 +149,7 @@ function compileScripts() {
     mxlJs: minify(compileCoffee('mxl.coffee')),
     storageJs: minify(compileCoffee('storage.coffee')),
     svgCacheJs: minify(compileCoffee('svgCache.coffee')),
+    midiJs: minify(compileCoffee('midi.coffee')),
     workerJs: minify(compileCoffee('worker.coffee')),
     appJs: minify(compileCoffee('app.coffee')),
   };
@@ -163,9 +212,11 @@ async function build() {
   console.log('  -> dist/verovio-toolkit-wasm.js (partitura)');
 
   const msczAvailable = copyMscz2xml();
+  const soundfontsAvailable = copySoundfontSamples();
 
   const fflateSetup = readFflate();
-  const { mxlJs, storageJs, svgCacheJs, workerJs, appJs } = compileScripts();
+  const soundfontPlayerJs = readSoundfontPlayer();
+  const { mxlJs, storageJs, svgCacheJs, midiJs, workerJs, appJs } = compileScripts();
 
   // 10. Read CSS
   const css = readSrc('styles.css');
@@ -192,12 +243,15 @@ async function build() {
     css,
     workerSetup,
     fflateSetup,
+    soundfontPlayerJs,
     mxlJs,
     storageJs,
     svgCacheJs,
+    midiJs,
     appJs,
     buildDate,
     msczAvailable,
+    soundfontsAvailable,
   });
 
   // 13. Write dist/index.html
@@ -231,7 +285,9 @@ async function buildSpa() {
   const verovioJs = fs.readFileSync(verovioToolkit(), 'utf-8');
 
   const fflateSetup = readFflate();
-  const { mxlJs, storageJs, svgCacheJs, workerJs, appJs } = compileScripts();
+  const soundfontPlayerJs = readSoundfontPlayer();
+  const soundfontSamples = readSoundfontSamples();
+  const { mxlJs, storageJs, svgCacheJs, midiJs, workerJs, appJs } = compileScripts();
   const msczInline = readMscz2xml();
   const msczAvailable = !!msczInline;
 
@@ -283,9 +339,12 @@ ${workerJs}
     workerSource,
     workerSetup,
     fflateSetup,
+    soundfontPlayerJs,
+    soundfontSamples: soundfontSamples ? escapeScript(soundfontSamples) : null,
     mxlJs,
     storageJs,
     svgCacheJs,
+    midiJs,
     appJs,
     buildDate,
     msczAvailable,
@@ -298,6 +357,7 @@ ${workerJs}
   console.log(`  -> dist/spa.html (${sizeMB} MB)`);
 
   copyPwaFiles(buildDate);
+  copyLegalFiles();
   copyScreenshots();
 
   console.timeEnd('build-spa');

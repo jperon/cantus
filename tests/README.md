@@ -20,6 +20,21 @@ tests/run.sh s1-import.js # un seul scénario
 Chaque script imprime une ligne par vérification (`[OK]` / `[ÉCHEC]` avec le
 détail mesuré), puis un résumé JSON. Les délais d'attente sont tous bornés.
 
+## Sonde audio (aperçu soundfont)
+
+Pas de scénario dédié : la plomberie se vérifie dans la console de la page
+construite.
+
+- build normal : `typeof window.Soundfont` vaut `function` (UMD inliné) et,
+  après chargement différé, `window.MIDI.Soundfont.acoustic_grand_piano`
+  contient 13 notes (`C2`…`C6`), servies depuis `soundfonts/` ;
+- SPA : les mêmes globals sont définis, l'asset étant inliné dans
+  `<script id="soundfont-src" type="text/plain">` puis évalué avant
+  `app.js`.
+
+Si `pwa/soundfonts/piano-fluidr3-13notes.js` est absent, le build passe
+(tolérance) et ces globals ne sont simplement pas définis.
+
 ## Scénarios
 
 - `s1-import.js` — import `.xml`, `.mxl`, `.mscz` seuls, navigation
@@ -38,6 +53,15 @@ détail mesuré), puis un résumé JSON. Les délais d'attente sont tous bornés
   Diagnostique l'étape qui échoue au lieu d'attendre indéfiniment.
 - `s5-nopkg.js` — build `MSCZ2XML_PKG=/nonexistent` (normal et `--spa`),
   refus propre d'un `.mscz`, puis reconstruction normale de `dist/`.
+
+## Régénérer les échantillons audio
+
+```sh
+curl -sS -o /tmp/piano-mp3.js \
+  https://raw.githubusercontent.com/gleitz/midi-js-soundfonts/gh-pages/FluidR3_GM/acoustic_grand_piano-mp3.js
+node tools/build-soundfont-subset.js /tmp/piano-mp3.js \
+  pwa/soundfonts/piano-fluidr3-13notes.js
+```
 
 ## Notes
 

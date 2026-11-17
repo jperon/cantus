@@ -118,4 +118,20 @@ html(lang="fr")
     script !{mxlJs}
     script !{storageJs}
     script !{svgCacheJs}
+    script !{midiJs}
+    if soundfontSamples
+      //- Asset inerte : le SPA en file:// ne peut pas fetch, et l'évaluer avant
+      //- la lib soundfont-player n'aurait aucun intérêt.
+      script#soundfont-src(type="text/plain") !{soundfontSamples}
+    script !{soundfontPlayerJs}
+    if soundfontSamples
+      //- Exécute l'asset inerte : définit MIDI.Soundfont dans le contexte global
+      script.
+        (function() {
+          var src = document.getElementById('soundfont-src');
+          if (!src) return;
+          var script = document.createElement('script');
+          script.textContent = src.textContent;
+          document.head.appendChild(script);
+        })();
     script !{appJs}

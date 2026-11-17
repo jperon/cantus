@@ -24,6 +24,11 @@ MSCZ2XML_ASSETS = [
   './mscz2xml/mscz2xml_wasm_bg.wasm'
 ]
 
+# Échantillons audio (facultatifs : absents des builds sans soundfonts)
+SOUNDFONT_ASSETS = [
+  './soundfonts/piano-fluidr3-13notes.js'
+]
+
 # Installation - cache static assets
 # Le nouveau SW reste en attente : app.coffee propose la mise à jour,
 # puis envoie SKIP_WAITING quand l'utilisateur l'accepte.
@@ -38,9 +43,9 @@ self.addEventListener 'install', (event) ->
             # Mise en cache séparée : un paquet mscz2xml absent ne doit pas
             # faire échouer l'installation du service worker
             Promise.all(
-              MSCZ2XML_ASSETS.map (u) ->
+              MSCZ2XML_ASSETS.concat(SOUNDFONT_ASSETS).map (u) ->
                 cache.add(new Request(u, cache: 'reload')).catch (err) ->
-                  console.warn 'SW: mscz2xml non mis en cache', u, err
+                  console.warn 'SW: asset facultatif non mis en cache', u, err
             )
   )
 
