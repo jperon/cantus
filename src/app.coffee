@@ -742,6 +742,41 @@ cancelPlaybackFrame = ->
     cancelAnimationFrame playback.rafId
     playback.rafId = null
 
+# En mode horizontal, chaque page vaut deux demi-pages (scrollPos pair : début
+# de page, impair : milieu de page), exactement comme le geste manuel qui
+# avance d'un cran à la fois. Au-delà du milieu, on franchit le seuil avec une
+# petite marge : un élément pile sur la frontière ne fait pas osciller le suivi
+# d'une demi-page à l'autre à chaque frame.
+HALF_HYSTERESIS = 0.05
+
+# Demi-page visée pour l'élément `id` de la page `page` (mode horizontal).
+# Le repère est le rapport (x élément - x SVG) / largeur du SVG : il reste
+# juste quel que soit le zoom, la taille de portée ou la transformation CSS,
+# puisqu'élément et page sont mesurés dans le même repère écran.
+horizontalHalfPage = (page, id) ->
+  pageEl = $("page-current").querySelector ".scroll-page[data-page=\"#{page}\"]"
+  svg = pageEl?.querySelector "svg"
+  return null unless svg
+  element = document.getElementById id if id?
+  return null unless element and pageEl.contains element
+  svgRect = svg.getBoundingClientRect()
+  return null unless svgRect.width > 0
+  ratio = (element.getBoundingClientRect().left - svgRect.left) / svgRect.width
+  base = (page - 1) * 2
+  half = if ratio < 0.5 then 0 else 1
+  # Hystérésis : on ne change de moitié qu'après avoir dépassé le milieu de
+  # HALF_HYSTERESIS. La position courante doit être l'une des deux demi-pages
+  # de cette page (sinon on vient d'ailleurs : pas de marge à conserver).
+  if scrollPos >= base and scrollPos <= base + 1
+    currentHalf = scrollPos - base
+    if currentHalf is 0 and ratio < 0.5 + HALF_HYSTERESIS
+      half = 0
+    else if currentHalf is 1 and ratio > 0.5 - HALF_HYSTERESIS
+      half = 1
+  # Même domaine de positions que le geste manuel : entier, borné à la
+  # dernière page atteignable.
+  Math.max 0, Math.min maxScrollPos(), base + half
+
 # Suivi de partition : amène à l'écran le marqueur courant. Appelé depuis la
 # boucle de lecture ; ne fait rien quand le réglage est désactivé. Une page
 # absente du DOM est demandée puis réalignée à la frame suivante : l'écran
@@ -753,20 +788,33 @@ followPlaybackFrame = ->
   return unless Array.isArray(marks) and marks.length
   api = window.__musicaPlayback
   return unless api?.planFollow?
+  vertical = scrollMode is "vertical"
+  # Horizontal : l'id du marqueur courant (et non celui du début de page)
+  # permet de choisir entre les deux demi-pages ; vertical : réglage inchangé.
   plan = api.planFollow marks, currentPlaybackPosition(),
-    scrollUnit: if scrollMode is "vertical" then currentScrollUnit else "page"
+    scrollUnit: if vertical then currentScrollUnit else "system"
   return unless plan
   target = getGlobalPage playback.movementId, plan.page
   return unless target >= 1
   slot = $("page-current")
   pageEl = slot.querySelector ".scroll-page[data-page=\"#{target}\"]"
 
-  # Horizontal : une page = un système, on ramène la page en haut.
-  if scrollMode isnt "vertical"
-    key = "page:#{target}"
-    return if playback.followKey is key
-    setScrollPos (target - 1) * 2
-    playback.followKey = key
+  # Horizontal : viser la demi-page qui contient l'élément courant. Si son SVG
+  # n'est pas encore rendu, replier sur le début de page puis réaligner à la
+  # frame suivante (clé « pending » pour réessayer sans attendre un changement
+  # de marqueur).
+  unless vertical
+    pos = horizontalHalfPage target, plan.id
+    if pos?
+      return if scrollPos is pos
+      setScrollPos pos
+      playback.followKey = "half:#{pos}"
+    else
+      pos = (target - 1) * 2
+      key = "pending:#{target}"
+      return if scrollPos is pos and playback.followKey is key
+      setScrollPos pos
+      playback.followKey = key
     return
 
   # Vertical : la page doit être rendue avant de viser un système.

@@ -28,6 +28,22 @@ async function positionGrowing(page, ms = 1000, minimum = 100) {
   return { before, after, grew: after.position > before.position + minimum };
 }
 
+// Position de défilement horizontale en demi-pages : page du premier
+// .scroll-page et décalage de 50vw du wrapper (0 = début de page, 1 = milieu).
+// Même convention que scrollPos dans src/app.coffee.
+async function horizontalScrollPos(page) {
+  return page.evaluate(() => {
+    const first = document.querySelector('#page-current .scroll-page');
+    const wrapper = document.querySelector('#page-current .scroll-wrapper');
+    if (!first || !wrapper) return null;
+    const pageNumber = parseInt(first.dataset.page, 10);
+    if (!Number.isFinite(pageNumber)) return null;
+    const m = /translateX\(-([\d.]+)vw\)/.exec(wrapper.style.transform || '');
+    const half = m && parseFloat(m[1]) >= 25 ? 1 : 0;
+    return (pageNumber - 1) * 2 + half;
+  });
+}
+
 // La barre de progression a été supprimée : le déplacement se fait en
 // cliquant sur le libellé de temps, proportionnellement à la position du clic
 // (même geste que l'utilisateur, sans passer par un élément qui n'existe plus).
@@ -366,6 +382,62 @@ async function runPage(browser, url, pageName, results) {
       L.record(results, '6. Suivi horizontal : sauts avant/arrière sans page blanche', pageName,
         horizontalOk && wentForward && wentBack ? 'OK' : 'ÉCHEC',
         `page de départ p.${first.page}, cibles ${seen.join(' → ')}, SVG affiché : ${horizontalOk}`);
+
+      // Granularité : pendant la lecture naturelle (sans saut), le suivi doit
+      // parcourir les DEUX demi-pages d'une même page, +1 cran à la fois et
+      // sans revenir en arrière. On part de ~3,2 s (page 2, première moitié)
+      // et on laisse jouer plus de dix secondes : la fixture Fauré a des
+      // marqueurs dans chaque moitié de page.
+      const duration = (await state(page)).duration;
+      const startMs = 3200;
+      await seekFraction(page, startMs / duration);
+      await page.waitForTimeout(700);
+      const startPos = await horizontalScrollPos(page);
+      const follow = await page.evaluate((until) => new Promise((resolve) => {
+        const read = () => {
+          const first = document.querySelector('#page-current .scroll-page');
+          const wrapper = document.querySelector('#page-current .scroll-wrapper');
+          if (!first || !wrapper) return null;
+          const pageNumber = parseInt(first.dataset.page, 10);
+          if (!Number.isFinite(pageNumber)) return null;
+          const m = /translateX\(-([\d.]+)vw\)/.exec(wrapper.style.transform || '');
+          const half = m && parseFloat(m[1]) >= 25 ? 1 : 0;
+          return (pageNumber - 1) * 2 + half;
+        };
+        const changes = [];
+        const t0 = performance.now();
+        const timer = setInterval(() => {
+          const pos = read();
+          if (pos != null && changes[changes.length - 1] !== pos) changes.push(pos);
+          const now = window.__musicaPlaybackState ? window.__musicaPlaybackState() : null;
+          if ((now && now.position >= until) || performance.now() - t0 > 25000) {
+            clearInterval(timer);
+            resolve({ changes, endPosition: now ? now.position : null, ms: performance.now() - t0 });
+          }
+        }, 50);
+      }), startMs + 12000);
+      const changes = follow.changes;
+      const diffs = changes.slice(1).map((p, i) => p - changes[i]);
+      const forwardOnly = diffs.every((d) => d >= 0);
+      const oneHalfMax = diffs.every((d) => d <= 1);
+      const hasEven = changes.some((p) => p % 2 === 0);
+      const hasOdd = changes.some((p) => p % 2 === 1);
+      const bothHalvesOfOnePage = changes.some((p, i) =>
+        i > 0 && p === changes[i - 1] + 1 && Math.floor(p / 2) === Math.floor(changes[i - 1] / 2));
+      const pageChanges = diffs.filter((d, i) =>
+        Math.floor(changes[i + 1] / 2) !== Math.floor(changes[i] / 2)).length;
+      const halfTransitions = Math.max(0, changes.length - 1 - pageChanges);
+      const perMinute = (n) => follow.ms > 0 ? Math.round((n * 60000) / follow.ms) : 0;
+      L.record(results, '6. Suivi horizontal : demi-pages paires et impaires, +1 cran max, sans retour', pageName,
+        startPos != null && hasEven && hasOdd && bothHalvesOfOnePage &&
+          forwardOnly && oneHalfMax ? 'OK' : 'ÉCHEC',
+        `départ ${startPos}, suite ${changes.join(' → ')} (${follow.ms.toFixed(0)} ms, fin ${follow.endPosition} ms), ` +
+        `paires ${hasEven}, impaires ${hasOdd}, deux moitiés d’une page ${bothHalvesOfOnePage}, ` +
+        `deltas [${diffs.join(',')}], avant seulement ${forwardOnly}, max 1 ${oneHalfMax}`);
+      L.record(results, '6. Granularité horizontale : ~2 changements par page, dont une demi-page', pageName,
+        oneHalfMax && halfTransitions >= 1 ? 'OK' : 'ÉCHEC',
+        `${changes.length - 1} changements (${perMinute(changes.length - 1)}/min) dont ${pageChanges} changements de page ` +
+        `et ${halfTransitions} demi-pages (${perMinute(halfTransitions)}/min) ; ancien suivi page entière : ${perMinute(pageChanges)}/min`);
       await page.click('#transport-stop');
     } catch (e) {
       L.record(results, '6. Suivi horizontal', pageName, 'ÉCHEC', 'exception du test : ' + e.message);
