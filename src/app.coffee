@@ -146,7 +146,7 @@ showInstallMessage = (message, type = 'info') ->
 
 # Check if app is already installed
 checkIfInstalled = ->
-  if 'standalone' in window.navigator and window.navigator.standalone
+  if window.navigator.standalone
     console.log "PWA: App is already installed (iOS)"
     hideInstallButton()
   else if window.matchMedia('(display-mode: standalone)').matches
@@ -175,7 +175,7 @@ document.addEventListener "DOMContentLoaded", ->
 
 # Service Worker management - Local First PWA
 setupServiceWorker = ->
-  if 'serviceWorker' in navigator
+  if navigator.serviceWorker?
     navigator.serviceWorker.register('./sw.js')
       .then (registration) ->
         console.log "Service Worker enregistré:", registration.scope
@@ -382,6 +382,7 @@ sourceCache = new Map()  # index de source -> {xml, splitInfo}
 nextSourceToLoad = 0  # prochaine source à convertir
 allSourcesLoaded = false  # toutes les sources sont converties et leurs mouvements connus
 loadToken = 0  # incrémenté à chaque chargement : arrête les chaînes de conversion en cours
+movementLoadTokens = new Map()  # movementId -> loadToken de la demande en cours
 
 # Worker message handler
 worker.onmessage = (e) ->
@@ -400,6 +401,8 @@ worker.onmessage = (e) ->
       startApp()
 
     when "movementLoaded"
+      # Réponse d'un chargement abandonné (suppression, rechargement) : ignorer
+      return if (movementLoadTokens.get e.data.movementId) isnt loadToken
       awaitingLoad = false
       {movementId, pageCount: mvPages, pushed} = e.data
       mv = movements.find (m) -> m.id is movementId
@@ -1560,6 +1563,8 @@ loadMovementAndWait = (movementId, xmlString, pageWidth, pageHeight) ->
   new Promise (resolve) ->
     # Store resolver to be called when movementLoaded message arrives
     pendingMovementLoads.set movementId, resolve
+    # Retain the load this reply belongs to, so a superseded one is ignored
+    movementLoadTokens.set movementId, loadToken
 
     worker.postMessage
       type: "loadMovement"
@@ -1639,8 +1644,19 @@ deleteFromLibrary = (id) ->
       currentSources = null
       sourceCache.clear()
       loadToken++  # stop background conversions of the deleted score
+      movementLoadTokens.clear()
       fileLoaded = false
+      # Rien ne reste à charger : retirer l'indicateur et les compteurs
+      hideLoadingIndicator()
+      hideLoading()
+      pageCount = 0
+      movements = []
+      targetPage = null
       $("page-current").innerHTML = ""
+      pageNumberEl = $("page-number")
+      pageNumberEl.textContent = "" if pageNumberEl
+      pageIndicatorEl = $("page-indicator")
+      pageIndicatorEl.textContent = "" if pageIndicatorEl
       showImport()
     renderLibrary()
 
@@ -1908,7 +1924,7 @@ closeSettings = ->
 setupSettings = ->
   # Show current storage usage
   updateStorageInfo = ->
-    if 'storage' in navigator and 'estimate' in navigator.storage
+    if navigator.storage?.estimate?
       navigator.storage.estimate().then (estimate) ->
         usageMB = (estimate.usage / 1024 / 1024).toFixed(2)
         quotaMB = (estimate.quota / 1024 / 1024).toFixed(0)
@@ -1997,14 +2013,14 @@ setupSettings = ->
 
 # Request increased storage quota for MusicXML files
 requestStorageQuota = ->
-  if 'storage' in navigator and 'estimate' in navigator.storage
+  if navigator.storage?.estimate?
     # Check current usage
     navigator.storage.estimate().then (estimate) ->
       console.log "Storage usage: #{(estimate.usage / 1024 / 1024).toFixed(2)}MB / #{(estimate.quota / 1024 / 1024).toFixed(2)}MB"
 
       # Request more storage if needed (limit to 200MB)
       if estimate.quota < 200 * 1024 * 1024 # 200MB
-        if 'persist' in navigator.storage
+        if navigator.storage.persist?
           navigator.storage.persist().then (persistent) ->
             if persistent
               console.log "✅ Storage persistence granted - extended quota available"
