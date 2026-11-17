@@ -1,3 +1,17 @@
+/* Police de texte des partitions. Verovio calcule l'espacement des paroles
+   avec les métriques de Times ; les appareils Android n'ont pas Times et
+   utilisent Noto Serif, plus large, ce qui fait chevaucher les syllabes.
+   Embarquer cette police (Liberation Serif renommée, cf. pwa/fonts/OFL.txt)
+   garantit les mêmes métriques partout. Le build remplace le jeton par une
+   data URI pour que les builds normal et SPA restent autonomes. */
+@font-face {
+  font-family: "Cantus Serif";
+  src: url("__CANTUS_SERIF_WOFF__") format("woff");
+  font-weight: normal;
+  font-style: normal;
+  font-display: block;
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -102,6 +116,11 @@ html, body {
 .scroll-page svg {
   max-width: 100%;
   height: auto;
+}
+
+/* Texte intérieur de la partition (paroles, libellés, numéros de mesure). */
+.scroll-page svg.definition-scale {
+  font-family: "Cantus Serif", "Liberation Serif", "Times New Roman", serif;
 }
 
 #page-prev {

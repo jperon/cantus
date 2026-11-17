@@ -21,6 +21,20 @@ partitions SVG. Le paquet distribué avec l'application
 
 Ces polices sont distribuées sous SIL Open Font License 1.1.
 
+## Police de texte Cantus Serif
+
+- Licence : SIL Open Font License 1.1 (voir `pwa/fonts/OFL.txt`)
+- Source : Liberation Serif 2.1.5, <https://github.com/liberationfonts/liberation-fonts>
+- Copyright © 2012 Red Hat, Inc., avec le nom réservé « Liberation »
+
+Cantus Serif est une version sous-ensemble de Liberation Serif, renommée
+conformément à la clause de nom réservé de l'OFL (le nom « Liberation » ne
+peut pas être réutilisé pour une version modifiée). Elle est embarquée dans
+`pwa/fonts/CantusSerif-Regular.woff` puis inlinée en data URI dans le CSS par
+`build.js`. Verovio calcule l'espacement des paroles avec les métriques de
+Times ; cette police métriquement compatible évite que la police de repli
+d'Android (Noto Serif, plus large) ne fasse chevaucher les syllabes.
+
 ## fflate
 
 - Licence : MIT

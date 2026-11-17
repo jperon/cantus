@@ -30,6 +30,28 @@ function readSrc(file) {
   return fs.readFileSync(path.join(SRC, file), 'utf-8');
 }
 
+// Police de texte des partitions. Verovio grave les paroles avec les métriques
+// de Times ; sur Android, « Times » est absent et la police de repli (Noto
+// Serif) est plus large, d'où des syllabes qui se chevauchent. On embarque
+// donc la police dans le CSS (build normal et SPA), pour que tous les appareils
+// utilisent les mêmes métriques que celles prévues par Verovio.
+const SERIF_FONT = path.join(PWA, 'fonts', 'CantusSerif-Regular.woff');
+let cssCache = null;
+
+function readCss() {
+  if (cssCache) return cssCache;
+  let css = readSrc('styles.css');
+  if (css.includes('__CANTUS_SERIF_WOFF__')) {
+    if (!fs.existsSync(SERIF_FONT)) {
+      throw new Error(`Police introuvable : ${SERIF_FONT}`);
+    }
+    const b64 = fs.readFileSync(SERIF_FONT).toString('base64');
+    css = css.replaceAll('__CANTUS_SERIF_WOFF__', `data:font/woff;base64,${b64}`);
+  }
+  cssCache = css;
+  return css;
+}
+
 function compileCoffee(file) {
   const src = readSrc(file);
   return CoffeeScript.compile(src, { bare: true });
@@ -222,7 +244,7 @@ async function build() {
   const { mxlJs, storageJs, svgCacheJs, playbackCacheJs, midiJs, audioJs, playbackJs, workerJs, appJs } = compileScripts();
 
   // 10. Read CSS
-  const css = readSrc('styles.css');
+  const css = readCss();
 
   // 11. Create worker setup script
   // Write worker to separate file and load via importScripts
@@ -298,7 +320,7 @@ async function buildSpa() {
   const msczAvailable = !!msczInline;
 
   // 4. Read CSS
-  const css = readSrc('styles.css');
+  const css = readCss();
 
   // 5. Create worker with Verovio inlined (for SPA without blob: URL issues)
   // Inject Verovio code directly into worker
