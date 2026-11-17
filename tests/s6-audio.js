@@ -1,8 +1,10 @@
 // Scénario 6 — aperçu audio : transport (lecture/pause/arrêt, progression,
 // raccourcis p/s) et volume général conservé.
+const path = require('path');
 const L = require('./lib');
 
 const PAGES = ['index.html', 'spa.html'];
+const MOVEMENTS_FIXTURE = path.join(__dirname, 'fixtures', 'movements.xml');
 
 async function state(page) {
   return page.evaluate(() => (window.__musicaPlaybackState ? window.__musicaPlaybackState() : null));
@@ -345,6 +347,16 @@ async function runPage(browser, url, pageName, results) {
         gainOk && savedOk && after.msgs === 0 && after.marker ? 'OK' : 'ÉCHEC',
         `${label} : gain ${gainBefore} → ${after.gain} (attendu ${after.expected}), ` +
         `0 SVG reçu : ${after.msgs === 0}, marqueur conservé : ${after.marker}, volumes ${JSON.stringify(after.saved?.volumes)}`);
+      // Voix mémorisée mais absente du MIDI du mouvement : le libellé doit être
+      // toléré (aucune exception), simplement sans GainNode.
+      await page.evaluate(() => {
+        const key = Object.keys(localStorage).find((k) => k.startsWith('musica-hidden-parts-'));
+        if (!key) return;
+        const data = JSON.parse(localStorage.getItem(key));
+        data.hidden = [...new Set([...(data.hidden || []), 'Voix absente du MIDI'])];
+        data.volumes = { ...(data.volumes || {}), 'Voix absente du MIDI': 10 };
+        localStorage.setItem(key, JSON.stringify(data));
+      });
       await L.closeSettings(page);
       await page.waitForTimeout(500);
       const markerAfterClose = await L.markerPresent(page);
@@ -365,6 +377,19 @@ async function runPage(browser, url, pageName, results) {
       L.record(results, '6. Volume par voix conservé après rechargement', pageName,
         volumesReload[0] === '10' && savedReload?.volumes?.[label] === 10 ? 'OK' : 'ÉCHEC',
         `sélecteurs ${volumesReload.join('/')}, volumes ${JSON.stringify(savedReload?.volumes)}`);
+      await L.closeSettings(page);
+      await page.click('#transport-play');
+      await waitState(page, 'playing');
+      await page.waitForTimeout(400);
+      const unknownVoice = await page.evaluate(() => ({
+        gain: window.__musicaAudio.getVoiceGain('Voix absente du MIDI'),
+        state: window.__musicaPlaybackState().state,
+      }));
+      L.record(results, '6. Voix absente du MIDI : libellé toléré, aucun GainNode', pageName,
+        unknownVoice.gain === null && unknownVoice.state === 'playing' ? 'OK' : 'ÉCHEC',
+        `gain ${unknownVoice.gain}, état ${unknownVoice.state}`);
+      await page.click('#transport-stop');
+      await waitState(page, 'stopped');
 
       // Ancien stockage : aucun champ `volumes` -> 100 % partout, sans erreur
       await page.evaluate(() => {
@@ -374,7 +399,6 @@ async function runPage(browser, url, pageName, results) {
         delete data.volumes;
         localStorage.setItem(key, JSON.stringify(data));
       });
-      await L.closeSettings(page);
       await page.reload({ waitUntil: 'domcontentloaded', timeout: 60000 });
       await L.waitReady(page, 60000);
       await waitLibraryReady(page);
@@ -394,6 +418,116 @@ async function runPage(browser, url, pageName, results) {
     const relevant = L.summarize(errors4);
     L.record(results, '6. Erreurs JS (volume par voix)', pageName, relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
     await ctx4.close();
+  }
+
+  // Robustesse : changer de fichier ou redimensionner pendant la lecture,
+  // puis les chemins d'erreur (MIDI vide, mouvement sans données).
+  {
+    const { page, ctx: ctx5, errors: errors5 } = await L.newPage(browser, url, { pageName });
+    try {
+      await L.waitReady(page);
+      await L.importFile(page, L.FILES.telemannXml);
+      await L.waitFirstSvg(page, 180000);
+      await L.waitBackgroundLoaded(page, 180000);
+      await page.waitForTimeout(800);
+      await page.click('#transport-play');
+      await waitState(page, 'playing');
+      await page.waitForTimeout(400);
+
+      // Changement de fichier en pleine lecture : la lecture est arrêtée,
+      // le nouveau document se charge, aucune exception JS.
+      await L.importFile(page, MOVEMENTS_FIXTURE);
+      await L.waitFirstSvg(page, 180000);
+      await page.waitForFunction(() => {
+        const s = window.__musicaPlaybackState ? window.__musicaPlaybackState() : null;
+        return s && s.state === 'stopped' && s.position === 0;
+      }, null, { timeout: 60000, polling: 100 });
+      const afterChange = await state(page);
+      L.record(results, '6. Changement de fichier pendant la lecture : lecture arrêtée', pageName,
+        afterChange.state === 'stopped' && afterChange.position === 0 ? 'OK' : 'ÉCHEC',
+        `état ${afterChange.state}, position ${afterChange.position} ms, transport masqué ${await transportHidden(page)}`);
+
+      // Rotation / redimensionnement pendant la lecture : le re-rendu repart
+      // de zéro sans laisser le transport en lecture.
+      await page.click('#transport-play');
+      await waitState(page, 'playing');
+      await page.setViewportSize({ width: 900, height: 500 });
+      await page.waitForFunction(() => {
+        const s = window.__musicaPlaybackState ? window.__musicaPlaybackState() : null;
+        return s && s.state === 'stopped';
+      }, null, { timeout: 90000, polling: 150 });
+      const afterResize = await state(page);
+      L.record(results, '6. Redimensionnement pendant la lecture : lecture arrêtée', pageName,
+        afterResize.state === 'stopped' ? 'OK' : 'ÉCHEC',
+        `état ${afterResize.state}, position ${afterResize.position} ms`);
+      await page.setViewportSize({ width: 500, height: 900 });
+      await page.waitForTimeout(400);
+    } catch (e) {
+      L.record(results, '6. Robustesse lecture', pageName, 'ÉCHEC', 'exception du test : ' + e.message);
+    }
+    const relevant = L.summarize(errors5);
+    L.record(results, '6. Erreurs JS (changement de fichier / redimensionnement)', pageName,
+      relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
+    await ctx5.close();
+  }
+
+  // Chemins d'erreur : message playbackError et données de lecture vides.
+  // On intercepte getPlaybackData pour injecter la réponse sans dépendre du
+  // worker réel ; l'application doit masquer le transport sans erreur JS.
+  {
+    const { page, ctx: ctx6, errors: errors6 } = await L.newPage(browser, url, { pageName });
+    try {
+      await L.waitReady(page);
+      await L.importFile(page, L.FILES.telemannXml);
+      await L.waitFirstSvg(page, 180000);
+      await L.waitBackgroundLoaded(page, 180000);
+      await page.waitForTimeout(600);
+      await page.evaluate(() => {
+        const w = window.__musicaWorker;
+        w.__testPostMessage = w.postMessage.bind(w);
+        w.postMessage = function (msg) {
+          if (msg && msg.type === 'getPlaybackData') return;
+          return w.__testPostMessage(msg);
+        };
+      });
+
+      await page.click('#transport-play');
+      await page.evaluate(() => {
+        window.__musicaWorker.onmessage({
+          data: { type: 'playbackError', movementId: 1, message: 'MIDI vide (test)' },
+        });
+      });
+      await waitState(page, 'stopped');
+      const afterError = await state(page);
+      const hiddenAfterError = await transportHidden(page);
+      L.record(results, '6. Erreur de données de lecture : transport masqué, état arrêté', pageName,
+        afterError.state === 'stopped' && hiddenAfterError ? 'OK' : 'ÉCHEC',
+        `état ${afterError.state}, transport masqué ${hiddenAfterError}`);
+
+      // Le transport est masqué après l'erreur : le raccourci clavier reste
+      // le moyen de relancer une demande de lecture.
+      await page.keyboard.press('p');
+      await page.evaluate(() => {
+        window.__musicaWorker.onmessage({
+          data: {
+            type: 'playbackData', movementId: 1, midi: '', syncMarks: [],
+            staffLabels: [], trackMap: {}, duration: 0,
+          },
+        });
+      });
+      await waitState(page, 'stopped');
+      const afterEmpty = await state(page);
+      const hiddenAfterEmpty = await transportHidden(page);
+      L.record(results, '6. MIDI vide (durée nulle) : transport masqué, pas de lecture', pageName,
+        afterEmpty.state === 'stopped' && hiddenAfterEmpty && afterEmpty.position === 0 ? 'OK' : 'ÉCHEC',
+        `état ${afterEmpty.state}, position ${afterEmpty.position} ms, transport masqué ${hiddenAfterEmpty}`);
+    } catch (e) {
+      L.record(results, '6. Chemins d\'erreur de lecture', pageName, 'ÉCHEC', 'exception du test : ' + e.message);
+    }
+    const relevant = L.summarize(errors6);
+    L.record(results, '6. Erreurs JS (chemins d\'erreur)', pageName,
+      relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
+    await ctx6.close();
   }
 }
 

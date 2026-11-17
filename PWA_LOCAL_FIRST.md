@@ -15,6 +15,23 @@ Cette PWA implémente une stratégie "Local First" complète pour garantir une e
 - Worker Verovio (`worker.js`, `verovio.js`, `verovio-toolkit-wasm.js`)
 - Manifest PWA et icônes
 - Favicon
+- Échantillons audio (`soundfonts/piano-fluidr3-13notes.js`), en optionnel non
+  bloquant : sans eux, la lecture se rabat sur l'oscillateur.
+
+### Caches de rendu préservés
+
+Trois caches distincts contiennent les documents de l'utilisateur et ne sont
+jamais supprimés lors d'une mise à jour du service worker :
+
+- `musica-svg-cache-v1` — pages SVG compressées (largeur, hauteur, variante de
+  voix) ;
+- `musica-playback-cache-v1` — MIDI + `syncMarks` compressés, clé fichier,
+  mouvement, largeur, hauteur, échelle et variante de voix ;
+- `musica-structure-cache-v1` — ancien cache de structure, conservé pour
+  compatibilité.
+
+Le bouton « Vider le cache » des réglages purge les caches SVG et de lecture,
+sans toucher aux fichiers importés (IndexedDB).
 
 ## Stratégies de mise en cache
 

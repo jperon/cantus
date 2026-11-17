@@ -13,12 +13,25 @@ dans `dist/`, sans modifier `src/`, `pwa/` ni `build.js`.
 ## Lancement
 
 ```sh
-tests/run.sh              # construit dist/ puis exécute s1 à s5
-tests/run.sh s1-import.js # un seul scénario
+tests/run.sh              # construit dist/, lance les tests unitaires puis s1 à s6
+tests/run.sh s1-import.js # un seul scénario navigateur
+node --test tests/unit/*.test.js  # tests unitaires seuls (sans navigateur)
 ```
 
-Chaque script imprime une ligne par vérification (`[OK]` / `[ÉCHEC]` avec le
-détail mesuré), puis un résumé JSON. Les délais d'attente sont tous bornés.
+`tests/run.sh` exécute d'abord les tests unitaires Node ; un échec interrompt
+la campagne navigateur. Chaque script imprime une ligne par vérification
+(`[OK]` / `[ÉCHEC]` avec le détail mesuré), puis un résumé JSON. Les délais
+d'attente sont tous bornés.
+
+## Tests unitaires
+
+- `tests/unit/midi.test.js` — parseur SMF (`src/midi.coffee`).
+- `tests/unit/audio.test.js` — logique audio pure : volumes, mapping des voix,
+  ordonnancement, normalisation de `playbackData`.
+- `tests/unit/audio-load.test.js` — chargement du soundfont une seule fois,
+  mesuré avec un faux `AudioContext` pour 1 et 3 pistes.
+- `tests/unit/playback.test.js` — résolution des marqueurs de synchronisation
+  et suivi de page/système (`src/playback.coffee`).
 
 ## Sonde audio (aperçu soundfont)
 
@@ -49,10 +62,31 @@ Si `pwa/soundfonts/piano-fluidr3-13notes.js` est absent, le build passe
   à la fermeture, bouton « Toutes les voix à 100 % », voix masquée (fichier
   seul et dossier), zoom, défilement par page / système et recouvrement.
 - `s4-offline.js` — installation du service worker, mise en cache des trois
-  fichiers mscz2xml, rechargement et import `.mscz` avec `setOffline(true)`.
-  Diagnostique l'étape qui échoue au lieu d'attendre indéfiniment.
+  fichiers mscz2xml, rechargement et import `.mscz` avec `setOffline(true)`,
+  puis lecture audio hors ligne (position qui progresse, soundfont précaché ou
+  repli oscillateur). Diagnostique l'étape qui échoue au lieu d'attendre
+  indéfiniment.
 - `s5-nopkg.js` — build `MSCZ2XML_PKG=/nonexistent` (normal et `--spa`),
   refus propre d'un `.mscz`, puis reconstruction normale de `dist/`.
+- `s6-audio.js` — transport, suivi du défilement (page/système, horizontal),
+  volume général et par voix, persistance, puis robustesse : changement de
+  fichier ou redimensionnement pendant la lecture, erreur de données de
+  lecture, MIDI vide, voix mémorisée absente du MIDI. `index.html` et
+  `spa.html`.
+
+## Réglages de lecture
+
+Le panneau Réglages expose :
+
+- **Volume général** (0–100) : appliqué immédiatement et conservé dans
+  `localStorage` (`musica-settings`).
+- **Volume par voix** (10–100) : propre à chaque fichier, appliqué au
+  `GainNode` de la voix sans re-rendu ; conservé avec les voix masquées dans
+  `musica-hidden-parts-<fileId>`.
+- **Suivre le défilement** : pendant la lecture, amène la page ou le système
+  courant à l'écran (défaut activé, sans re-rendu).
+- **Vider le cache** : purge les caches de rendu SVG et de données de lecture,
+  sans toucher aux fichiers de la bibliothèque.
 
 ## Régénérer les échantillons audio
 
@@ -65,6 +99,10 @@ node tools/build-soundfont-subset.js /tmp/piano-mp3.js \
 
 ## Notes
 
+- Le cache persistant `musica-playback-cache-v1` stocke MIDI + `syncMarks`
+  compressés, avec une clé fichier/mouvement/largeur/hauteur/échelle/variante
+  de voix. Il est préservé par le service worker aux mises à jour et purgé par
+  « Vider le cache ».
 - `s4` enregistre le service worker manuellement lorsque l'application ne le
   fait pas, afin de distinguer un défaut d'enregistrement d'un défaut de
   cache. Le détail du diagnostic est dans le résumé JSON.
