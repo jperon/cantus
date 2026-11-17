@@ -60,7 +60,14 @@ function copyMscz2xml() {
   console.log('  Copying mscz2xml...');
   ensureDir(path.join(DIST, 'mscz2xml'));
   for (const file of fs.readdirSync(MSCZ2XML_CLASSIC)) {
-    fs.copyFileSync(path.join(MSCZ2XML_CLASSIC, file), path.join(DIST, 'mscz2xml', file));
+    // Seuls le JS et le wasm servent au navigateur
+    if (!file.endsWith('.js') && !file.endsWith('.wasm')) continue;
+    const dest = path.join(DIST, 'mscz2xml', file);
+    // Le paquet vient du store Nix, en lecture seule : une destination
+    // existante et en lecture seule ferait échouer la copie (EACCES)
+    fs.rmSync(dest, { force: true });
+    fs.copyFileSync(path.join(MSCZ2XML_CLASSIC, file), dest);
+    fs.chmodSync(dest, 0o644);
   }
   console.log('  -> dist/mscz2xml');
   return true;
