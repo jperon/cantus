@@ -25,11 +25,23 @@ nix-shell -p nodejs --run "node build.js" || exit 1
 echo "== Build SPA =="
 nix-shell -p nodejs --run "node build.js --spa" || exit 1
 
+# Tests unitaires Node : ils ne dépendent pas du navigateur et doivent passer
+# avant la campagne Playwright. Un échec interrompt la campagne.
+status=0
+for test in tests/unit/*.test.js; do
+  echo
+  echo "== $test =="
+  "$NODE" "$test" || status=1
+done
+if [ "$status" -ne 0 ]; then
+  echo "Tests unitaires en échec : campagne navigateur interrompue." >&2
+  exit "$status"
+fi
+
 if [ "$#" -eq 0 ]; then
   set -- s1-import.js s2-folder.js s3-settings.js s4-offline.js s5-nopkg.js s6-audio.js
 fi
 
-status=0
 for script in "$@"; do
   echo
   echo "== $script =="

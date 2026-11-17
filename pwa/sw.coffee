@@ -49,10 +49,20 @@ self.addEventListener 'install', (event) ->
             )
   )
 
+# Caches de rendus qui contiennent les documents de l'utilisateur : ils ne
+# dépendent pas de la version du service worker et sont préservés aux mises à
+# jour. Le cache de lecture doit rester ici, sinon MIDI + syncMarks seraient
+# recalculés à chaque déploiement.
+PRESERVED_CACHES = [
+  'musica-structure-cache-v1'
+  'musica-svg-cache-v1'
+  'musica-playback-cache-v1'
+]
+
 # Un cache est ancien s'il appartient à ce service worker mais pas à cette
-# version. Les caches de rendus (musica-svg-cache-v1, musica-structure-cache-v1)
-# contiennent les documents de l'utilisateur et sont préservés.
+# version, et qu'il n'est pas un cache de rendu préservé.
 isOldCache = (name) ->
+  return false if name in PRESERVED_CACHES
   name is 'musica-v3' or
          (name isnt STATIC_CACHE and name.startsWith('musica-static-')) or
          (name isnt DYNAMIC_CACHE and name.startsWith('musica-dynamic-'))

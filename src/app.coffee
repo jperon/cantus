@@ -338,6 +338,7 @@ setupServiceWorker()
 storage = window.__musicaStorage
 worker = window.__musicaWorker
 svgStore = window.__svgCache  # Persistent cache with compression
+playbackStore = window.__playbackCache  # Données de lecture persistantes
 scrollPos = 0
 pageCount = 0
 pendingPageScroll = null  # page à amener en haut après un saut (mode vertical)
@@ -568,17 +569,48 @@ requestFromWorker = (movementId, localPage) ->
 playbackKey = (movementId) ->
   "#{movementId}:#{partsVariant()}"
 
-# Demande les données de lecture du worker (MIDI, synchronisation). Calqué sur
-# requestPage/requestFromWorker : cache, déduplication des demandes en cours.
+# Demande les données de lecture (MIDI, synchronisation) : cache mémoire,
+# cache persistant (compressé, clé géométrique) puis worker. La clé persistante
+# inclut fichier, mouvement, dimensions, échelle et variante de voix, donc un
+# zoom, une rotation ou un masquage ne réutilise jamais des marqueurs périmés.
 requestPlaybackData = (movementId) ->
   key = playbackKey movementId
   return Promise.resolve(playbackCache.get key) if playbackCache.has key
   return pendingPlayback.get(key).promise if pendingPlayback.has key
+  fileId = currentFileId
+  width = currentPageWidth
+  height = currentPageHeight
+  scale = currentScale
+  variant = partsVariant()
   promise = new Promise (resolve, reject) ->
     pendingPlayback.set key, {resolve, reject}
-    worker.postMessage
-      type: "getPlaybackData"
-      movementId: movementId
+    cached = if playbackStore?.get? and fileId
+      playbackStore.get(fileId, movementId, width, height, scale, variant).catch ->
+        null
+    else
+      Promise.resolve null
+    cached.then (data) ->
+      if data and playbackCache.has(key)
+        # Une autre demande a déjà rempli le cache mémoire entre-temps
+        pendingPlayback.delete key
+        resolve playbackCache.get key
+      else if data
+        pendingPlayback.delete key
+        playbackCache.set key, data
+        resolve data
+      else
+        worker.postMessage
+          type: "getPlaybackData"
+          movementId: movementId
+  # Écrire le résultat dans le cache persistant, sans retarder la lecture
+  promise.then (data) ->
+    if data and playbackStore?.set? and fileId
+      playbackStore.set(fileId, movementId, data, width, height, scale, variant).catch (err) ->
+        console.warn "Cache de lecture non enregistré : #{err?.message or err}"
+  .catch ->
+    # L'échec est traité par startPlayback ; cette branche ne doit pas créer
+    # de rejet non géré.
+    null
   # Conserver la promesse pour dédupliquer une seconde demande identique
   pendingPlayback.get(key)?.promise = promise
   promise
@@ -845,12 +877,12 @@ startPlayback = ->
   requestPlaybackData movementId
     .then (data) ->
       return unless playback.loadToken is token
-      unless data
+      unless data?.midi and (Number(data.duration) or 0) > 0
         playback.loading = false
         playback.state = "stopped"
         hideTransport()
         renderTransport()
-        console.warn "Données de lecture indisponibles pour le mouvement #{movementId}"
+        console.warn "Données de lecture vides ou incomplètes pour le mouvement #{movementId}"
         return
       current = getMovementForPage displayedPage()
       unless current?.movement.id is movementId
@@ -2593,11 +2625,23 @@ setupSettings = ->
       settings.masterVolume = value
       saveSettings settings
 
-  # Storage management button
+  # Vidage des caches de rendu (SVG et données de lecture). Les fichiers de
+  # la bibliothèque (IndexedDB) ne sont pas touchés.
   storageBtn = $("btn-storage")
   if storageBtn
     storageBtn.addEventListener "click", ->
-      requestStorageQuota()
+      tasks = []
+      tasks.push svgStore.clearAll() if svgStore?.clearAll?
+      tasks.push playbackStore.clearAll() if playbackStore?.clearAll?
+      Promise.all(tasks).then ->
+        memoryCache.clear()
+        playbackCache.clear()
+        pendingRequests.clear()
+        updateStorageInfo()
+        showStorageMessage "Caches de rendu vidés", "success"
+      .catch (err) ->
+        console.warn "Vidage des caches impossible : #{err?.message or err}"
+        showStorageMessage "Vidage impossible", "error"
 
 # Request increased storage quota for MusicXML files
 requestStorageQuota = ->

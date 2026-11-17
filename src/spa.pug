@@ -97,6 +97,11 @@ html(lang="fr")
             a(href="https://github.com/jperon/cantus" target="_blank" rel="noopener") Code source
           small
             a(href="https://github.com/jperon/cantus/blob/master/THIRD-PARTY.md" target="_blank" rel="noopener") Composants tiers
+        .settings-row
+          small
+            | Échantillons piano FluidR3 par Frank Wen, rendu MIDI.js par Benjamin Gleitzman —
+            = ' '
+            a(href="https://creativecommons.org/licenses/by/3.0/" target="_blank" rel="noopener") CC-BY 3.0
     #library-overlay.hidden
       #library-header
         h2 Bibliothèque
@@ -135,6 +140,7 @@ html(lang="fr")
     script !{mxlJs}
     script !{storageJs}
     script !{svgCacheJs}
+    script !{playbackCacheJs}
     script !{midiJs}
     script !{audioJs}
     script !{playbackJs}

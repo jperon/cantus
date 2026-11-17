@@ -76,6 +76,27 @@ resolveTrackMap = (trackMap) ->
     byLabel[label] = list
   {byTrack, byLabel}
 
+# Échantillon le plus proche d'une hauteur MIDI. Le sous-ensemble FluidR3 ne
+# contient qu'une note tous les 4 demi-tons : on choisit le buffer voisin et on
+# corrige la hauteur par playbackRate, au lieu de chercher une note exacte.
+nearestSampleKey = (buffers, pitch) ->
+  return null unless buffers?
+  target = Number pitch
+  return null unless isFinite target
+  keys = []
+  for own key of buffers
+    value = Number key
+    keys.push value if isFinite value
+  return null unless keys.length
+  best = keys[0]
+  for key in keys[1..]
+    if Math.abs(key - target) < Math.abs(best - target)
+      best = key
+  best
+
+samplePlaybackRate = (sampleKey, pitch) ->
+  2 ** ((Number(pitch) - Number(sampleKey)) / 12)
+
 # Première note dont le début est >= time (recherche binaire ; notes triées).
 noteIndexAt = (notes, time) ->
   return 0 unless Array.isArray(notes) and notes.length
@@ -147,7 +168,7 @@ createEngine = (initialOptions = {}) ->
     masterGain: null
     voiceGains: {}
     trackGains: {}
-    instruments: {}
+    soundfont: null
     enginePromise: null
     engineMode: null
     loaded: false
@@ -221,7 +242,7 @@ createEngine = (initialOptions = {}) ->
     ctx
 
   resetEngine = ->
-    state.instruments = {}
+    state.soundfont = null
     state.enginePromise = null
     state.engineMode = null
 
@@ -247,24 +268,24 @@ createEngine = (initialOptions = {}) ->
     catch
       SOUNDFONT_FILE
 
-  # Charge un instrument soundfont PAR PISTE (pour respecter le graphe
-  # piste -> voix) à partir de l'asset. Les MP3 sont décodés par le navigateur.
+  # Charge l'instrument UNE SEULE FOIS, quel que soit le nombre de pistes.
+  # Les buffers décodés sont ensuite partagés par toutes les pistes ; le
+  # routage se fait note par note vers le GainNode de piste puis de voix.
   loadSoundfont = (ctx) ->
     tracks = (track for track in state.tracks when track.notes?.length)
-    return Promise.resolve({}) unless tracks.length
+    return Promise.resolve(null) unless tracks.length
     asset = window?.MIDI?.Soundfont?[DEFAULT_INSTRUMENT]
-    source = soundfontSource asset
     soundfont = window?.Soundfont
-    return Promise.resolve({}) unless soundfont?.instrument
-    loaders = for track in tracks
-      soundfont.instrument ctx, source,
-        isSoundfontURL: -> true
-        destination: state.trackGains[track.index] ? state.masterGain
-    loading = Promise.all(loaders).then (list) ->
-      result = {}
-      for track, i in tracks
-        result[track.index] = list[i]
-      result
+    # Asset absent (build sans échantillons, ou premier lancement hors ligne
+    # sans précache) : repli immédiat sur l'oscillateur, sans requête réseau.
+    return Promise.resolve(null) unless asset and soundfont?.instrument
+    source = soundfontSource asset
+    loading = soundfont.instrument ctx, source,
+      isSoundfontURL: -> true
+      destination: state.masterGain
+    .then (instrument) ->
+      return null unless instrument?.buffers and Object.keys(instrument.buffers).length
+      instrument
     # La bascule doit être rapide et transparente : au-delà du délai, on
     # n'attend plus les échantillons et on joue avec l'oscillateur.
     new Promise (resolve) ->
@@ -274,11 +295,11 @@ createEngine = (initialOptions = {}) ->
         settled = true
         resolve null
       ), SOUNDFONT_TIMEOUT
-      loading.then (result) ->
+      loading.then (instrument) ->
         return if settled
         settled = true
         clearTimeout timer
-        resolve result
+        resolve instrument
       .catch ->
         return if settled
         settled = true
@@ -296,16 +317,16 @@ createEngine = (initialOptions = {}) ->
       state.enginePromise = Promise.resolve null
       return state.enginePromise
     ctx = state.ctx
-    state.enginePromise = loadSoundfont(ctx).then (instruments) ->
-      if instruments and Object.keys(instruments).length
-        state.instruments = instruments
+    state.enginePromise = loadSoundfont(ctx).then (soundfont) ->
+      if soundfont
+        state.soundfont = soundfont
         state.engineMode = 'soundfont'
       else
-        state.instruments = {}
+        state.soundfont = null
         state.engineMode = 'oscillator'
       state.engineMode
     .catch ->
-      state.instruments = {}
+      state.soundfont = null
       state.engineMode = 'oscillator'
       null
     state.enginePromise
@@ -360,22 +381,51 @@ createEngine = (initialOptions = {}) ->
     osc.start at
     osc.stop end + FALLBACK_RELEASE + 0.01
 
-  scheduleNote = (note, at) ->
-    return if state.sources.length >= MAX_VOICES
-    if state.engineMode is 'soundfont'
-      instrument = state.instruments[note.track]
-      if instrument?.play
+  # Joue un buffer du soundfont partagé vers la piste de la note. Retourne
+  # false si aucun échantillon n'est disponible (repli oscillateur).
+  playSoundfont = (note, at) ->
+    ctx = state.ctx
+    buffers = state.soundfont?.buffers
+    return false unless ctx and buffers
+    sampleKey = nearestSampleKey buffers, note.pitch
+    return false unless sampleKey?
+    buffer = buffers[sampleKey] ? buffers["#{sampleKey}"]
+    return false unless buffer
+    sourceNode = ctx.createBufferSource()
+    gain = ctx.createGain()
+    source = {kind: 'soundfont', node: sourceNode, gain}
+    try
+      sourceNode.buffer = buffer
+      sourceNode.playbackRate.value = samplePlaybackRate sampleKey, note.pitch
+      peak = (Math.min(127, Math.max(0, note.velocity)) / 127) * 0.6
+      end = at + Math.max(0.05, note.dur)
+      gain.gain.setValueAtTime 0, at
+      gain.gain.linearRampToValueAtTime peak, at + FALLBACK_ATTACK
+      gain.gain.linearRampToValueAtTime peak * FALLBACK_SUSTAIN, at + FALLBACK_ATTACK + FALLBACK_DECAY
+      gain.gain.setValueAtTime peak * FALLBACK_SUSTAIN, end
+      gain.gain.exponentialRampToValueAtTime 0.0001, end + FALLBACK_RELEASE
+      sourceNode.connect gain
+      gain.connect trackDestination(note.track)
+      sourceNode.onended = ->
+        removeSource source
         try
-          node = instrument.play note.pitch, at,
-            duration: Math.max 0.05, note.dur
-            gain: Math.min(127, Math.max(0, note.velocity)) / 127
-          if node
-            source = {kind: 'soundfont', node}
-            state.sources.push source
-            node.source?.addEventListener? 'ended', -> removeSource source
-            return
+          gain.disconnect()
         catch
           null
+      sourceNode.start at
+      sourceNode.stop end + FALLBACK_RELEASE + 0.01
+      state.sources.push source
+      true
+    catch
+      try
+        gain.disconnect()
+      catch
+        null
+      false
+
+  scheduleNote = (note, at) ->
+    return if state.sources.length >= MAX_VOICES
+    return if state.engineMode is 'soundfont' and playSoundfont note, at
     playOscillator note, at
 
   clearTimer = ->
@@ -442,7 +492,7 @@ createEngine = (initialOptions = {}) ->
     throw new Error "Aucune donnée de lecture chargée" unless state.loaded
     if options.engine? and options.engine isnt state.options.engine
       state.options.engine = options.engine
-      state.instruments = {}
+      state.soundfont = null
       state.enginePromise = null
       state.engineMode = null
     ctx = ensureContext()
@@ -534,7 +584,7 @@ createEngine = (initialOptions = {}) ->
       ctx = state.ctx
       state.ctx = null
       ctx.close?().catch? -> null
-    state.instruments = {}
+    state.soundfont = null
     state.enginePromise = null
     state.engineMode = null
     state.loaded = false
@@ -545,6 +595,8 @@ createEngine = (initialOptions = {}) ->
   api.voiceGainValue = voiceGainValue
   api.clampVolume = clampVolume
   api.resolveTrackMap = resolveTrackMap
+  api.nearestSampleKey = nearestSampleKey
+  api.samplePlaybackRate = samplePlaybackRate
   api.noteIndexAt = noteIndexAt
   api.notesToSchedule = notesToSchedule
   api.FLOOR = FLOOR
