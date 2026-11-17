@@ -389,9 +389,24 @@ buildSyncMarks = (timemap) ->
   pageCache = new Map()
   marks = []
   duration = timemapDuration timemap
+  # Les copies de reprises « -rendN » n'existent dans aucun SVG. La carte
+  # d'expansion de Verovio donne, pour chaque occurrence, l'id de base
+  # (occurrences[0]) qui, lui, est présent dans le SVG. On ne construit la
+  # table inverse qu'à la première occurrence non résoluble : les fichiers
+  # sans reprise n'appellent jamais renderToExpansionMap.
+  expansionBase = null
+  baseId = (id) ->
+    return null unless /-rend\d+$/.test id
+    unless expansionBase?
+      expansionBase = new Map()
+      map = tk.renderToExpansionMap() or {}
+      for source, occurrences of map
+        continue unless Array.isArray(occurrences) and occurrences.length > 0
+        base = occurrences[0]
+        for occurrence in occurrences
+          expansionBase.set occurrence, base unless expansionBase.has occurrence
+    expansionBase.get(id) ? null
   # Construit les marqueurs de synchronisation depuis le timemap Verovio.
-  # Les ids « -rend2 » (copies de reprises) n'existent dans aucun SVG :
-  # getPageWithElement vaut 0 et ils sont ignorés pour la synchronisation.
   for entry in timemap
     t = Number entry.tstamp
     t = 0 unless isFinite t
@@ -403,8 +418,17 @@ buildSyncMarks = (timemap) ->
       unless page?
         page = tk.getPageWithElement id
         pageCache.set id, page
+      resolvedId = id
+      unless page > 0
+        base = baseId id
+        if base and base isnt id
+          resolvedId = base
+          page = pageCache.get base
+          unless page?
+            page = tk.getPageWithElement base
+            pageCache.set base, page
       if page > 0
-        marks.push {t, page, id}
+        marks.push {t, page, id: resolvedId}
         break
   marks.sort (a, b) -> a.t - b.t
   # Dédupliquer les marqueurs consécutifs de même page et de même id

@@ -51,6 +51,30 @@ async function partVolumeValues(page) {
   return page.$$eval('#parts-list select.part-volume', (sels) => sels.map((s) => s.value));
 }
 
+// Données de lecture complètes demandées directement au worker (le probe de
+// l'application ne renvoie que les premiers marqueurs).
+async function playbackSample(page, movementId = 1) {
+  return page.evaluate((id) => new Promise((resolve, reject) => {
+    const w = window.__musicaWorker;
+    const done = (fn, value) => {
+      w.removeEventListener('message', onMessage);
+      clearTimeout(timer);
+      fn(value);
+    };
+    const onMessage = (e) => {
+      const d = e.data || {};
+      if (d.type === 'playbackData' && d.movementId === id) {
+        done(resolve, { syncMarks: d.syncMarks || [], duration: Number(d.duration) || 0 });
+      } else if (d.type === 'playbackError' && d.movementId === id) {
+        done(reject, new Error(d.message || 'playbackError'));
+      }
+    };
+    const timer = setTimeout(() => done(reject, new Error('délai playbackData dépassé')), 120000);
+    w.addEventListener('message', onMessage);
+    w.postMessage({ type: 'getPlaybackData', movementId: id });
+  }), movementId);
+}
+
 // Après un rechargement, le worker peut encore démarrer : attendre que la
 // bibliothèque soit proposée avant de cliquer dessus.
 async function waitLibraryReady(page, timeout = 60000) {
@@ -469,6 +493,51 @@ async function runPage(browser, url, pageName, results) {
     L.record(results, '6. Erreurs JS (changement de fichier / redimensionnement)', pageName,
       relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
     await ctx5.close();
+  }
+
+  // Reprises : le timemap contient des copies « -rendN » absentes des SVG.
+  // Elles doivent être ramenées à l'id de base, sinon le suivi décroche au
+  // second passage (environ 32 s sans marqueur sur La_foule avant correctif).
+  {
+    const { page, ctx: ctxReprises, errors: errorsReprises } = await L.newPage(browser, url, { pageName });
+    try {
+      await L.waitReady(page);
+      await L.importFile(page, L.FILES.laFouleMxl);
+      await L.waitFirstSvg(page, 180000);
+      await L.waitBackgroundLoaded(page, 180000);
+      await page.waitForTimeout(600);
+      // Le fichier est découpé en mouvements : collecter les marqueurs de
+      // chacun jusqu'au premier mouvement non chargé.
+      const playback = [];
+      for (let id = 1; id <= 50; id += 1) {
+        try {
+          playback.push(await playbackSample(page, id));
+        } catch {
+          break;
+        }
+      }
+      const marks = playback.flatMap((data) => data.syncMarks);
+      let maxGap = 0;
+      for (const data of playback) {
+        const list = data.syncMarks;
+        for (let i = 1; i < list.length; i += 1) {
+          maxGap = Math.max(maxGap, list[i].t - list[i - 1].t);
+        }
+      }
+      const duration = playback.reduce((sum, data) => sum + data.duration, 0);
+      L.record(results, '6. Reprises : les deux passages sont couverts par les marqueurs', pageName,
+        marks.length >= 400 ? 'OK' : 'ÉCHEC',
+        `${marks.length} marqueurs sur ${playback.length} mouvement(s), durée ${Math.round(duration)} ms`);
+      L.record(results, '6. Reprises : aucun trou de suivi au second passage', pageName,
+        maxGap <= 2000 ? 'OK' : 'ÉCHEC',
+        `écart max entre marqueurs consécutifs ${maxGap} ms`);
+    } catch (e) {
+      L.record(results, '6. Reprises : suivi du second passage', pageName, 'ÉCHEC',
+        'exception du test : ' + e.message);
+    }
+    const relevant = L.summarize(errorsReprises);
+    L.record(results, '6. Erreurs JS (reprises)', pageName, relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
+    await ctxReprises.close();
   }
 
   // Chemins d'erreur : message playbackError et données de lecture vides.

@@ -10,7 +10,7 @@
 # IIFE : les modules inline partagent la portée globale. Sans cela, `cache`,
 # `get`, `set`… écraseraient ceux de svgCache.coffee (même page, scripts inline).
 do ->
-  CACHE_NAME = "musica-playback-cache-v1"
+  CACHE_NAME = "musica-playback-cache-v2"
   MAX_STORAGE_BYTES = 50 * 1024 * 1024  # 50 MB
 
   cache = null
