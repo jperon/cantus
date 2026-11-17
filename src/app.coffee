@@ -355,8 +355,8 @@ currentScale = 40
 verticalScrollRatio = 0
 currentPageWidth = 0
 currentPageHeight = 0
-hiddenParts = new Set()  # Ids des parties masquées pour le fichier courant
-partSizes = {}  # Id de partie -> taille en % (100 = taille normale)
+hiddenParts = new Set()  # Libellés des voix masquées pour le fichier courant
+partSizes = {}  # Libellé de voix -> taille en % (100 = taille normale)
 partsChanged = false  # Réglages de voix modifiés, à appliquer à la fermeture
 
 # Pages pre-rendered around the displayed one
@@ -376,7 +376,6 @@ pendingMscz = new Map()  # MuseScore conversion id -> {resolve, reject}
 msczRequestId = 0
 targetPage = null  # Page to navigate to once all movements are loaded
 awaitingLoad = false  # A new load is posted: ignore the previous render's replies
-currentSplitInfo = null  # Split info of the first source, for the parts panel
 currentSources = null  # [{name, data}] : sources de l'entrée courante (XML ou binaire)
 sourceCache = new Map()  # index de source -> {xml, splitInfo}
 nextSourceToLoad = 0  # prochaine source à convertir
@@ -595,7 +594,8 @@ loadHiddenParts = ->
     return unless saved
     data = JSON.parse saved
     if Array.isArray data
-      hiddenParts = new Set data  # ancien format : tableau des ids masqués
+      # ancien format : tableau d'ids, ignorés s'ils ne sont pas des libellés
+      hiddenParts = new Set data
     else
       hiddenParts = new Set data.hidden or []
       partSizes = data.sizes or {}
@@ -1194,21 +1194,44 @@ detectSplitPoints = (xmlString) ->
 
   {doc, splitPoints, splitAttrs, totalMeasures}
 
+# Libellé de chaque voix d'un document : part-name, sinon part-abbreviation,
+# sinon id (la règle d'affichage du panneau). Les voix sont identifiées par ce
+# libellé et non par leur id : chaque fichier d'une entrée renumérote ses
+# parties à partir de P1. Un même libellé répété dans le document est suffixé
+# « #2 », « #3 »... dans l'ordre du part-list.
+partLabels = (doc) ->
+  labels = {}
+  used = new Set()
+  for part in Array.from doc.querySelectorAll "score-part"
+    id = part.getAttribute "id"
+    name = part.querySelector("part-name")?.textContent.trim()
+    name = part.querySelector("part-abbreviation")?.textContent.trim() unless name
+    base = name or id
+    label = base
+    n = 1
+    while used.has label
+      n += 1
+      label = "#{base} ##{n}"
+    used.add label
+    labels[id] = label
+  labels
+
 # Retire d'un document les parties masquées et leur entrée de <part-list>
-removeHiddenParts = (doc, hidden) ->
+removeHiddenParts = (doc, hidden, labels = partLabels doc) ->
   return doc unless hidden.size > 0
   for el in Array.from doc.querySelectorAll("part, score-part")
-    el.parentNode.removeChild el if hidden.has el.getAttribute("id")
+    id = el.getAttribute "id"
+    el.parentNode.removeChild el if labels[id]? and hidden.has labels[id]
   doc
 
 # Taille des voix : <staff-details><staff-size>N</staff-size></staff-details>
 # Réutilise (et met à l'échelle) les staff-details existants de la partie :
 # Verovio ignore un second staff-details. La taille choisie est relative à
 # leur staff-size d'origine (100 s'il est absent).
-applyPartSizes = (doc) ->
+applyPartSizes = (doc, labels = partLabels doc) ->
   return doc if Object.keys(partSizes).length is 0
   for part in Array.from doc.querySelectorAll "part"
-    size = partSizes[part.getAttribute "id"]
+    size = partSizes[labels[part.getAttribute "id"]]
     continue unless size? and size isnt 100
     measure = part.querySelector "measure"
     continue unless measure
@@ -1249,6 +1272,20 @@ applyPartSizes = (doc) ->
       setSize details
   doc
 
+# Applique masquage et tailles à un mouvement. Les voix sont identifiées par
+# leur libellé (partLabels), pas par leur id renuméroté dans chaque fichier.
+# Un mouvement dont toutes les voix sont masquées est affiché sans masquage :
+# il ne doit jamais devenir vide.
+applyPartsSettings = (doc) ->
+  labels = partLabels doc
+  hidden = hiddenParts
+  parts = Array.from doc.querySelectorAll "score-part"
+  if parts.length > 0 and parts.every((part) -> hiddenParts.has labels[part.getAttribute "id"])
+    hidden = new Set()
+  removeHiddenParts doc, hidden, labels
+  applyPartSizes doc, labels
+  doc
+
 # Extract a single movement by index (lazy extraction)
 # movementIndex: 0-based, where 0 is first movement
 extractMovement = (splitInfo, movementIndex) ->
@@ -1259,8 +1296,7 @@ extractMovement = (splitInfo, movementIndex) ->
   if splitPoints.length is 0
     return null unless movementIndex is 0
     clone = doc.cloneNode true
-    removeHiddenParts clone, hiddenParts
-    applyPartSizes clone
+    applyPartsSettings clone
     return serializer.serializeToString clone
 
   # Calculate start and end measure indices for this movement
@@ -1317,8 +1353,7 @@ extractMovement = (splitInfo, movementIndex) ->
         else if newAttrsEl.children.length > 0
           firstMeasure.insertBefore newAttrsEl, firstMeasure.firstChild
 
-  removeHiddenParts clone, hiddenParts
-  applyPartSizes clone
+  applyPartsSettings clone
   serializer.serializeToString clone
 
 # Preprocess MusicXML: insert system breaks after double barlines (in place)
@@ -1424,7 +1459,6 @@ startLoad = (startPage = 1) ->
   pushedPages = {}
   movements = []
   awaitingLoad = true
-  currentSplitInfo = null
   nextSourceToLoad = 0
   allSourcesLoaded = false
   fileLoaded = false
@@ -1456,7 +1490,6 @@ loadFirstSource = (token) ->
     .then (info) ->
       return unless token is loadToken
       appendSourceMovements index, info
-      currentSplitInfo = info.splitInfo unless currentSplitInfo
       mvXml = extractMovement info.splitInfo, 0
       unless mvXml
         return loadFirstSource token
@@ -1844,26 +1877,35 @@ setupResize = ->
       reloadScore displayedPage()
     , 300
 
-# Remplit la liste des voix depuis le document déjà analysé (pas de re-parse)
+# Remplit la liste des voix avec l'union, dans l'ordre d'apparition, des voix
+# de toutes les sources déjà converties de l'entrée (pas de re-parse). Chaque
+# fichier renumérote ses parties à partir de P1 : les voix sont identifiées par
+# leur libellé (partLabels), pas par leur id.
 renderPartsList = ->
   group = $("parts-group")
   list = $("parts-list")
   return unless group and list
-  doc = currentSplitInfo?.doc if fileLoaded
-  parts = if doc then Array.from(doc.querySelectorAll "score-part") else []
-  group.classList.toggle "hidden", parts.length < 2
+  labels = []
+  seen = new Set()
+  for index in [0...(currentSources?.length or 0)]
+    info = sourceCache.get index
+    continue unless info
+    map = partLabels info.splitInfo.doc
+    for part in Array.from info.splitInfo.doc.querySelectorAll "score-part"
+      label = map[part.getAttribute "id"]
+      continue if seen.has label
+      seen.add label
+      labels.push label
+  group.classList.toggle "hidden", labels.length < 2
   list.innerHTML = ""
-  for part in parts
-    do (part) ->
-      id = part.getAttribute "id"
-      name = part.querySelector("part-name")?.textContent.trim()
-      name = part.querySelector("part-abbreviation")?.textContent.trim() if not name
-      label = document.createElement "label"
+  for partLabel in labels
+    do (partLabel) ->
+      row = document.createElement "label"
       box = document.createElement "input"
       box.type = "checkbox"
-      box.checked = not hiddenParts.has id
+      box.checked = not hiddenParts.has partLabel
       nameEl = document.createElement "span"
-      nameEl.textContent = name or id
+      nameEl.textContent = partLabel
       sizeSel = document.createElement "select"
       sizeSel.className = "part-size"
       for pct in [50..150] by 10
@@ -1871,13 +1913,13 @@ renderPartsList = ->
         opt.value = pct
         opt.textContent = "#{pct} %"
         sizeSel.appendChild opt
-      sizeSel.value = partSizes[id] or 100
-      sizeSel.disabled = hiddenParts.has id
-      label.appendChild box
-      label.appendChild nameEl
-      label.appendChild sizeSel
+      sizeSel.value = partSizes[partLabel] or 100
+      sizeSel.disabled = hiddenParts.has partLabel
+      row.appendChild box
+      row.appendChild nameEl
+      row.appendChild sizeSel
       box.addEventListener "change", ->
-        if box.checked then hiddenParts.delete id else hiddenParts.add id
+        if box.checked then hiddenParts.delete partLabel else hiddenParts.add partLabel
         sizeSel.disabled = not box.checked
         saveHiddenParts()
         updatePartsDisabled()
@@ -1885,11 +1927,11 @@ renderPartsList = ->
         partsChanged = true
       sizeSel.addEventListener "change", ->
         pct = parseInt sizeSel.value
-        if pct is 100 then delete partSizes[id] else partSizes[id] = pct
+        if pct is 100 then delete partSizes[partLabel] else partSizes[partLabel] = pct
         saveHiddenParts()
         updatePartsSizesReset()
         partsChanged = true
-      list.appendChild label
+      list.appendChild row
   updatePartsDisabled()
   updatePartsSizesReset()
 
