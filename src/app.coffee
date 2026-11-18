@@ -372,6 +372,9 @@ pageSeekTimer = null
 pageSeekDebounceMs = 250
 lastDisplayedPage = null
 followSuppressSeek = false
+# Page visée par le dernier déplacement du suivi : les `scroll` différés qu'il
+# provoque ne sont pas un geste de l'utilisateur et ne doivent pas se caler.
+followTargetPage = null
 # Une cale de lecture est en attente après un changement de page manuel : le
 # suivi automatique est suspendu jusque-là, sinon il ramènerait le défilement
 # sur la page de la position courante avant le debounce et le geste serait
@@ -825,6 +828,11 @@ noteDisplayedPage = ->
   if lastDisplayedPage is null
     lastDisplayedPage = page
     return
+  # Déplacement dû au suivi (événement `scroll` différé) : simple mise à jour,
+  # aucun seek, sinon la cale ramènerait la lecture en arrière et bouclerait.
+  if page is followTargetPage
+    lastDisplayedPage = page
+    return
   schedulePageSeek page
 
 # Place la tête de lecture au temps du premier marqueur de la page affichée.
@@ -848,6 +856,11 @@ seekToDisplayedPage = (page) ->
   return unless mark
   t = Number mark.t
   return unless isFinite t
+  # Jamais de recul pendant la lecture : viser > 300 ms avant la position
+  # courante relancerait la page précédente et la ferait boucler.
+  if playback.state is "playing" and t < currentPlaybackPosition() - 300
+    lastDisplayedPage = page
+    return
   # Même en pause ou à l'arrêt : la position est mémorisée, un appui sur
   # lecture repartira du début de la page.
   seekPlayback t
@@ -874,6 +887,7 @@ followPlaybackFrame = ->
     # sur la même page. Sans déplacement, on ne touche à rien, sinon un
     # changement manuel survenu avant l'événement `scroll` serait avalé.
     if target
+      followTargetPage = target
       lastDisplayedPage = target
       clearTimeout pageSeekTimer if pageSeekTimer
       pageSeekTimer = null
@@ -2191,6 +2205,7 @@ startLoad = (startPage = 1) ->
   pageSeekTimer = null
   lastDisplayedPage = null
   followSuppressSeek = false
+  followTargetPage = null
   pageSeekPending = false
   lastWidth = window.innerWidth
   # Drop the displayed pages: they belong to the previous render
