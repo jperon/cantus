@@ -3,38 +3,20 @@
 Reste à faire uniquement. Pour l'architecture et les décisions déjà prises, voir
 `ROADMAP.md` et `BUILD.md`.
 
-## Bugs connus
-
-### Course au démarrage du worker
-
-- **Symptôme** : importer une partition avant que le worker Verovio soit prêt
-  provoque « Source 0 inconnue dans le worker » (reproduit avec `La_foule.mxl`
-  sans attendre `ready`).
-- **Piste** : le worker possède déjà une file `pending` rejouée après `ready`
-  (`worker.coffee`), mais l'ordre y fait foi : un `clearMovements` arrivé après
-  le `load` efface la source que le `load` vient d'enregistrer. Soit ignorer un
-  `clearMovements` visant une source inconnue, soit numéroter les messages et
-  n'appliquer un effacement que si son `load` le précède.
-
-### Lenteur anormale de `s6-audio.js`
-
-- **Symptôme** : étirements et timeouts de 60 s en cascade. Le scénario est
-  redevenu rapide après réparation de l'audio, sans que la cause des étirements
-  soit élucidée.
-- **Piste** : borner explicitement les attentes, isoler les scénarios longs pour
-  que chacun ait son propre budget de temps.
-
 ## Chantiers
 
 ### Import de tous les formats gérés par scoretk
 
-- **Objectif** : accepter `.ly`, `.abc`, `.mid`/`.midi` en plus de `.musicxml`,
-  `.mxl`, `.mscz`, `.mscx`.
-- **Piste** : étendre `isCompatibleFile` (`src/app.coffee`) et l'attribut
-  `accept` des quatre inputs `.pug` (`src/index.pug`, `src/spa.pug`), puis la
-  liste MIME du `share_target` (`pwa/manifest.json` et `apk/twa-manifest.json`).
+- **Objectif** : accepter `.ly`, `.lilypond`, `.abc`, `.mid`/`.midi` en plus de
+  `.musicxml`, `.mxl`, `.mscz`, `.mscx`. scoretk gère `ly`, `lilypond`, `abc`,
+  `mid`, `midi`.
+- **Piste** : ajouter les extensions à `IMPORT_EXTENSIONS` (`src/app.coffee`) et
+  à `IMPORT_EXTENSIONS_SCORETK` (`build.js`), puis mettre à jour le
+  `share_target` de `pwa/manifest.json` et `apk/twa-manifest.json`.
 - **Attention** : un `.mid` ne porte pas de notation ; la conversion produit une
   transcription. Le dire dans l'interface.
+- **Dette** : la liste des extensions reste en double dans `app.coffee` et
+  `build.js`.
 
 ### Export vers tous les formats
 
@@ -71,16 +53,25 @@ Reste à faire uniquement. Pour l'architecture et les décisions déjà prises, 
 - Trémolo à deux accords : seule la première note pilote les deux attaques
   (parité MuseScore).
 
-### Branche `midi`
+### `src/app.coffee` monolithique
 
-- Obsolète : 19 commits de retard sur `master`, 0 commit propre — à supprimer
-  localement et sur `origin`.
+- ~3200 lignes : extraire progressivement import/fichiers, lecture/suivi,
+  bibliothèque, comme l'ont déjà fait `timeline` et `playbackCache`.
 
-### Worktrees résiduels
+### `s6-audio`
 
-- `cantus-wt-*` (à côté du dépôt) et `/tmp/cantus-loop`, `/tmp/cantus-old` : à
-  nettoyer (`git worktree remove`, `--force` seulement si le seul non-suivi est
-  `node_modules`).
+- Attentes de 60 à 120 s qui s'additionnent ; le découper en scénarios plus
+  courts.
+
+### Branches à trancher
+
+- Branche locale `mscz` : 5 commits sur l'ancien `mscz2xml`, a priori remplacés
+  par scoretk.
+- Branches distantes `origin/dossier`, `origin/fix-boucle-lecture2`,
+  `origin/midi`, `origin/perf`, `origin/seek-page` : toutes fusionnées, à
+  supprimer sur `origin`.
+- `/tmp/cantus-old` conserve des scripts `tests/probe-*.js` non suivis à
+  examiner.
 
 ## Industrialisation
 
@@ -98,11 +89,11 @@ Reste à faire uniquement. Pour l'architecture et les décisions déjà prises, 
 - À remplacer par `$NODE`/`command -v node` et un répertoire temporaire produit
   par `mktemp -d`.
 
-### Service Worker à mettre à jour à chaque bump
+### Données de test hors dépôt
 
-- `pwa/sw.coffee` conserve une liste `PRESERVED_CACHES` à tenir à jour :
-  `musica-structure-cache-v1`, `musica-svg-cache-v2`,
-  `musica-playback-cache-v3`, et le préfixe `musica-static-`.
+- Les données de test vivent hors dépôt dans `$CANTUS_TEST_DATA` (défaut
+  `~/.local/share/cantus/test-data`, voir `tests/README.md`).
+- `La_foule.mxl` est ignoré par git et lu à la racine du dépôt.
 
 ## Vérifications de référence
 
