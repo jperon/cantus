@@ -1,5 +1,5 @@
 // Scénario 4 — hors ligne (index.html seulement) : le service worker doit
-// s'installer au chargement, mettre les trois fichiers mscz2xml en cache,
+// s'installer au chargement, mettre les trois fichiers scoretk en cache,
 // puis un rechargement hors ligne doit permettre d'importer un .mscz.
 // Chaque attente a un délai borné ; en cas d'échec on diagnostique l'étape.
 const L = require('./lib');
@@ -22,12 +22,12 @@ async function manualRegister(page) {
 
 async function cachedMscz(page) {
   return page.evaluate(async () => {
-    const want = ['mscz2xml.js', 'mscz2xml_wasm.js', 'mscz2xml_wasm_bg.wasm'];
+    const want = ['scoretk.js', 'scoretk_wasm.js', 'scoretk_wasm_bg.wasm'];
     const found = {};
     for (const key of await caches.keys()) {
       const cache = await caches.open(key);
       for (const name of want) {
-        if (await cache.match('./mscz2xml/' + name)) found[name] = key;
+        if (await cache.match('./scoretk/' + name)) found[name] = key;
       }
     }
     return { found, keys: await caches.keys() };
@@ -88,10 +88,10 @@ async function offlinePlayback(page) {
         diag.manual = await manualRegister(page).catch((e) => ({ error: e.message }));
         try {
           await page.waitForFunction(async () => {
-            const want = ['mscz2xml.js', 'mscz2xml_wasm.js', 'mscz2xml_wasm_bg.wasm'];
+            const want = ['scoretk.js', 'scoretk_wasm.js', 'scoretk_wasm_bg.wasm'];
             for (const key of await caches.keys()) {
               const cache = await caches.open(key);
-              if (await cache.match('./mscz2xml/' + want[2])) return true;
+              if (await cache.match('./scoretk/' + want[2])) return true;
             }
             return false;
           }, null, { timeout: 60000, polling: 500 });
@@ -99,7 +99,7 @@ async function offlinePlayback(page) {
         const cached = await cachedMscz(page);
         diag.cached = cached;
         const count = Object.keys(cached.found).length;
-        L.record(results, '4. Trois fichiers mscz2xml en cache après installation du SW (enregistrement manuel pour diagnostic)', 'index.html',
+        L.record(results, '4. Trois fichiers scoretk en cache après installation du SW (enregistrement manuel pour diagnostic)', 'index.html',
           count === 3 ? 'OK' : 'ÉCHEC', `${count}/3 : ${JSON.stringify(cached.found)}, caches ${JSON.stringify(cached.keys)}`);
 
         // Diagnostic : hors ligne avec SW enregistré manuellement
@@ -132,14 +132,14 @@ async function offlinePlayback(page) {
           await page.waitForFunction(async () => {
             for (const key of await caches.keys()) {
               const cache = await caches.open(key);
-              if (await cache.match('./mscz2xml/mscz2xml_wasm_bg.wasm')) return true;
+              if (await cache.match('./scoretk/scoretk_wasm_bg.wasm')) return true;
             }
             return false;
           }, null, { timeout: 60000, polling: 500 });
         } catch (e) { diag.cacheWaitError = e.message; }
         cached = await cachedMscz(page);
         diag.cached = cached;
-        L.record(results, '4. Trois fichiers mscz2xml en cache après installation du SW', 'index.html',
+        L.record(results, '4. Trois fichiers scoretk en cache après installation du SW', 'index.html',
           Object.keys(cached.found).length === 3 ? 'OK' : 'ÉCHEC', JSON.stringify(cached));
         try {
           await ctx.setOffline(true);

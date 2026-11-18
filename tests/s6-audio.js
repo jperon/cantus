@@ -193,6 +193,25 @@ async function runPage(browser, url, pageName, results) {
       stable ? 'OK' : 'ÉCHEC',
       `position ${pausedBefore.position} → ${pausedAfter.position} ms`);
 
+    // Pendant une pause écrite, le suivi gèle : pauseAt est la fonction exacte
+    // branchée dans followPlaybackFrame. (Aucun fichier de test avec pauses
+    // n'est importable par l'UI ; la fixture unitaire pause_basic est un JSON
+    // de timeline, pas une partition.)
+    const pauseGate = await page.evaluate(() => {
+      const api = window.__musicaTimeline;
+      const pauses = [{ timeUs: 2000000, endTimeUs: 5000000 }];
+      return {
+        hasApi: !!api?.pauseAt,
+        before: api?.pauseAt(pauses, 1999) === null,
+        during: api?.pauseAt(pauses, 2000) === pauses[0] &&
+          api?.pauseAt(pauses, 4999) === pauses[0],
+        after: api?.pauseAt(pauses, 5000) === null,
+      };
+    });
+    L.record(results, '6. Suivi gelé pendant une pause : pauseAt aux bornes exactes', pageName,
+      pauseGate.hasApi && pauseGate.before && pauseGate.during && pauseGate.after ? 'OK' : 'ÉCHEC',
+      `avant ${pauseGate.before}, pendant ${pauseGate.during}, après ${pauseGate.after}`);
+
     // Reprise et arrêt par le bouton
     await page.click('#transport-play');
     await waitState(page, 'playing');
@@ -393,11 +412,12 @@ async function runPage(browser, url, pageName, results) {
 
       // Granularité : pendant la lecture naturelle (sans saut), le suivi doit
       // parcourir les DEUX demi-pages d'une même page, +1 cran à la fois et
-      // sans revenir en arrière. On part de ~3,2 s (page 2, première moitié)
-      // et on laisse jouer plus de dix secondes : la fixture Fauré a des
-      // marqueurs dans chaque moitié de page.
+      // sans revenir en arrière. On part à ~6 s (page 2, première moitié) :
+      // scoretk ne pose qu'un marqueur par début de mesure, et la page 1 de
+      // Fauré n'a qu'une mesure (t = 0), donc partir plus tôt ferait traverser
+      // deux demi-pages d'un coup sans second marqueur.
       const duration = (await state(page)).duration;
-      const startMs = 3200;
+      const startMs = 6000;
       await seekFraction(page, startMs / duration);
       await page.waitForTimeout(700);
       const startPos = await horizontalScrollPos(page);
@@ -746,6 +766,60 @@ async function runPage(browser, url, pageName, results) {
     await ctx4.close();
   }
 
+  // Voix masquée : le MIDI scoretk est global au fichier, donc sa piste
+  // existe encore ; elle doit rester muette (gain 0) et non retomber sur le
+  // master faute de correspondance dans trackMap.
+  {
+    const { page, ctx: ctxHidden, errors: errorsHidden } = await L.newPage(browser, url, { pageName });
+    try {
+      await L.waitReady(page);
+      await L.importFile(page, L.FILES.telemannXml);
+      await L.waitFirstSvg(page, 180000);
+      await L.waitBackgroundLoaded(page, 180000);
+      await page.waitForTimeout(600);
+      await L.openSettings(page);
+      const rows = await L.partRows(page);
+      const hiddenLabel = rows[1]?.name;
+      if (!hiddenLabel) throw new Error('moins de deux voix : masquage impossible');
+      await page.$eval('#parts-list label:nth-child(2) input', (el) => {
+        el.checked = false;
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+      await L.closeSettings(page);
+      await L.waitFirstSvg(page, 180000);
+      await L.waitBackgroundLoaded(page, 180000);
+      await page.waitForTimeout(800);
+      await page.click('#transport-play');
+      await waitState(page, 'playing');
+      await page.waitForTimeout(500);
+      const hidden = await page.evaluate(async (label) => {
+        const probe = await window.__musicaPlaybackProbe();
+        return {
+          gain: window.__musicaAudio.getVoiceGain(label),
+          tracks: probe.trackMap?.[label] || [],
+          staffLabels: probe.staffLabels || [],
+          midiBytes: probe.midiBytes,
+          state: window.__musicaPlaybackState().state,
+        };
+      }, hiddenLabel);
+      const trackExists = Array.isArray(hidden.tracks) && hidden.tracks.length > 0;
+      const listed = hidden.staffLabels.includes(hiddenLabel);
+      const silent = hidden.gain === 0;
+      L.record(results, '6. Voix masquée : piste présente dans le MIDI global, gain 0', pageName,
+        trackExists && listed && silent && hidden.state === 'playing' ? 'OK' : 'ÉCHEC',
+        `${hiddenLabel} : pistes [${hidden.tracks.join(',')}], libellé listé ${listed}, ` +
+        `gain ${hidden.gain}, MIDI ${hidden.midiBytes} o, état ${hidden.state}`);
+      await page.click('#transport-stop');
+      await waitState(page, 'stopped');
+    } catch (e) {
+      L.record(results, '6. Voix masquée', pageName, 'ÉCHEC', 'exception du test : ' + e.message);
+    }
+    const relevant = L.summarize(errorsHidden);
+    L.record(results, '6. Erreurs JS (voix masquée)', pageName,
+      relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
+    await ctxHidden.close();
+  }
+
   // Robustesse : changer de fichier ou redimensionner pendant la lecture,
   // puis les chemins d'erreur (MIDI vide, mouvement sans données).
   {
@@ -852,19 +926,46 @@ async function runPage(browser, url, pageName, results) {
       const marksLinear = marksOf(linear);
       const durationExpanded = durationOf(expanded);
       const durationLinear = durationOf(linear);
+      // Un marqueur par mesure jouée (et non par note) : 98 occurrences pour
+      // La_foule, réparties sur ses deux mouvements.
       L.record(results, '6. Reprises : les deux passages sont couverts par les marqueurs', pageName,
-        marksExpanded.length >= 400 ? 'OK' : 'ÉCHEC',
+        marksExpanded.length >= 90 ? 'OK' : 'ÉCHEC',
         `${marksExpanded.length} marqueurs sur ${expanded.length} mouvement(s), durée ${Math.round(durationExpanded)} ms`);
       L.record(results, '6. Reprises : aucun trou de suivi au second passage', pageName,
         maxGapOf(expanded) <= 2000 ? 'OK' : 'ÉCHEC',
         `écart max entre marqueurs consécutifs ${maxGapOf(expanded)} ms`);
 
-      // La_foule : 850 notes, 104 s déroulées -> 72 s écrites (rapport 0,692).
+      // La_foule : 98 occurrences déroulées (scoretk, pas 104 : Verovio
+      // rejouait les endings) -> 72 mesures écrites.
       const ratio = durationExpanded > 0 ? durationLinear / durationExpanded : 0;
-      const shorter = durationLinear < durationExpanded && Math.abs(ratio - 72 / 104) <= 0.05;
-      L.record(results, '6. Reprises décochées : durée écrite proche de 72/104 de la déroulée', pageName,
+      const shorter = durationLinear < durationExpanded && Math.abs(ratio - 72 / 98) <= 0.05;
+      L.record(results, '6. Reprises décochées : durée écrite proche de 72/98 de la déroulée', pageName,
         shorter ? 'OK' : 'ÉCHEC',
         `déroulée ${Math.round(durationExpanded)} ms, écrite ${Math.round(durationLinear)} ms, rapport ${ratio.toFixed(3)}`);
+
+      // Les marqueurs viennent de la timeline scoretk : aucun id de copie
+      // Verovio « -rendN », tri croissant et pages locales >= 1.
+      const allMarks = [...marksExpanded, ...marksLinear];
+      const rendIds = allMarks.filter((m) => /-rend\d+$/.test(String(m.id || '')));
+      const sortedPages = [...expanded, ...linear].every((data) => {
+        const marks = data.syncMarks || [];
+        for (let i = 1; i < marks.length; i += 1) if (marks[i].t < marks[i - 1].t) return false;
+        return marks.every((m) => Number(m.page) >= 1);
+      });
+      L.record(results, '6. Marqueurs scoretk : aucun id « -rendN », triés, pages >= 1', pageName,
+        rendIds.length === 0 && sortedPages && allMarks.length > 0 ? 'OK' : 'ÉCHEC',
+        `${allMarks.length} marqueurs, ${rendIds.length} id « -rendN », tri et pages ${sortedPages}`);
+
+      // Mode écrit : chaque mesure n'apparaît qu'une fois dans les segments,
+      // et aucune occurrence déroulée ne subsiste.
+      const linearMeasures = linear.flatMap((data) => data.segments.map((s) => s.measure));
+      const uniqueLinear = new Set(linearMeasures).size === linearMeasures.length;
+      const expandedMeasures = expanded.flatMap((data) => data.segments.map((s) => s.measure));
+      const fewerOccurrences = linearMeasures.length < expandedMeasures.length;
+      L.record(results, '6. Reprises décochées : chaque mesure écrite une seule fois', pageName,
+        uniqueLinear && fewerOccurrences ? 'OK' : 'ÉCHEC',
+        `${linearMeasures.length} segments écrits (${new Set(linearMeasures).size} mesures), ` +
+        `${expandedMeasures.length} occurrences déroulées`);
 
       const allLinear = linear.every((data) => data.linearRepeats && data.segments.length > 0);
       L.record(results, '6. Reprises décochées : segments fournis pour chaque mouvement', pageName,

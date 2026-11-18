@@ -35,14 +35,29 @@ script de construction (`cantus-site-build`) qui opère dans le dépôt courant,
 et **non** une dérivation hermétique du site. C'est volontaire : un build
 sandboxé exigerait de figer Verovio et scoretk comme dépendances.
 
-## Module timeline (préparation scoretk)
+## Aperçu audio et synchronisation (scoretk)
 
-`src/timeline.coffee` est compilé et inliné (`timelineJs`) avec les autres
-modules, mais n'est encore branché ni dans `app.coffee` ni dans `worker.coffee`.
-Il fournit les manipulations pures de la timeline (slices de mouvement,
-segments de lecture, pauses, marqueurs de synchronisation) qui serviront à la
-future migration scoretk. Le remappage des notes sur les segments reste dans
-`audio.coffee` (`remapNotesToSegments`).
+Verovio ne fournit **plus** le MIDI ni les temps de lecture : il ne sert qu'au
+rendu SVG et, via `renderToTimemap({includeMeasures: true})`, au pont « mesure
+écrite -> page » (seul usage de cette fonction, dans `worker.coffee`). Le MIDI
+et la timeline viennent de `scoretk.convertWithTimeline`, appelé dans le worker
+sur le **MusicXML source complet** (pas le mouvement élagué) : le MIDI est
+global au fichier, et un mouvement élagué ferait disparaître les voix masquées
+du mapping (elles redeviendraient audibles sur le master).
+
+`src/timeline.coffee` est injecté dans le worker avant `worker.coffee` (build
+normal et SPA) et dans la page (`timelineJs`). Il fournit les manipulations
+pures de la timeline (slices de mouvement, segments de lecture, pauses,
+marqueurs de synchronisation) utilisées telles quelles par le worker et par
+`app.coffee`. Le remappage des notes sur les segments reste dans `audio.coffee`
+(`remapNotesToSegments`), désormais seul chemin.
+
+`timeline.ticks` est le dernier tick, **pauses comprises** ; la durée vient de
+`measures[dernier].endTimeUs`. `measures[]` ne contient que les mesures jouées,
+dans l'ordre d'exécution : ne jamais indexer par `measure`. `passage` n'est pas
+un discriminant d'occurrence ; la position dans `measures[]` (et `segment`) fait
+foi. Le MusicXML renvoyé par scoretk est identique dans les deux modes : la
+pagination Verovio ne change pas quand on coche ou décoche les reprises.
 
 Champs **réellement produits par scoretk-wasm 0.1.0**, et seuls consommés :
 `timeline.division`, `ticks`, `tempo`, `measures`, `pauses` ;

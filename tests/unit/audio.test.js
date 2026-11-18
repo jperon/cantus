@@ -128,7 +128,7 @@ test('notesToSchedule : index invalide ramené au début', () => {
 
 // --- Normalisation des données de lecture ----------------------------------
 
-test('normalizePlaybackData : notes aplaties, triées, durée du timemap', () => {
+test('normalizePlaybackData : notes aplaties, triées, durée du slice', () => {
   const parser = {
     parseBase64: () => ({
       duration: 84.9,
@@ -145,8 +145,16 @@ test('normalizePlaybackData : notes aplaties, triées, durée du timemap', () =>
       ],
     }),
   };
+  // Un segment couvre tout le morceau : le remappage est l'identité.
   const data = audio.normalizePlaybackData(
-    { midi: 'x', duration: 85000, trackMap: { piano: [1, 2] }, syncMarks: [{ t: 1 }], staffLabels: ['Piano'] },
+    {
+      midi: 'x',
+      duration: 85000,
+      segments: [{ from: 0, to: 85000, offset: 0 }],
+      trackMap: { piano: [1, 2] },
+      syncMarks: [{ t: 1 }],
+      staffLabels: ['Piano'],
+    },
     parser
   );
   assert.deepStrictEqual(data.notes.map((n) => [n.start, n.track, n.pitch]), [
@@ -154,19 +162,22 @@ test('normalizePlaybackData : notes aplaties, triées, durée du timemap', () =>
     [0.75, 2, 48],
     [1.5, 1, 64],
   ]);
-  // 85000 ms (timemap) l'emporte sur 84,9 s (MIDI) ; la dernière note finit à 2,75 s
+  // 85000 ms (slice) l'emporte sur 84,9 s (MIDI) ; la dernière note finit à 2,75 s
   approx(data.duration, 85, 'durée');
   assert.deepStrictEqual(data.trackMap.byLabel, { piano: [1, 2] });
   assert.deepStrictEqual(data.syncMarks, [{ t: 1 }]);
   assert.deepStrictEqual(data.staffLabels, ['Piano']);
 });
 
-test('normalizePlaybackData : sans durée de timemap, utilise le MIDI', () => {
+test('normalizePlaybackData : sans durée, la somme des segments fait foi', () => {
   const parser = {
-    parseBase64: () => ({ duration: 12.5, tracks: [{ index: 0, notes: [] }] }),
+    parseBase64: () => ({ duration: 99, tracks: [{ index: 0, notes: [] }] }),
   };
-  const data = audio.normalizePlaybackData({ midi: 'x' }, parser);
-  approx(data.duration, 12.5, 'durée MIDI');
+  const data = audio.normalizePlaybackData(
+    { midi: 'x', segments: [{ from: 0, to: 12500, offset: 0 }] },
+    parser
+  );
+  approx(data.duration, 12.5, 'durée des segments');
   assert.throws(() => audio.normalizePlaybackData(null, parser), /absentes/);
   assert.throws(() => audio.normalizePlaybackData({ midi: 'x' }, null), /Parseur MIDI/);
 });
