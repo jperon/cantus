@@ -395,15 +395,19 @@ async function runTempo(browser, url, pageName, results) {
     }, null, { timeout: 120000, polling: 250 });
     const initial = await page.evaluate(() => ({
       value: document.getElementById('tempo-input')?.value,
+      unit: document.getElementById('tempo-unit')?.textContent,
+      unitTitle: document.getElementById('tempo-unit')?.title,
       hint: document.getElementById('tempo-hint')?.textContent || '',
       resetDisabled: document.getElementById('tempo-reset')?.disabled,
       stored: Object.keys(localStorage).filter((k) => k.startsWith('musica-tempo-')),
       marker: !!document.querySelector('#page-current .scroll-page svg[data-test-mark="1"]'),
     }));
-    L.record(results, '3. Tempo : défaut du fichier affiché (Fauré = 72)', pageName,
-      initial.value === '72' && /72/.test(initial.hint) && initial.resetDisabled === true &&
+    L.record(results, '3. Tempo : défaut du fichier affiché (Fauré = 72 à la noire)', pageName,
+      initial.value === '72' && /72/.test(initial.hint) && initial.unit === '♩' &&
+        initial.unitTitle === 'noire' && initial.resetDisabled === true &&
         initial.stored.length === 0 && initial.marker ? 'OK' : 'ÉCHEC',
-      `champ ${initial.value}, indication « ${initial.hint.trim()} », bouton défaut désactivé ${initial.resetDisabled}, ` +
+      `champ ${initial.value}, unité « ${initial.unit} » (${initial.unitTitle}), ` +
+      `indication « ${initial.hint.trim()} », bouton défaut désactivé ${initial.resetDisabled}, ` +
       `clés ${JSON.stringify(initial.stored)}, SVG marqué conservé ${initial.marker}`);
 
     await page.$eval('#tempo-input', (el) => {

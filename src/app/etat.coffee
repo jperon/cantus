@@ -113,6 +113,7 @@ playback =
   rawData: null  # données du worker, à l'échelle du fichier (sans facteur)
   tempoFactor: 1  # facteur tempo choisi / tempo initial du fichier
   tempoBpm: null  # tempo effectif utilisé pour la lecture chargée
+  tempoUnit: "quarter"  # unité de battue du tempo (affichage et réglage)
 
 # Worker message handler
 worker.onmessage = (e) ->
@@ -217,9 +218,9 @@ worker.onmessage = (e) ->
         pending.reject new Error message
 
     when "playbackData"
-      {movementId, midi, syncMarks, staffLabels, trackMap, duration, segments, pauses, linearRepeats, fileTempoBpm, fileTempoExplicit} = e.data
+      {movementId, midi, syncMarks, staffLabels, trackMap, duration, segments, pauses, linearRepeats, fileTempoBpm, fileTempoExplicit, fileTempoUnit} = e.data
       key = playbackKey movementId, !!linearRepeats
-      data = {midi, syncMarks, staffLabels, trackMap, duration, segments: segments ? [], pauses: pauses ? [], linearRepeats: !!linearRepeats, fileTempoBpm, fileTempoExplicit}
+      data = {midi, syncMarks, staffLabels, trackMap, duration, segments: segments ? [], pauses: pauses ? [], linearRepeats: !!linearRepeats, fileTempoBpm, fileTempoExplicit, fileTempoUnit}
       playbackCache.set key, data
       pending = pendingPlayback.get key
       if pending

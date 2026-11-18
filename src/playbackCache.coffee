@@ -14,12 +14,16 @@
 # v4 : les données portent le tempo initial du fichier (fileTempoBpm,
 # fileTempoExplicit). Une entrée v3 n'a pas ces champs et ferait retomber le
 # défaut du réglage sur 80 sans savoir si le fichier a un tempo : elle n'est
-# jamais resservie. Le cache SVG n'est pas concerné.
+# jamais resservie.
+# v5 : fileTempoBpm est exprimé dans l'unité de battue du fichier
+# (fileTempoUnit) et non plus en noires/minute. Une entrée v4 interpréterait
+# l'ancienne valeur dans la mauvaise unité : elle n'est jamais resservie. Le
+# cache SVG n'est pas concerné.
 
 # IIFE : les modules inline partagent la portée globale. Sans cela, `cache`,
 # `get`, `set`… écraseraient ceux de svgCache.coffee (même page, scripts inline).
 do ->
-  CACHE_NAME = "musica-playback-cache-v4"
+  CACHE_NAME = "musica-playback-cache-v5"
   MAX_STORAGE_BYTES = 50 * 1024 * 1024  # 50 MB
 
   cache = null

@@ -296,6 +296,7 @@ resetPlayback = ->
   playback.rawData = null
   playback.tempoFactor = 1
   playback.tempoBpm = null
+  playback.tempoUnit = "quarter"
   renderTransport()
 
 stopPlayback = ->
@@ -343,16 +344,17 @@ beginPlayback = (engine, fromMs) ->
 
 # --- Tempo de lecture -------------------------------------------------------
 # Le tempo initial du fichier vient des données de lecture (worker : carte de
-# tempo scoretk + indication de la première mesure du MusicXML). Sans cette
-# information (anciennes données en cache), le tempo effectif de la chaîne est
-# 120 noires/minute.
+# tempo scoretk, indication de la première mesure du MusicXML et unité de
+# battue). Le BPM est déjà exprimé dans cette unité.
 fileTempoFromData = (data, movementId) ->
   bpm = Math.round Number data?.fileTempoBpm
   bpm = DEFAULT_FILE_TEMPO_BPM unless isFinite(bpm) and bpm > 0
-  {bpm, explicit: data?.fileTempoExplicit is true, fileId: currentFileId, movementId}
+  unit = data?.fileTempoUnit ? 'quarter'
+  {bpm, explicit: data?.fileTempoExplicit is true, unit, fileId: currentFileId, movementId}
 
 # Tempo choisi (réglage du fichier, sinon défaut du fichier : son tempo
-# explicite ou 80) et facteur appliqué aux données de lecture.
+# explicite ou 80), dans l'unité du fichier. Le facteur reste choisi / fichier
+# sur la même unité.
 playbackTempoPlan = (data, movementId) ->
   info = fileTempoFromData data, movementId
   chosen = if playbackTempoOverride? then playbackTempoOverride else window.__musicaTimeline.defaultPlaybackTempo(info)
@@ -391,6 +393,7 @@ applyTempoToPlayback = ->
   fileTempo = scaled.plan.info
   playback.tempoFactor = factor
   playback.tempoBpm = scaled.plan.chosen
+  playback.tempoUnit = scaled.plan.info.unit
   playback.duration = duration
   playback.marks = scaled.data.syncMarks ? []
   playback.pauses = scaled.data.pauses ? []
@@ -456,6 +459,7 @@ startPlayback = ->
       playback.rawData = data
       playback.tempoFactor = scaled.plan.factor
       playback.tempoBpm = scaled.plan.chosen
+      playback.tempoUnit = scaled.plan.info.unit
       playback.duration = Math.max 0, Number(scaled.data.duration) or 0
       playback.position = 0
       playback.marks = scaled.data.syncMarks ? []
@@ -498,6 +502,7 @@ window.__musicaPlaybackState = ->
     hasData: playback.hasData
     tempo: playback.tempoBpm
     fileTempo: fileTempo?.bpm ? null
+    tempoUnit: playback.tempoUnit
     tempoFactor: playback.tempoFactor
   }
 

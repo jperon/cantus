@@ -617,9 +617,11 @@ buildPlaybackData = (movementId, linearRepeats = false, measureStart, measureEnd
       segments
       pauses: slice.pauses
       linearRepeats: !!linearRepeats
-      # Tempo initial du fichier : le réglage « Tempo » en dérive son défaut.
+      # Tempo initial du fichier, dans son unité de battue : le réglage
+      # « Tempo » en dérive son défaut et son symbole.
       fileTempoBpm: source.fileTempo?.bpm ? 120
       fileTempoExplicit: source.fileTempo?.explicit is true
+      fileTempoUnit: source.fileTempo?.unit ? 'quarter'
     }
     playbackCache[cacheKey] = data
     data
@@ -733,6 +735,7 @@ handleMessage = (e) ->
               linearRepeats: !!data.linearRepeats
               fileTempoBpm: data.fileTempoBpm
               fileTempoExplicit: data.fileTempoExplicit
+              fileTempoUnit: data.fileTempoUnit
             }
           .catch (playbackErr) ->
             self.postMessage {

@@ -478,6 +478,12 @@ html, body {
   color: #333;
 }
 
+.tempo-unit {
+  font-family: "FreeSerif", "Noto Music", "DejaVu Sans", serif;
+  font-size: 19px;
+  line-height: 1;
+}
+
 .settings-btn.tempo-reset {
   flex: 0 0 auto;
   margin-top: 0;

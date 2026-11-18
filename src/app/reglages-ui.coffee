@@ -155,18 +155,26 @@ renderTempoUi = ->
     # Tempo du fichier pas encore connu : ne pas afficher un défaut trompeur.
     input.value = ""
   input.placeholder = if info? then "" else "…"
+  unit = info?.unit ? "quarter"
+  label = window.__musicaTimeline.tempoUnitLabel unit
+  input.setAttribute "aria-label", "Tempo de lecture en #{label} par minute"
+  unitEl = $("tempo-unit")
+  if unitEl
+    unitEl.textContent = window.__musicaTimeline.tempoUnitSymbol unit
+    unitEl.title = label
   reset = $("tempo-reset")
   reset.disabled = playbackTempoOverride is null if reset
   hint = $("tempo-hint")
   return unless hint
+  plural = window.__musicaTimeline.tempoUnitLabel unit, true
   if info?
     if info.explicit
-      hint.textContent = "Tempo initial du fichier : #{info.bpm} noires/min."
+      hint.textContent = "Tempo initial du fichier : #{info.bpm} #{plural}/min."
     else
-      hint.textContent = "Aucun tempo dans le fichier : défaut #{DEFAULT_PLAYBACK_TEMPO_BPM} noires/min " +
-        "(lecture de référence : #{DEFAULT_FILE_TEMPO_BPM})."
+      hint.textContent = "Aucun tempo dans le fichier : défaut #{DEFAULT_PLAYBACK_TEMPO_BPM} #{plural}/min " +
+        "(lecture de référence : #{DEFAULT_FILE_TEMPO_BPM} noires/min)."
   else if fileTempoError
-    hint.textContent = "Tempo du fichier indisponible ; défaut #{DEFAULT_PLAYBACK_TEMPO_BPM} noires/min."
+    hint.textContent = "Tempo du fichier indisponible ; défaut #{DEFAULT_PLAYBACK_TEMPO_BPM} #{plural}/min."
   else
     hint.textContent = "Tempo du fichier en cours de détermination…"
 
