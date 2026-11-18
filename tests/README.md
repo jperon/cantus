@@ -31,13 +31,38 @@ attendu (noms relatifs à ce répertoire) :
 ```sh
 tests/run.sh              # construit dist/, lance les tests unitaires puis s1 à s9
 tests/run.sh s1-import.js # un seul scénario navigateur
+JOBS=4 tests/run.sh       # jusqu'à 4 scénarios navigateur en parallèle
+JOBS=1 tests/run.sh       # exécution strictement série
 node --test tests/unit/*.test.js  # tests unitaires seuls (sans navigateur)
 ```
 
 `tests/run.sh` exécute d'abord les tests unitaires Node ; un échec interrompt
 la campagne navigateur. Chaque script imprime une ligne par vérification
 (`[OK]` / `[ÉCHEC]` avec le détail mesuré), puis un résumé JSON. Les délais
-d'attente sont tous bornés.
+d'attente sont tous bornés. Chaque bilan de scénario affiche sa durée en
+secondes, et le script termine par la durée des scénarios et la durée totale
+de la campagne.
+
+### Parallélisme
+
+Les scénarios navigateur sont indépendants : chacun ouvre son propre serveur
+sur un port libre (`listen(0)` dans `lib.js`), donc plusieurs peuvent tourner
+en même temps. `tests/run.sh` en lance `JOBS` à la fois (variable
+d'environnement, défaut 3) ; chaque scénario écrit dans un journal temporaire
+distinct et sa sortie est affichée d'un bloc à sa fin, jamais entrelacée avec
+celle d'un autre. Les vérifications, les totaux et le code de sortie sont les
+mêmes qu'en série.
+
+Deux familles restent en série, un seul scénario à la fois et après le lot
+parallèle :
+
+- `s5-nopkg.js`, qui reconstruit `dist/` (sans puis avec le paquet scoretk) :
+  il ne peut pas cohabiter avec un scénario qui sert ce même `dist/` ;
+- les `s6*.js` (lecture audio), sensibles à la charge de la machine.
+
+`JOBS=1` redonne une exécution strictement série. La durée d'un scénario
+lancé en parallèle est plus longue qu'en série (les navigateurs se partagent
+le processeur) : c'est la durée du lot qui diminue.
 
 ### Convention de code de sortie
 
