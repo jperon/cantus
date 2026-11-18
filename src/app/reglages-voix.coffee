@@ -1,5 +1,5 @@
 # Réglages persistants (zoom, thème, défilement…), voix masquées, tailles et
-# volumes, et variantes de cache qui en dérivent.
+# volumes, tempo de lecture par fichier, et variantes de cache qui en dérivent.
 # Only returns loaded movements, falls back to movement 1 if not loaded
 getMovementForPage = (globalPage) ->
   offset = 0
@@ -138,6 +138,35 @@ saveHiddenParts = ->
     localStorage.setItem "musica-hidden-parts-#{currentFileId}", JSON.stringify(data)
   catch
     # localStorage unavailable (file:// on some browsers)
+
+# Tempo de lecture propre au fichier, sur le même modèle que les réglages de
+# voix : une clé localStorage par identifiant de bibliothèque. Absence de clé
+# (ou valeur hors bornes) = pas de réglage : le tempo du fichier fait foi.
+loadPlaybackTempo = ->
+  playbackTempoOverride = null
+  return unless currentFileId
+  try
+    saved = localStorage.getItem "musica-tempo-#{currentFileId}"
+    value = parseInt saved, 10
+    playbackTempoOverride = value if isFinite(value) and value >= TEMPO_MIN_BPM and value <= TEMPO_MAX_BPM
+  catch
+    # localStorage unavailable (file:// on some browsers)
+
+savePlaybackTempo = ->
+  return unless currentFileId
+  try
+    if playbackTempoOverride?
+      localStorage.setItem "musica-tempo-#{currentFileId}", String(playbackTempoOverride)
+    else
+      localStorage.removeItem "musica-tempo-#{currentFileId}"
+  catch
+    # localStorage unavailable (file:// on some browsers)
+
+# Tempo initial du fichier chargé, s'il a déjà été obtenu des données de
+# lecture. Le cache est lié au fichier : changer de mouvement n'y touche pas.
+currentFileTempo = ->
+  return null unless fileTempo? and fileTempo.fileId is currentFileId
+  fileTempo
 
 # Suffixe de clé du cache SVG : une page rendue avec une autre sélection diffère
 partsVariant = ->

@@ -1,5 +1,11 @@
 # État global partagé (modules, caches, chargement, transport) et
 # répartiteur des messages reçus du worker.
+# Bornes et défauts du tempo de lecture, définis une seule fois avec la
+# timeline (src/timeline.coffee).
+TEMPO_MIN_BPM = window.__musicaTimeline.TEMPO_MIN_BPM
+TEMPO_MAX_BPM = window.__musicaTimeline.TEMPO_MAX_BPM
+DEFAULT_PLAYBACK_TEMPO_BPM = window.__musicaTimeline.DEFAULT_PLAYBACK_TEMPO_BPM
+DEFAULT_FILE_TEMPO_BPM = window.__musicaTimeline.DEFAULT_FILE_TEMPO_BPM
 storage = window.__musicaStorage
 worker = window.__musicaWorker
 svgStore = window.__svgCache  # Persistent cache with compression
@@ -27,6 +33,13 @@ partVolumes = {}  # Libellé de voix -> volume en % (100 = volume normal)
 partsChanged = false  # Réglages de voix modifiés, à appliquer à la fermeture
 followPlaybackEnabled = true  # Suivi du défilement pendant la lecture
 expandRepeats = true  # Dérouler les reprises (false : lecture linéaire écrite)
+# Tempo de lecture : réglage propre au fichier (localStorage), prioritaire sur
+# le tempo du fichier ; fileTempo garde le tempo initial découvert dans les
+# données de lecture ({bpm, explicit, fileId}) pour afficher le défaut.
+playbackTempoOverride = null
+fileTempo = null
+fileTempoRequest = null
+fileTempoError = false
 # Cale de la tête de lecture sur la page affichée ---------------------------------
 # Un changement de page (défilement, boutons, goto) place la tête de lecture au
 # premier marqueur de synchronisation de cette page, après un court debounce le
@@ -97,6 +110,9 @@ playback =
   marks: []  # syncMarks du mouvement chargé (t en ms, page locale)
   pauses: []  # pauses du mouvement (timeUs/endTimeUs), pour geler le suivi
   followKey: null  # dernière cible de suivi appliquée
+  rawData: null  # données du worker, à l'échelle du fichier (sans facteur)
+  tempoFactor: 1  # facteur tempo choisi / tempo initial du fichier
+  tempoBpm: null  # tempo effectif utilisé pour la lecture chargée
 
 # Worker message handler
 worker.onmessage = (e) ->
@@ -201,9 +217,9 @@ worker.onmessage = (e) ->
         pending.reject new Error message
 
     when "playbackData"
-      {movementId, midi, syncMarks, staffLabels, trackMap, duration, segments, pauses, linearRepeats} = e.data
+      {movementId, midi, syncMarks, staffLabels, trackMap, duration, segments, pauses, linearRepeats, fileTempoBpm, fileTempoExplicit} = e.data
       key = playbackKey movementId, !!linearRepeats
-      data = {midi, syncMarks, staffLabels, trackMap, duration, segments: segments ? [], pauses: pauses ? [], linearRepeats: !!linearRepeats}
+      data = {midi, syncMarks, staffLabels, trackMap, duration, segments: segments ? [], pauses: pauses ? [], linearRepeats: !!linearRepeats, fileTempoBpm, fileTempoExplicit}
       playbackCache.set key, data
       pending = pendingPlayback.get key
       if pending

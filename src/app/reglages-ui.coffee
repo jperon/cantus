@@ -138,6 +138,82 @@ updatePartsVolumesReset = ->
   return unless btn
   btn.disabled = Object.keys(partVolumes).every (id) -> parseInt(partVolumes[id]) is 100
 
+# --- Tempo de lecture -------------------------------------------------------
+# Affiche le tempo effectif : réglage du fichier s'il existe, sinon le défaut
+# du fichier (tempo initial explicite, ou 80). Le bouton « Tempo du fichier »
+# n'est actif que si un réglage s'écarte du défaut ; vider le champ fait de
+# même.
+renderTempoUi = ->
+  input = $("tempo-input")
+  return unless input
+  info = currentFileTempo()
+  if playbackTempoOverride?
+    input.value = playbackTempoOverride
+  else if info?
+    input.value = window.__musicaTimeline.defaultPlaybackTempo info
+  else
+    # Tempo du fichier pas encore connu : ne pas afficher un défaut trompeur.
+    input.value = ""
+  input.placeholder = if info? then "" else "…"
+  reset = $("tempo-reset")
+  reset.disabled = playbackTempoOverride is null if reset
+  hint = $("tempo-hint")
+  return unless hint
+  if info?
+    if info.explicit
+      hint.textContent = "Tempo initial du fichier : #{info.bpm} noires/min."
+    else
+      hint.textContent = "Aucun tempo dans le fichier : défaut #{DEFAULT_PLAYBACK_TEMPO_BPM} noires/min " +
+        "(lecture de référence : #{DEFAULT_FILE_TEMPO_BPM})."
+  else if fileTempoError
+    hint.textContent = "Tempo du fichier indisponible ; défaut #{DEFAULT_PLAYBACK_TEMPO_BPM} noires/min."
+  else
+    hint.textContent = "Tempo du fichier en cours de détermination…"
+
+# Demande les données de lecture du mouvement affiché pour connaître le tempo
+# initial du fichier. Une seule demande par fichier/mouvement ; le cache de
+# lecture fait le reste. N'écrit aucune donnée dans le cache SVG.
+ensureFileTempo = ->
+  result = getMovementForPage displayedPage()
+  return Promise.resolve(currentFileTempo()) unless result
+  known = currentFileTempo()
+  return Promise.resolve(known) if known?
+  fileId = currentFileId
+  movementId = result.movement.id
+  if fileTempoRequest?.fileId is fileId and fileTempoRequest?.movementId is movementId
+    return fileTempoRequest.promise
+  fileTempoError = false
+  promise = requestPlaybackData movementId
+    .then (data) ->
+      info = fileTempoFromData data, movementId
+      info.fileId = fileId
+      fileTempo = info
+      info
+    .catch (err) ->
+      fileTempoError = true
+      console.warn "Tempo du fichier indisponible : #{err?.message or err}"
+      null
+    .then (info) ->
+      if fileTempoRequest?.promise is promise then fileTempoRequest = null
+      renderTempoUi() unless $("settings-overlay").classList.contains "hidden"
+      info
+  fileTempoRequest = {fileId, movementId, promise}
+  promise
+
+# Applique (et mémorise) le tempo de lecture du fichier courant.
+setPlaybackTempo = (value) ->
+  playbackTempoOverride = window.__musicaTimeline.clampPlaybackTempo value
+  savePlaybackTempo()
+  renderTempoUi()
+  applyTempoToPlayback()
+
+# Retour au tempo du fichier : supprime le réglage du fichier courant.
+resetTempoToFile = ->
+  playbackTempoOverride = null
+  savePlaybackTempo()
+  renderTempoUi()
+  applyTempoToPlayback()
+
 # Fermer les réglages : applique en une seule fois les changements de voix
 closeSettings = ->
   $("settings-overlay").classList.add "hidden"
@@ -169,6 +245,8 @@ setupSettings = ->
   $("btn-settings").addEventListener "click", ->
     $("settings-overlay").classList.remove "hidden"
     renderPartsList()
+    renderTempoUi()
+    ensureFileTempo()
     updateStorageInfo()
 
   $("settings-close").addEventListener "click", closeSettings
@@ -271,6 +349,23 @@ setupSettings = ->
       settings = loadSettings()
       settings.masterVolume = value
       saveSettings settings
+
+  # Tempo de lecture : appliqué immédiatement, propre au fichier. Un champ vidé
+  # revient au tempo du fichier, comme le bouton dédié.
+  tempoInput = $("tempo-input")
+  if tempoInput
+    tempoInput.addEventListener "change", (e) ->
+      raw = String(e.target.value ? "").trim()
+      if raw is ""
+        resetTempoToFile()
+        return
+      value = parseInt raw, 10
+      if isFinite value
+        setPlaybackTempo value
+      else
+        resetTempoToFile()
+  tempoReset = $("tempo-reset")
+  tempoReset?.addEventListener "click", resetTempoToFile
 
   # Vidage des caches de rendu (SVG et données de lecture). Les fichiers de
   # la bibliothèque (IndexedDB) ne sont pas touchés.

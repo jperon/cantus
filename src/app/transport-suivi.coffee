@@ -293,6 +293,9 @@ resetPlayback = ->
   playback.marks = []
   playback.pauses = []
   playback.followKey = null
+  playback.rawData = null
+  playback.tempoFactor = 1
+  playback.tempoBpm = null
   renderTransport()
 
 stopPlayback = ->
@@ -338,6 +341,75 @@ beginPlayback = (engine, fromMs) ->
   renderTransport()
   startPlaybackFrame()
 
+# --- Tempo de lecture -------------------------------------------------------
+# Le tempo initial du fichier vient des données de lecture (worker : carte de
+# tempo scoretk + indication de la première mesure du MusicXML). Sans cette
+# information (anciennes données en cache), le tempo effectif de la chaîne est
+# 120 noires/minute.
+fileTempoFromData = (data, movementId) ->
+  bpm = Math.round Number data?.fileTempoBpm
+  bpm = DEFAULT_FILE_TEMPO_BPM unless isFinite(bpm) and bpm > 0
+  {bpm, explicit: data?.fileTempoExplicit is true, fileId: currentFileId, movementId}
+
+# Tempo choisi (réglage du fichier, sinon défaut du fichier : son tempo
+# explicite ou 80) et facteur appliqué aux données de lecture.
+playbackTempoPlan = (data, movementId) ->
+  info = fileTempoFromData data, movementId
+  chosen = if playbackTempoOverride? then playbackTempoOverride else window.__musicaTimeline.defaultPlaybackTempo(info)
+  chosen = window.__musicaTimeline.clampPlaybackTempo chosen
+  {
+    info
+    chosen
+    factor: window.__musicaAudio.playbackTempoFactor(chosen, info.bpm)
+  }
+
+# Données de lecture au tempo courant. Le facteur n'est appliqué QU'ICI (durée,
+# segments, marqueurs, pauses) : le moteur audio et le suivi consomment ensuite
+# le même axe de temps, sans conversion supplémentaire. Les données brutes
+# restent intactes pour le cache et pour un changement de tempo ultérieur.
+scaledPlaybackFor = (data, movementId) ->
+  plan = playbackTempoPlan data, movementId
+  {data: window.__musicaAudio.scalePlaybackData(data, plan.factor), plan: plan}
+
+# Applique le tempo courant à la lecture chargée : reprend à la même position
+# musicale (position de lecture × ancien facteur / nouveau facteur). Un
+# changement pendant la lecture relance le moteur à cette position ; en pause
+# ou à l'arrêt, seule la position est recalculée.
+applyTempoToPlayback = ->
+  return unless playback.hasData and playback.rawData
+  engine = audioEngine()
+  return unless engine
+  oldFactor = playback.tempoFactor ? 1
+  scorePosition = Math.max(0, currentPlaybackPosition()) * oldFactor
+  state = playback.state
+  scaled = scaledPlaybackFor playback.rawData, playback.movementId
+  factor = scaled.plan.factor
+  duration = Math.max 0, Number(scaled.data.duration) or 0
+  position = if factor > 0 then scorePosition / factor else 0
+  position = Math.max 0, position
+  position = Math.min position, duration if duration > 0
+  fileTempo = scaled.plan.info
+  playback.tempoFactor = factor
+  playback.tempoBpm = scaled.plan.chosen
+  playback.duration = duration
+  playback.marks = scaled.data.syncMarks ? []
+  playback.pauses = scaled.data.pauses ? []
+  playback.position = position
+  try
+    engine.load scaled.data
+    applyVoiceAudio scaled.data.staffLabels
+  catch err
+    console.warn "Changement de tempo impossible : #{err?.message or err}"
+    playback.state = "stopped"
+    playback.hasData = false
+    renderTransport()
+    return
+  if state is "playing"
+    beginPlayback engine, position
+    return
+  playback.state = if state is "paused" then "paused" else "stopped"
+  renderTransport()
+
 # Démarre la lecture du mouvement affiché : charge ses données de lecture au
 # besoin, puis lance le moteur.
 startPlayback = ->
@@ -377,14 +449,21 @@ startPlayback = ->
       playback.loading = false
       playback.movementId = movementId
       playback.hasData = true
-      playback.duration = Math.max 0, Number(data.duration) or 0
+      # Le facteur de tempo s'applique aux données avant le moteur et le suivi ;
+      # les données brutes restent en cache pour un changement de tempo.
+      scaled = scaledPlaybackFor data, movementId
+      fileTempo = scaled.plan.info
+      playback.rawData = data
+      playback.tempoFactor = scaled.plan.factor
+      playback.tempoBpm = scaled.plan.chosen
+      playback.duration = Math.max 0, Number(scaled.data.duration) or 0
       playback.position = 0
-      playback.marks = data.syncMarks ? []
-      playback.pauses = data.pauses ? []
+      playback.marks = scaled.data.syncMarks ? []
+      playback.pauses = scaled.data.pauses ? []
       playback.followKey = null
       try
-        engine.load data
-        applyVoiceAudio data.staffLabels
+        engine.load scaled.data
+        applyVoiceAudio scaled.data.staffLabels
       catch err
         playback.hasData = false
         playback.state = "stopped"
@@ -417,6 +496,9 @@ window.__musicaPlaybackState = ->
     duration: Math.round playback.duration or 0
     engine: if engine?.getEngineMode? then engine.getEngineMode() else null
     hasData: playback.hasData
+    tempo: playback.tempoBpm
+    fileTempo: fileTempo?.bpm ? null
+    tempoFactor: playback.tempoFactor
   }
 
 # Raccourci clavier : ne pas voler une touche saisie dans un champ, ni agir

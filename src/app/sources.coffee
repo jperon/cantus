@@ -97,6 +97,9 @@ startLoad = (startPage = 1, keepSources = false) ->
   resetPlayback()
   partsChanged = false
   loadHiddenParts()
+  loadPlaybackTempo()
+  fileTempoRequest = null
+  fileTempoError = false
   scrollPos = 0
   pendingPageScroll = null
   clearTimeout pageSeekTimer if pageSeekTimer
