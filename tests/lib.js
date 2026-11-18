@@ -3,21 +3,24 @@
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
+const os = require('os');
 
 const ROOT = path.resolve(__dirname, '..');
 const DIST = path.join(ROOT, 'dist');
-const PW = '/home/jacques/programmes/musique/cantus/node_modules/playwright';
+const PW = path.join(ROOT, 'node_modules/playwright');
 const { chromium } = require(PW);
 
-const SCRATCH = '/tmp/claude-1000/-home-jacques-programmes-musique-cantus/73505585-ba9d-4437-9275-b28fef3b2ac0/scratchpad';
+// Données de test stables, hors de tout répertoire temporaire de session.
+const DATA = process.env.CANTUS_TEST_DATA || path.join(os.homedir(), '.local/share/cantus/test-data');
 const FILES = {
-  telemannXml: path.join(SCRATCH, 'telemann/telemann-sonatas-for-two-recorders.xml'),
-  bachXml: path.join(SCRATCH, 'bach/Magnificat_Bach.xml'),
-  bachMxl: path.join(process.env.HOME, 'Téléchargements/Magnificat_Bach.mxl'),
-  byrdMscz: path.join(process.env.HOME, 'Téléchargements/Ave_Verum_Corpus_-_William_Byrd.mscz'),
-  faureMscz: path.join(process.env.HOME, 'Téléchargements/Cantique de Jean Racine - Fauré.mscz'),
-  laFouleMxl: '/home/jacques/programmes/musique/cantus/La_foule.mxl',
-  magnificatDir: path.join(SCRATCH, 'magnificat'),
+  telemannXml: path.join(DATA, 'telemann/telemann-sonatas-for-two-recorders.xml'),
+  bachXml: path.join(DATA, 'bach/Magnificat_Bach.xml'),
+  bachMxl: path.join(DATA, 'downloads/Magnificat_Bach.mxl'),
+  byrdMscz: path.join(DATA, 'downloads/Ave_Verum_Corpus_-_William_Byrd.mscz'),
+  faureMscz: path.join(DATA, 'downloads/Cantique de Jean Racine - Fauré.mscz'),
+  laFouleMxl: path.join(ROOT, 'La_foule.mxl'),
+  magnificatDir: path.join(DATA, 'magnificat'),
+  magnificatBachMscz: path.join(DATA, 'magnificat-bach/01- Magnificat.mscz'),
 };
 
 const MIME = {
@@ -336,7 +339,7 @@ process.on('exit', (code) => {
 });
 
 module.exports = {
-  ROOT, DIST, SCRATCH, FILES, startServer, launch, newPage,
+  ROOT, DIST, DATA, FILES, startServer, launch, newPage,
   waitReady, waitFirstSvg, pageInfo, waitPage, waitTotalAtLeast,
   waitBackgroundLoaded, importFile, importFiles, importFolder,
   openLibrary, libraryEntries, openLibraryEntry, deleteLibraryEntry,

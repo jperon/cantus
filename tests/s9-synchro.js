@@ -4,13 +4,9 @@
 // calculée indépendamment des marqueurs : on prend le xmlId de la mesure en
 // cours et on lit la page du SVG qui la contient (repli sur la mesure
 // précédente quand Verovio l'a repliée).
-const path = require('path');
 const L = require('./lib');
 
-const PARTITION = path.join(
-  process.env.HOME,
-  'Musique/Partitions/Chorales/Bach_JS/Magnificat/01- Magnificat.mscz'
-);
+const PARTITION = L.FILES.magnificatBachMscz;
 const FRACTIONS = [0.1, 0.3, 0.5, 0.7, 0.9];
 const TOLERANCE = 1;
 const SETTLE_MS = 600;

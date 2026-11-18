@@ -6,9 +6,25 @@ dans `dist/`, sans modifier `src/`, `pwa/` ni `build.js`.
 ## Prérequis
 
 - `node_modules/` (le worktree peut pointer vers celui du dépôt principal :
-  `ln -s ../../cantus/node_modules node_modules`) ;
+  `ln -s ../cantus/node_modules node_modules`) ;
 - le paquet mscz2xml dans `../musescore/result-wasm/classic` ;
 - Chromium du système (`/run/current-system/sw/bin/chromium`).
+
+## Données de test
+
+Les fichiers sont centralisés dans `lib.js` (`FILES`) et lus depuis
+`$CANTUS_TEST_DATA` (par défaut `~/.local/share/cantus/test-data`). Contenu
+attendu (noms relatifs à ce répertoire) :
+
+- `telemann/telemann-sonatas-for-two-recorders.xml` ;
+- `bach/Magnificat_Bach.xml` ;
+- `magnificat/` (les 12 mouvements `.mscz` et `.pdf`) ;
+- `downloads/Magnificat_Bach.mxl` ;
+- `downloads/Ave_Verum_Corpus_-_William_Byrd.mscz` ;
+- `downloads/Cantique de Jean Racine - Fauré.mscz` ;
+- `magnificat-bach/01- Magnificat.mscz` (partitions utilisées par s8 et s9).
+
+`La_foule.mxl` est lu à la racine du dépôt (`ROOT`) et ignoré par git.
 
 ## Lancement
 
