@@ -1,9 +1,9 @@
 # timeline.coffee — manipulations purement fonctionnelles de la timeline.
 #
 # Aucun DOM, aucun audio : l'entrée est l'objet `timeline` produit par
-# l'adaptateur scoretk, la sortie est un objet JS pur. Ce module prépare la
-# migration scoretk ; il n'est encore branché ni dans app.coffee ni dans
-# worker.coffee.
+# l'adaptateur scoretk, la sortie est un objet JS pur. Il est branché dans
+# worker.coffee (slices, segments, marqueurs) et dans app.coffee (gel du suivi
+# pendant une pause).
 #
 # Champs RÉELLEMENT produits par scoretk (scoretk-wasm 0.1.0), et seuls
 # consommés ici :
@@ -331,4 +331,5 @@ pauseAt = (pauses, tMs) ->
 api = {movementSlice, buildSegments, buildSyncMarks, pauseAt}
 
 window.__musicaTimeline = api if typeof window isnt 'undefined'
+self.__musicaTimeline = api if typeof self isnt 'undefined'
 module.exports = api if typeof module isnt 'undefined' and module.exports?

@@ -251,7 +251,9 @@ async function build() {
 
   // 11. Create worker setup script
   // Write worker to separate file and load via importScripts
-  fs.writeFileSync(path.join(DIST, 'worker.js'), workerJs);
+  // Le worker a besoin du module timeline (slices, segments, syncMarks) :
+  // il est injecté avant le code du worker, comme dans le build SPA.
+  fs.writeFileSync(path.join(DIST, 'worker.js'), `${timelineJs}\n${workerJs}`);
   const workerSetup = `
     (function() {
       var worker = new Worker('worker.js');
@@ -332,7 +334,8 @@ async function buildSpa() {
 // Inline Verovio for SPA mode
 ${verovioJs}
 
-// Worker code
+// Module timeline + code du worker
+${timelineJs}
 ${workerJs}
   `;
 
