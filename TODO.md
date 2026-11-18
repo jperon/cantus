@@ -63,15 +63,11 @@ Reste à faire uniquement. Pour l'architecture et les décisions déjà prises, 
 - Attentes de 60 à 120 s qui s'additionnent ; le découper en scénarios plus
   courts.
 
-### Branches à trancher
+### Résidus à examiner
 
-- Branche locale `mscz` : 5 commits sur l'ancien `mscz2xml`, a priori remplacés
-  par scoretk.
-- Branches distantes `origin/dossier`, `origin/fix-boucle-lecture2`,
-  `origin/midi`, `origin/perf`, `origin/seek-page` : toutes fusionnées, à
-  supprimer sur `origin`.
 - `/tmp/cantus-old` conserve des scripts `tests/probe-*.js` non suivis à
   examiner.
+- `../cantus-wt-O-voix.js` : fichier égaré à côté du dépôt.
 
 ## Industrialisation
 
