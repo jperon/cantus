@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Construit dist/ puis lance les scénarios de la campagne de tests.
 # Usage : tests/run.sh [s1-import.js ...] (défaut : tous)
+# Variable JOBS : nombre de scénarios lancés en parallèle (défaut 3, 1 = série).
 set -u
 cd "$(dirname "$0")/.."
 
@@ -12,6 +13,12 @@ fi
 
 CHROMIUM=${CHROMIUM:-/run/current-system/sw/bin/chromium}
 export CHROMIUM
+
+JOBS=${JOBS:-3}
+if ! [[ $JOBS =~ ^[1-9][0-9]*$ ]]; then
+  echo "JOBS doit être un entier >= 1 (reçu : « $JOBS »)" >&2
+  exit 2
+fi
 
 # Horloge murale en centièmes de seconde. EPOCHREALTIME est un builtin bash
 # (secondes.microsecondes, séparateur dépendant de la locale), donc aucune
@@ -52,40 +59,70 @@ if [ "$#" -eq 0 ]; then
     s7-share.js s8-boucle.js s9-synchro.js
 fi
 
+# Deux lots :
+#  - en parallèle, JOBS scénarios à la fois : les scénarios indépendants, qui
+#    ouvrent chacun leur serveur sur un port libre (tests/lib.js, listen(0)) ;
+#  - en série, après le lot parallèle, un seul à la fois :
+#      * s5-nopkg.js, qui reconstruit dist/ et ne peut donc pas cohabiter avec
+#        un scénario en train de le servir ;
+#      * les s6*.js, lecture audio, sensibles à la charge de la machine.
+parallel_scripts=() serial_scripts=()
+for script in "$@"; do
+  case $script in
+    s5-nopkg.js | s6*) serial_scripts+=("$script") ;;
+    *) parallel_scripts+=("$script") ;;
+  esac
+done
+
+# Un journal, un code de sortie, une durée et un marqueur de fin par scénario :
+# les sorties des scénarios parallèles ne se mélangent jamais et seul le shell
+# parent les affiche.
+WORK=$(mktemp -d)
+trap 'rm -rf "$WORK"' EXIT
+
+# Lance un scénario (en tâche de fond quand il est appelé avec `&`). Le
+# sous-shell ne peut pas modifier les variables du parent : code et durée
+# passent par des fichiers, et le marqueur `.done` est écrit en dernier pour
+# que sa présence garantisse que tout le reste est prêt.
+run_bg() {
+  local script=$1 base=$WORK/${script%.js} t0
+  t0=$(now_cs)
+  env -u LD_LIBRARY_PATH CHROMIUM="$CHROMIUM" "$NODE" "tests/$script" >"$base.log" 2>&1
+  echo $? >"$base.code"
+  echo $(($(now_cs) - t0)) >"$base.dur"
+  : >"$base.done"
+}
+
+# Affiche la sortie d'un scénario d'un bloc, puis applique les vérifications de
+# la campagne (identiques à la version série) et met à jour les compteurs.
+#
 # Un scénario doit sortir en code non nul si une assertion échoue (voir
 # tests/lib.js). run.sh agrège ces codes et, ceinture et bretelles, considère
 # aussi comme un échec toute ligne [ÉCHEC] ou ERREUR GÉNÉRALE dans la sortie :
 # un scénario futur qui oublierait la convention reste ainsi détecté.
 # Le motif est ancré en début de ligne : les résumés JSON (qui contiennent
 # "outcome": "ÉCHEC") et les tests négatifs attendus ([OK]) ne matchent pas.
-SCENARIO_LOG=$(mktemp)
-trap 'rm -f "$SCENARIO_LOG"' EXIT
-failed=()
-# Compteurs de la campagne : le total doit être la somme des lignes
-# [OK]/[ÉCHEC]/[SAUTÉ] et concorder avec les bilans des scénarios.
-total_ok=0 total_ko=0 total_skip=0 total_assertions=0
-scenarios_t0=$(now_cs)
-for script in "$@"; do
+report() {
+  local script=$1 base=$WORK/${script%.js}
+  local log=$base.log code dur ok ko skip lines bilan reason
+  code=$(cat "$base.code")
+  dur=$(cat "$base.dur")
   echo
   echo "== $script =="
-  : > "$SCENARIO_LOG"
-  script_t0=$(now_cs)
-  env -u LD_LIBRARY_PATH CHROMIUM="$CHROMIUM" "$NODE" "tests/$script" 2>&1 | tee "$SCENARIO_LOG"
-  code=${PIPESTATUS[0]}
-  script_cs=$(($(now_cs) - script_t0))
-  ok=$(grep -cE '^\[OK\]' "$SCENARIO_LOG" || true)
-  ko=$(grep -cE '^\[ÉCHEC\]' "$SCENARIO_LOG" || true)
-  skip=$(grep -cE '^\[SAUTÉ\]' "$SCENARIO_LOG" || true)
+  cat "$log"
+  ok=$(grep -cE '^\[OK\]' "$log" || true)
+  ko=$(grep -cE '^\[ÉCHEC\]' "$log" || true)
+  skip=$(grep -cE '^\[SAUTÉ\]' "$log" || true)
   lines=$((ok + ko + skip))
   # Bilan écrit par lib.js à la sortie du scénario (écriture synchrone).
-  bilan=$(sed -n 's/^=== BILAN .* : \([0-9][0-9]*\) assertion(s).*/\1/p' "$SCENARIO_LOG" | tail -n 1)
-  echo "   -> $script : $lines assertion(s) ($ok OK, $ko ÉCHEC, $skip SAUTÉ) ($(fmt_s "$script_cs") s)"
+  bilan=$(sed -n 's/^=== BILAN .* : \([0-9][0-9]*\) assertion(s).*/\1/p' "$log" | tail -n 1)
+  echo "   -> $script : $lines assertion(s) ($ok OK, $ko ÉCHEC, $skip SAUTÉ) ($(fmt_s "$dur") s)"
   total_ok=$((total_ok + ok)) total_ko=$((total_ko + ko)) total_skip=$((total_skip + skip))
   reason=""
   if [ "$code" -ne 0 ]; then
     reason="code $code"
   fi
-  if grep -qE '^\[ÉCHEC\]|^ERREUR GÉNÉRALE' "$SCENARIO_LOG"; then
+  if grep -qE '^\[ÉCHEC\]|^ERREUR GÉNÉRALE' "$log"; then
     reason="${reason:+$reason, }ÉCHEC dans la sortie"
   fi
   # Le compte lu dans la sortie doit être celui qu'a compté record() : sinon
@@ -103,6 +140,51 @@ for script in "$@"; do
     status=1
     failed+=("$script ($reason)")
   fi
+}
+
+# Compteurs de la campagne : le total doit être la somme des lignes
+# [OK]/[ÉCHEC]/[SAUTÉ] et concorder avec les bilans des scénarios.
+failed=()
+total_ok=0 total_ko=0 total_skip=0 total_assertions=0
+scenarios_t0=$(now_cs)
+
+# Lot parallèle : on démarre des scénarios tant qu'il reste de la place, on
+# attend la fin d'un seul des scénarios en cours (`wait -n`), puis on affiche
+# les rapports terminés pas encore affichés, dans l'ordre de lancement.
+pending=("${parallel_scripts[@]}")
+launched=()
+while [ "${#pending[@]}" -gt 0 ] || [ "${#launched[@]}" -gt 0 ]; do
+  while [ "${#launched[@]}" -lt "$JOBS" ] && [ "${#pending[@]}" -gt 0 ]; do
+    script=${pending[0]}
+    pending=("${pending[@]:1}")
+    launched+=("$script")
+    echo
+    echo "   ... $script lancé (JOBS=$JOBS)"
+    run_bg "$script" &
+  done
+  # Attendre un scénario : les autres continuent de tourner pendant ce temps.
+  wait -n || true
+  remaining=()
+  for script in "${launched[@]}"; do
+    if [ -f "$WORK/${script%.js}.done" ]; then
+      report "$script"
+    else
+      remaining+=("$script")
+    fi
+  done
+  launched=("${remaining[@]}")
+done
+
+# Lot série : jamais deux à la fois, et seulement après le lot parallèle.
+if [ "${#serial_scripts[@]}" -gt 0 ]; then
+  echo
+  echo "Scénarios en série : ${serial_scripts[*]}"
+fi
+for script in "${serial_scripts[@]}"; do
+  echo
+  echo "   ... $script lancé (série)"
+  run_bg "$script"
+  report "$script"
 done
 
 echo
