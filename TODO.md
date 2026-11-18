@@ -58,13 +58,6 @@ Reste à faire uniquement. Pour l'architecture et les décisions déjà prises, 
 - ~3200 lignes : extraire progressivement import/fichiers, lecture/suivi,
   bibliothèque, comme l'ont déjà fait `timeline` et `playbackCache`.
 
-### `s6-audio`
-
-- Attentes bornées (fait) : constantes `WAIT` en tête du fichier (10 à 60 s,
-  justifiées par les durées observées) ; un dépassement nomme l'étape et sa
-  borne. Campagne : 12 min 44 s → 5 min 14 s.
-- Découpage en scénarios plus courts : reste à faire (reporté).
-
 ### Résidus à examiner
 
 - `/tmp/cantus-old` conserve des scripts `tests/probe-*.js` non suivis à
