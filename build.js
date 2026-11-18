@@ -21,9 +21,9 @@ const SOUNDFONT_SAMPLES = path.join(SOUNDFONTS_SRC, 'piano-fluidr3-13notes.js');
 
 // Extensions importables : même liste que IMPORT_EXTENSIONS de src/app.coffee,
 // découpée ici entre formats de base et formats lus par scoretk (MuseScore,
-// LilyPond, ABC). Seul l'attribut `accept` des champs de fichier en dérive.
+// LilyPond, ABC, MIDI). Seul l'attribut `accept` des champs de fichier en dérive.
 const IMPORT_EXTENSIONS_BASE = ['xml', 'musicxml', 'mxl'];
-const IMPORT_EXTENSIONS_SCORETK = ['mscz', 'mscx', 'ly', 'lilypond', 'abc'];
+const IMPORT_EXTENSIONS_SCORETK = ['mscz', 'mscx', 'ly', 'lilypond', 'abc', 'mid', 'midi'];
 
 function importAccept(scoretkAvailable) {
   const extensions = IMPORT_EXTENSIONS_BASE.concat(
@@ -106,7 +106,7 @@ function readFflate() {
 // Copie le paquet scoretk dans dist/scoretk ; renvoie false s'il est absent
 function copyScoretk() {
   if (!fs.existsSync(SCORETK_CLASSIC)) {
-    console.warn(`  Attention : ${SCORETK_CLASSIC} introuvable, import MuseScore/LilyPond/ABC désactivé`);
+    console.warn(`  Attention : ${SCORETK_CLASSIC} introuvable, import MuseScore/LilyPond/ABC/MIDI désactivé`);
     return false;
   }
   console.log('  Copying scoretk...');
@@ -129,7 +129,7 @@ function copyScoretk() {
 // glue no-modules et le .wasm, tous deux évalués dans le worker.
 function readScoretk() {
   if (!fs.existsSync(SCORETK_CLASSIC)) {
-    console.warn(`  Attention : ${SCORETK_CLASSIC} introuvable, import MuseScore/LilyPond/ABC désactivé`);
+    console.warn(`  Attention : ${SCORETK_CLASSIC} introuvable, import MuseScore/LilyPond/ABC/MIDI désactivé`);
     return null;
   }
   const read = (file) => fs.readFileSync(path.join(SCORETK_CLASSIC, file), 'utf-8');
@@ -389,7 +389,7 @@ ${workerJs}
       // Tell worker Verovio is already loaded (inline)
       worker.postMessage({type: 'verovioInline'});
 
-      // scoretk (MuseScore, LilyPond, ABC): glue and wasm module are inlined too
+      // scoretk (MuseScore, LilyPond, ABC, MIDI): glue and wasm are inlined too
       var scoretkGlue = document.getElementById('scoretk-wasm-src');
       if (scoretkGlue) {
         worker.postMessage({

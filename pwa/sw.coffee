@@ -166,11 +166,13 @@ shareFileName = (file, fallback) ->
       'audio/x-musescore': '.mscx'
       'text/x-lilypond': '.ly'
       'text/vnd.abc': '.abc'
+      'audio/midi': '.mid'
+      'audio/x-midi': '.mid'
     }[file?.type]
     name += ext if ext and not /\.\w+$/.test name
   name.replace /[\/\\]/g, '_'
 
-baseShareName = (name) -> name.replace /\.(xml|musicxml|mxl|mscz|mscx|ly|lilypond|abc)$/i, ''
+baseShareName = (name) -> name.replace /\.(xml|musicxml|mxl|mscz|mscx|ly|lilypond|abc|mid|midi)$/i, ''
 
 shareEntryName = (files, title) ->
   return baseShareName(files[0].name) if files.length is 1

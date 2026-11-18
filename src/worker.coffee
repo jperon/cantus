@@ -143,6 +143,8 @@ SCORETK_FROM =
   ly: 'ly'
   lilypond: 'lilypond'
   abc: 'abc'
+  mid: 'midi'
+  midi: 'midi'
 
 # Extension inconnue : scoretk détecte le format par le contenu.
 scoretkFrom = (name) ->

@@ -33,7 +33,9 @@
         "application/octet-stream": [".mscz", ".mscx"],
         "text/x-lilypond": [".ly", ".lilypond"],
         "text/vnd.abc": [".abc"],
-        "text/plain": [".ly", ".lilypond", ".abc"]
+        "text/plain": [".ly", ".lilypond", ".abc"],
+        "audio/midi": [".mid", ".midi"],
+        "audio/x-midi": [".mid", ".midi"]
       }
     }
   ],
@@ -50,8 +52,9 @@
           "accept": ["application/vnd.recordare.musicxml+xml", "application/vnd.recordare.musicxml",
                      "application/xml", "text/xml", "application/octet-stream", "application/zip",
                      "audio/x-musescore", "application/x-musescore", "text/x-lilypond",
-                     "text/vnd.abc", "text/plain", ".musicxml", ".mxl", ".mscz", ".mscx",
-                     ".ly", ".lilypond", ".abc"]
+                     "text/vnd.abc", "text/plain", "audio/midi", "audio/x-midi",
+                     ".musicxml", ".mxl", ".mscz", ".mscx", ".ly", ".lilypond", ".abc",
+                     ".mid", ".midi"]
         }
       ]
     }

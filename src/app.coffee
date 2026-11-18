@@ -404,6 +404,7 @@ memoryVariant = null  # variante des entrées de memoryCache
 pendingMovementLoads = new Map()  # movementId -> resolve function
 pendingScoretk = new Map()  # scoretk conversion id -> {resolve, reject}
 scoretkRequestId = 0
+transcriptionNoticeTimer = null  # minuterie du message « transcription MIDI »
 targetPage = null  # Page to navigate to once all movements are loaded
 awaitingLoad = false  # A new load is posted: ignore the previous render's replies
 currentSources = null  # [{name, data}] : sources de l'entrée courante (XML ou binaire)
@@ -2142,8 +2143,12 @@ preprocessMusicXML = (doc) ->
         nextMeasure.insertBefore printEl, nextMeasure.firstChild
   doc
 
-# Formats lus par scoretk ; le worker choisit `from` d'après l'extension.
-SCORETK_EXT_RE = /\.(mscz|mscx|ly|lilypond|abc)$/i
+# Extensions lues par scoretk : source de vérité pour le test d'extension et
+# pour l'`accept` des champs de fichier. Le worker traduit chaque extension en
+# `from` (mscz, mscx, ly, lilypond, abc, midi) ; .mid et .midi sont des
+# transcriptions, sans notation d'origine.
+SCORETK_EXTENSIONS = ['mscz', 'mscx', 'ly', 'lilypond', 'abc', 'mid', 'midi']
+SCORETK_EXT_RE = new RegExp "\\.(#{SCORETK_EXTENSIONS.join '|'})$", 'i'
 
 # Convertit une source en MusicXML. Aucune conversion n'a lieu à l'import :
 # le contenu brut est converti à la demande.
@@ -2159,6 +2164,8 @@ convertSource = (source) ->
     unless window.__musicaScoretkAvailable
       Promise.reject new Error "import de ce format indisponible : paquet scoretk absent de cette version"
     else
+      # Un .mid ne porte pas de notation : la partition sera une transcription.
+      showTranscriptionNotice() if /\.midi?$/i.test name
       # le worker détache le tampon qu'il reçoit : lui donner une copie. Les
       # .ly et .abc sont du texte : scoretk attend leurs octets UTF-8 bruts.
       convertScoretkToXml data.slice(0), name
@@ -2559,7 +2566,7 @@ setupNavigation = ->
         e.preventDefault()
         goPrev()
 
-# Ask the worker to convert a scoretk file (MuseScore, LilyPond, ABC) to
+# Ask the worker to convert a scoretk file (MuseScore, LilyPond, ABC, MIDI) to
 # MusicXML. `name` permet au worker de déduire `from` de l'extension.
 convertScoretkToXml = (buffer, name) ->
   new Promise (resolve, reject) ->
@@ -2569,16 +2576,7 @@ convertScoretkToXml = (buffer, name) ->
 
 # Extensions importables : source de vérité côté application. build.js tient la
 # même liste pour l'attribut `accept` des champs de fichier.
-IMPORT_EXTENSIONS = [
-  'xml'
-  'musicxml'
-  'mxl'
-  'mscz'
-  'mscx'
-  'ly'
-  'lilypond'
-  'abc'
-]
+IMPORT_EXTENSIONS = ['xml', 'musicxml', 'mxl'].concat SCORETK_EXTENSIONS
 
 # Regex unique, construite une fois : test d'extension et retrait de l'extension
 IMPORT_EXT_RE = new RegExp "\\.(#{IMPORT_EXTENSIONS.join '|'})$", 'i'
@@ -3145,6 +3143,37 @@ loadMusicXMLContent = (xmlContent, source = 'unknown') ->
   catch error
     console.error "Error processing MusicXML:", error
     showError "Fichier MusicXML invalide: #{error.message}"
+
+# Un MIDI ne porte pas de notation : la partition affichée est une
+# transcription. Indication discrète, non bloquante, sur le même principe que
+# showError (toast fixe) mais en neutre et affichée plus longtemps.
+showTranscriptionNotice = ->
+  noticeEl = document.getElementById 'transcription-notice'
+  unless noticeEl
+    noticeEl = document.createElement 'div'
+    noticeEl.id = 'transcription-notice'
+    noticeEl.setAttribute 'role', 'status'
+    noticeEl.style.cssText = '''
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: #37474f;
+      color: white;
+      padding: 10px 16px;
+      border-radius: 8px;
+      z-index: 10000;
+      max-width: 300px;
+      font-size: 14px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    '''
+    document.body.appendChild noticeEl
+  noticeEl.textContent =
+    "Fichier MIDI : partition transcrite automatiquement, sans notation d'origine."
+  noticeEl.style.display = 'block'
+  clearTimeout transcriptionNoticeTimer if transcriptionNoticeTimer
+  transcriptionNoticeTimer = setTimeout ->
+    noticeEl.style.display = 'none'
+  , 12000
 
 # Show error message to user
 showError = (message) ->
