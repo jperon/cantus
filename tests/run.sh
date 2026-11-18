@@ -32,7 +32,9 @@ echo "== Build SPA =="
 "$NODE" build.js --spa || exit 1
 
 if [ "$#" -eq 0 ]; then
-  set -- s1-import.js s2-folder.js s3-settings.js s4-offline.js s5-nopkg.js s6-audio.js s7-share.js s8-boucle.js s9-synchro.js
+  set -- s1-import.js s2-folder.js s3-settings.js s4-offline.js s5-nopkg.js \
+    s6a-transport.js s6b-suivi.js s6c-magnificat.js s6d-reprises.js s6e-robustesse.js \
+    s7-share.js s8-boucle.js s9-synchro.js
 fi
 
 # Un scénario doit sortir en code non nul si une assertion échoue (voir

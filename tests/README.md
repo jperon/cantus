@@ -29,7 +29,7 @@ attendu (noms relatifs à ce répertoire) :
 ## Lancement
 
 ```sh
-tests/run.sh              # construit dist/, lance les tests unitaires puis s1 à s7
+tests/run.sh              # construit dist/, lance les tests unitaires puis s1 à s9
 tests/run.sh s1-import.js # un seul scénario navigateur
 node --test tests/unit/*.test.js  # tests unitaires seuls (sans navigateur)
 ```
@@ -67,6 +67,10 @@ d'attente sont tous bornés.
   au bilan affiché par `run.sh`.
 - Les tests unitaires (`tests/unit/*.test.js`) sortent en 1 en cas d'échec et
   interrompent la campagne.
+- Les scénarios `s6*` partagent `tests/s6-common.js` et fixent chacun un
+  budget global (`budgetMs` dans l'appel à `main`) : un dépassement sort en
+  code 1 en nommant le fichier, sans confondre une panne de temps avec un
+  échec d'assertion.
 
 ## Tests unitaires
 
@@ -116,10 +120,25 @@ Si `pwa/soundfonts/piano-fluidr3-13notes.js` est absent, le build passe
   indéfiniment.
 - `s5-nopkg.js` — build `MSCZ2XML_PKG=/nonexistent` (normal et `--spa`),
   refus propre d'un `.mscz`, puis reconstruction normale de `dist/`.
-- `s6-audio.js` — transport, suivi du défilement (page/système, horizontal),
-  volume général et par voix, persistance, puis robustesse : changement de
-  fichier ou redimensionnement pendant la lecture, erreur de données de
-  lecture, MIDI vide, voix mémorisée absente du MIDI. `index.html` et
+- `s6-common.js` — aides partagées par les scénarios s6 (bornes `WAIT`,
+  attentes nommées, état du transport, cale de page, données de lecture du
+  worker) et `main()`, qui déroule le scénario sur `index.html` puis
+  `spa.html`. Chaque fichier s6 déclare un budget global (`budgetMs`) : au-delà,
+  il sort en code 1 avec une ligne `ERREUR GÉNÉRALE budget dépassé : <fichier>`.
+- `s6a-transport.js` — structure de la barre, lecture/pause/arrêt, raccourcis
+  `p`/`s`, suivi vertical par système et par page, volume général, volume par
+  voix et voix masquée. `index.html` et `spa.html`.
+- `s6b-suivi.js` — suivi horizontal (Fauré) : sauts avant/arrière sans page
+  blanche, granularité en demi-pages, puis cale de la tête sur le premier
+  marqueur de la page affichée. `index.html` et `spa.html`.
+- `s6c-magnificat.js` — non-régression de la boucle de lecture sur le 1er
+  mouvement réel du Magnificat de Bach : seeks bornés, position monotone,
+  scroll périmé, pause stable, suivi désactivé. `index.html` et `spa.html`.
+- `s6d-reprises.js` — reprises : marqueurs des deux passages, mode linéaire
+  (« Dérouler les reprises » décoché) et bascule par l'interface. `index.html`
+  et `spa.html`.
+- `s6e-robustesse.js` — changement de fichier ou redimensionnement pendant la
+  lecture, erreur de données de lecture, MIDI vide. `index.html` et
   `spa.html`.
 - `s7-share.js` — partage Android (`share_target` POST multipart). Le test
   envoie depuis la page un `fetch('share', { method: 'POST', body: FormData })`
