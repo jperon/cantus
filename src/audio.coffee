@@ -208,12 +208,14 @@ normalizePlaybackData = (data, parser) ->
   duration = if isFinite(durationMs) and durationMs > 0 then durationMs / 1000 else 0
   # Le worker fournit toujours des segments (un par mesure jouée, pauses
   # incluses) : tout le flux MIDI est remappé dessus, dans les deux modes.
-  # Le worker les exprime en millisecondes : on les ramène en secondes,
-  # l'unité de `notes`.
+  # Le worker les exprime en millisecondes (`fromMs`/`toMs`/`offsetMs`, cf.
+  # timeline.buildSegments) : on les ramène en secondes, l'unité de `notes`.
+  # Repli sur l'ancienne forme `from`/`to`/`offset` pour un cache
+  # playbackData encore en v13/v4.
   secondsSegments = for segment in segments
-    from: Number(segment.from) / 1000
-    to: Number(segment.to) / 1000
-    offset: Number(segment.offset) / 1000
+    from: Number(segment.fromMs ? segment.from) / 1000
+    to: Number(segment.toMs ? segment.to) / 1000
+    offset: Number(segment.offsetMs ? segment.offset) / 1000
   notes = remapNotesToSegments notes, secondsSegments
   # La durée du slice fait foi ; à défaut, la somme des segments.
   duration = segmentsDuration secondsSegments unless duration > 0

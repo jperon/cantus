@@ -25,6 +25,20 @@ function loadAudio() {
 
 const audio = loadAudio();
 
+// Le test d'intégration ci-dessous fait tourner la vraie timeline sur une
+// fixture scoretk : c'est elle qui produit les segments consommés par audio.
+function loadTimeline() {
+  const file = path.join(__dirname, '..', '..', 'src', 'timeline.coffee');
+  const js = CoffeeScript.compile(fs.readFileSync(file, 'utf8'), { bare: true });
+  const mod = { exports: {} };
+  // eslint-disable-next-line no-new-func
+  new Function('module', 'exports', 'require', js)(mod, mod.exports, require);
+  return mod.exports;
+}
+
+const timeline = loadTimeline();
+const FIXTURES = path.join(__dirname, '..', 'fixtures', 'scoretk');
+
 const approx = (actual, expected, msg, eps = 1e-9) => {
   assert.ok(
     Math.abs(actual - expected) <= eps,
@@ -150,7 +164,7 @@ test('normalizePlaybackData : notes aplaties, triées, durée du slice', () => {
     {
       midi: 'x',
       duration: 85000,
-      segments: [{ from: 0, to: 85000, offset: 0 }],
+      segments: [{ fromMs: 0, toMs: 85000, offsetMs: 0 }],
       trackMap: { piano: [1, 2] },
       syncMarks: [{ t: 1 }],
       staffLabels: ['Piano'],
@@ -174,7 +188,7 @@ test('normalizePlaybackData : sans durée, la somme des segments fait foi', () =
     parseBase64: () => ({ duration: 99, tracks: [{ index: 0, notes: [] }] }),
   };
   const data = audio.normalizePlaybackData(
-    { midi: 'x', segments: [{ from: 0, to: 12500, offset: 0 }] },
+    { midi: 'x', segments: [{ fromMs: 0, toMs: 12500, offsetMs: 0 }] },
     parser
   );
   approx(data.duration, 12.5, 'durée des segments');
@@ -264,8 +278,8 @@ test('normalizePlaybackData : mode linéaire, durée écrite et notes remappées
   };
   // Le worker fournit les segments en millisecondes.
   const segments = [
-    { measureId: 'm1', from: 0, to: 1000, offset: 0 },
-    { measureId: 'm2', from: 50000, to: 51000, offset: 1000 },
+    { measureId: 'm1', fromMs: 0, toMs: 1000, offsetMs: 0 },
+    { measureId: 'm2', fromMs: 50000, toMs: 51000, offsetMs: 1000 },
   ];
   const data = audio.normalizePlaybackData(
     { midi: 'x', duration: 2000, segments, syncMarks: [{ t: 0 }] },
@@ -279,6 +293,45 @@ test('normalizePlaybackData : mode linéaire, durée écrite et notes remappées
   approx(data.notes[1].start, 1.2, 'start 1');
   approx(data.notes[1].dur, 0.1, 'dur 1');
   assert.strictEqual(data.segments.length, 2);
+});
+
+// --- Intégration : timeline réelle -> données de lecture ---------------------
+// Régression : `buildSegments` produit `{measure, fromMs, toMs, offsetMs}`. Si
+// la conversion en secondes relit l'ancienne forme `from`/`to`/`offset`, tous
+// les champs valent NaN et `remapNotesToSegments` écarte TOUTES les notes
+// (mesuré : 0/813) — l'horloge avance alors sans aucune source audio.
+test('intégration : buildSegments(fixture) -> normalizePlaybackData garde les notes', () => {
+  const slice = JSON.parse(
+    fs.readFileSync(path.join(FIXTURES, 'La_foule-expanded.json'), 'utf8')
+  );
+  const segments = timeline.buildSegments(slice);
+  assert.ok(segments.length > 1, 'segments produits par la timeline');
+  assert.ok(
+    segments.every(
+      (s) => Number.isFinite(s.fromMs) && Number.isFinite(s.toMs) && Number.isFinite(s.offsetMs)
+    ),
+    'champs de segment en millisecondes'
+  );
+
+  // Une note au début de chaque mesure, comme le flux MIDI exporté.
+  const midiNotes = slice.measures.map((m) => ({
+    start: m.timeUs / 1e6 + 0.01,
+    dur: 0.2,
+    pitch: 60,
+    velocity: 90,
+  }));
+  const parser = { parseBase64: () => ({ duration: 0, tracks: [{ index: 0, notes: midiNotes }] }) };
+  const data = audio.normalizePlaybackData({ midi: 'x', segments }, parser);
+
+  assert.ok(data.notes.length > 0, 'aucune note conservée après remappage');
+  assert.strictEqual(data.notes.length, midiNotes.length, 'toutes les notes sont dans les bornes');
+  const last = segments[segments.length - 1];
+  const total = (last.offsetMs + (last.toMs - last.fromMs)) / 1000;
+  approx(data.duration, total, 'durée issue des segments', 1e-6);
+  for (const note of data.notes) {
+    assert.ok(note.start >= 0 && note.start < total, `start hors bornes : ${note.start}`);
+    assert.ok(note.dur > 0 && note.start + note.dur <= total + 1e-9, `durée hors bornes : ${note.dur}`);
+  }
 });
 
 // --- Exécution -------------------------------------------------------------
