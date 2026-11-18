@@ -13,6 +13,21 @@ fi
 CHROMIUM=${CHROMIUM:-/run/current-system/sw/bin/chromium}
 export CHROMIUM
 
+# Horloge murale en centièmes de seconde. EPOCHREALTIME est un builtin bash
+# (secondes.microsecondes, séparateur dépendant de la locale), donc aucune
+# commande externe n'est lancée pour mesurer les durées.
+now_cs() {
+  local t=${EPOCHREALTIME/[.,]/}
+  echo $((10#$t / 10000))
+}
+
+# Centièmes de seconde -> secondes entières arrondies, pour l'affichage.
+fmt_s() {
+  echo $((($1 + 50) / 100))
+}
+
+campaign_t0=$(now_cs)
+
 # Tests unitaires Node : ils ne dépendent pas du navigateur et doivent passer
 # avant la campagne Playwright. Un échec interrompt la campagne.
 status=0
@@ -49,19 +64,22 @@ failed=()
 # Compteurs de la campagne : le total doit être la somme des lignes
 # [OK]/[ÉCHEC]/[SAUTÉ] et concorder avec les bilans des scénarios.
 total_ok=0 total_ko=0 total_skip=0 total_assertions=0
+scenarios_t0=$(now_cs)
 for script in "$@"; do
   echo
   echo "== $script =="
   : > "$SCENARIO_LOG"
+  script_t0=$(now_cs)
   env -u LD_LIBRARY_PATH CHROMIUM="$CHROMIUM" "$NODE" "tests/$script" 2>&1 | tee "$SCENARIO_LOG"
   code=${PIPESTATUS[0]}
+  script_cs=$(($(now_cs) - script_t0))
   ok=$(grep -cE '^\[OK\]' "$SCENARIO_LOG" || true)
   ko=$(grep -cE '^\[ÉCHEC\]' "$SCENARIO_LOG" || true)
   skip=$(grep -cE '^\[SAUTÉ\]' "$SCENARIO_LOG" || true)
   lines=$((ok + ko + skip))
   # Bilan écrit par lib.js à la sortie du scénario (écriture synchrone).
   bilan=$(sed -n 's/^=== BILAN .* : \([0-9][0-9]*\) assertion(s).*/\1/p' "$SCENARIO_LOG" | tail -n 1)
-  echo "   -> $script : $lines assertion(s) ($ok OK, $ko ÉCHEC, $skip SAUTÉ)"
+  echo "   -> $script : $lines assertion(s) ($ok OK, $ko ÉCHEC, $skip SAUTÉ) ($(fmt_s "$script_cs") s)"
   total_ok=$((total_ok + ok)) total_ko=$((total_ko + ko)) total_skip=$((total_skip + skip))
   reason=""
   if [ "$code" -ne 0 ]; then
@@ -89,6 +107,8 @@ done
 
 echo
 echo "Campagne : $total_assertions assertion(s) — $total_ok OK, $total_ko ÉCHEC, $total_skip SAUTÉ"
+echo "Durée des scénarios : $(fmt_s $(( $(now_cs) - scenarios_t0 ))) s"
+echo "Durée totale : $(fmt_s $(( $(now_cs) - campaign_t0 ))) s (tests unitaires, builds, scénarios)"
 if [ "${#failed[@]}" -gt 0 ]; then
   echo
   echo "Scénarios en échec : ${failed[*]}" >&2
