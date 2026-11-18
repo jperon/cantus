@@ -19,16 +19,20 @@ const SCORETK_CLASSIC = path.join(
 const SOUNDFONTS_SRC = path.join(PWA, 'soundfonts');
 const SOUNDFONT_SAMPLES = path.join(SOUNDFONTS_SRC, 'piano-fluidr3-13notes.js');
 
-// Extensions importables : même liste que IMPORT_EXTENSIONS de
-// src/app/sources.coffee,
-// découpée ici entre formats de base et formats lus par scoretk (MuseScore,
-// LilyPond, ABC, MIDI). Seul l'attribut `accept` des champs de fichier en dérive.
-const IMPORT_EXTENSIONS_BASE = ['xml', 'musicxml', 'mxl'];
-const IMPORT_EXTENSIONS_SCORETK = ['mscz', 'mscx', 'ly', 'lilypond', 'abc', 'mid', 'midi'];
+// Formats importables : src/formats.coffee est la seule source (extensions,
+// `from` scoretk, types MIME). Le module y est évalué en CommonJS pour calculer
+// l'attribut `accept` et le manifeste, et compilé pour le navigateur.
+function loadFormats() {
+  const js = CoffeeScript.compile(readSrc('formats.coffee'), { bare: true });
+  const mod = { exports: {} };
+  // eslint-disable-next-line no-new-func
+  new Function('module', 'exports', js)(mod, mod.exports);
+  return mod.exports;
+}
 
-function importAccept(scoretkAvailable) {
-  const extensions = IMPORT_EXTENSIONS_BASE.concat(
-    scoretkAvailable ? IMPORT_EXTENSIONS_SCORETK : []
+function importAccept(formats, scoretkAvailable) {
+  const extensions = formats.baseExtensions.concat(
+    scoretkAvailable ? formats.scoretkExtensions : []
   );
   return extensions.map((ext) => `.${ext}`).join(',');
 }
@@ -235,6 +239,7 @@ function compileScripts() {
     svgCacheJs: minify(compileCoffee('svgCache.coffee')),
     playbackCacheJs: minify(compileCoffee('playbackCache.coffee')),
     midiJs: minify(compileCoffee('midi.coffee')),
+    formatsJs: minify(compileCoffee('formats.coffee')),
     timelineJs: minify(compileCoffee('timeline.coffee')),
     audioJs: minify(compileCoffee('audio.coffee')),
     playbackJs: minify(compileCoffee('playback.coffee')),
@@ -243,9 +248,31 @@ function compileScripts() {
   };
 }
 
-function copyPwaFiles(buildDate) {
+// Manifeste : pwa/manifest.json est un modèle. Ses listes `accept` sont
+// volontairement vides et régénérées ici depuis src/formats.coffee ; le reste
+// (nom, icônes, share_target.action…) est recopié tel quel.
+function buildManifest(formats) {
+  const manifest = JSON.parse(fs.readFileSync(path.join(PWA, 'manifest.json'), 'utf-8'));
+  for (const handler of manifest.file_handlers || []) {
+    handler.accept = formats.fileHandlerAccept;
+  }
+  const files = manifest.share_target?.params?.files || [];
+  for (const file of files) file.accept = formats.shareAccept;
+  return `${JSON.stringify(manifest, null, 2)}\n`;
+}
+
+// Remplace un marqueur du service worker compilé. Lève une erreur s'il a
+// disparu : la valeur doit continuer de venir de src/formats.coffee.
+function injectSw(source, marker, value) {
+  if (!source.includes(marker)) {
+    throw new Error(`« ${marker} » introuvable dans pwa/sw.coffee compilé`);
+  }
+  return source.replace(marker, () => value);
+}
+
+function copyPwaFiles(buildDate, formats) {
   console.log('  Copying PWA files...');
-  fs.copyFileSync(path.join(PWA, 'manifest.json'), path.join(DIST, 'manifest.json'));
+  fs.writeFileSync(path.join(DIST, 'manifest.json'), buildManifest(formats));
 
   // Service worker : date de build comme version de cache (avant minification)
   console.log('  Compiling sw.coffee...');
@@ -258,7 +285,15 @@ function copyPwaFiles(buildDate) {
   }
   const caches = JSON.stringify(preservedCacheNames());
   const swWithCaches = swWithVersion.replace(placeholder, () => `PRESERVED_CACHES = ${caches}`);
-  fs.writeFileSync(path.join(DIST, 'sw.js'), minify(swWithCaches));
+  // Formats importables : table MIME -> extension du nom de repli, et regex des
+  // extensions à retirer pour nommer une entrée partagée (src/formats.coffee).
+  const mimeExtensions = Object.fromEntries(
+    Object.entries(formats.mimeExtensions).map(([type, ext]) => [type, `.${ext}`])
+  );
+  const shareExtRe = new RegExp(`\\.(${formats.extensions.join('|')})$`, 'i');
+  let sw = injectSw(swWithCaches, 'MIME_EXTENSIONS = {}', `MIME_EXTENSIONS = ${JSON.stringify(mimeExtensions)}`);
+  sw = injectSw(sw, 'SHARE_EXT_RE = null', `SHARE_EXT_RE = ${shareExtRe}`);
+  fs.writeFileSync(path.join(DIST, 'sw.js'), minify(sw));
 
   const faviconSrc = path.join(PWA, 'favicon.ico');
   if (fs.existsSync(faviconSrc)) {
@@ -311,16 +346,18 @@ async function build() {
 
   const fflateSetup = readFflate();
   const soundfontPlayerJs = readSoundfontPlayer();
-  const { mxlJs, storageJs, svgCacheJs, playbackCacheJs, midiJs, timelineJs, audioJs, playbackJs, workerJs, appJs } = compileScripts();
+  const formats = loadFormats();
+  const { mxlJs, storageJs, svgCacheJs, playbackCacheJs, midiJs, formatsJs, timelineJs, audioJs, playbackJs, workerJs, appJs } = compileScripts();
 
   // 10. Read CSS
   const css = readCss();
 
   // 11. Create worker setup script
   // Write worker to separate file and load via importScripts
-  // Le worker a besoin du module timeline (slices, segments, syncMarks) :
-  // il est injecté avant le code du worker, comme dans le build SPA.
-  fs.writeFileSync(path.join(DIST, 'worker.js'), `${timelineJs}\n${workerJs}`);
+  // Le worker a besoin du module timeline (slices, segments, syncMarks) et du
+  // module formats (scoretkFrom) : ils sont injectés avant son code, comme
+  // dans le build SPA.
+  fs.writeFileSync(path.join(DIST, 'worker.js'), `${formatsJs}\n${timelineJs}\n${workerJs}`);
   const workerSetup = `
     (function() {
       var worker = new Worker('worker.js');
@@ -346,6 +383,7 @@ async function build() {
     svgCacheJs,
     playbackCacheJs,
     midiJs,
+    formatsJs,
     timelineJs,
     audioJs,
     playbackJs,
@@ -353,7 +391,7 @@ async function build() {
     buildDate,
     scoretkAvailable,
     soundfontsAvailable,
-    importAccept: importAccept(scoretkAvailable),
+    importAccept: importAccept(formats, scoretkAvailable),
   });
 
   // 13. Write dist/index.html
@@ -361,7 +399,7 @@ async function build() {
   const sizeMB = (fs.statSync(path.join(DIST, 'index.html')).size / 1024 / 1024).toFixed(1);
   console.log(`  -> dist/index.html (${sizeMB} MB)`);
 
-  copyPwaFiles(buildDate);
+  copyPwaFiles(buildDate, formats);
   copyLegalFiles();
   copyScreenshots();
 
@@ -389,7 +427,8 @@ async function buildSpa() {
   const fflateSetup = readFflate();
   const soundfontPlayerJs = readSoundfontPlayer();
   const soundfontSamples = readSoundfontSamples();
-  const { mxlJs, storageJs, svgCacheJs, playbackCacheJs, midiJs, timelineJs, audioJs, playbackJs, workerJs, appJs } = compileScripts();
+  const formats = loadFormats();
+  const { mxlJs, storageJs, svgCacheJs, playbackCacheJs, midiJs, formatsJs, timelineJs, audioJs, playbackJs, workerJs, appJs } = compileScripts();
   const scoretkInline = readScoretk();
   const scoretkAvailable = !!scoretkInline;
 
@@ -402,7 +441,8 @@ async function buildSpa() {
 // Inline Verovio for SPA mode
 ${verovioJs}
 
-// Module timeline + code du worker
+// Modules formats + timeline + code du worker
+${formatsJs}
 ${timelineJs}
 ${workerJs}
   `;
@@ -449,6 +489,7 @@ ${workerJs}
     svgCacheJs,
     playbackCacheJs,
     midiJs,
+    formatsJs,
     timelineJs,
     audioJs,
     playbackJs,
@@ -456,7 +497,7 @@ ${workerJs}
     buildDate,
     scoretkAvailable,
     scoretkInline,
-    importAccept: importAccept(scoretkAvailable),
+    importAccept: importAccept(formats, scoretkAvailable),
   });
 
   // 8. Write dist/spa.html
@@ -464,7 +505,7 @@ ${workerJs}
   const sizeMB = (fs.statSync(path.join(DIST, 'spa.html')).size / 1024 / 1024).toFixed(1);
   console.log(`  -> dist/spa.html (${sizeMB} MB)`);
 
-  copyPwaFiles(buildDate);
+  copyPwaFiles(buildDate, formats);
   copyLegalFiles();
   copyScreenshots();
 

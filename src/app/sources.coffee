@@ -1,10 +1,9 @@
 # Sources d’une entrée : conversion scoretk, chargement séquentiel des
 # mouvements dans le worker et suivi de la progression.
-# Extensions lues par scoretk : source de vérité pour le test d'extension et
-# pour l'`accept` des champs de fichier. Le worker traduit chaque extension en
-# `from` (mscz, mscx, ly, lilypond, abc, midi) ; .mid et .midi sont des
+# Extensions lues par scoretk et `from` associés : décrits une seule fois dans
+# src/formats.coffee (injecté avant l'application). .mid et .midi sont des
 # transcriptions, sans notation d'origine.
-SCORETK_EXTENSIONS = ['mscz', 'mscx', 'ly', 'lilypond', 'abc', 'mid', 'midi']
+SCORETK_EXTENSIONS = window.__musicaFormats.scoretkExtensions
 SCORETK_EXT_RE = new RegExp "\\.(#{SCORETK_EXTENSIONS.join '|'})$", 'i'
 
 # Convertit une source en MusicXML. Aucune conversion n'a lieu à l'import :

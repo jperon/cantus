@@ -29,6 +29,14 @@ SOUNDFONT_ASSETS = [
   './soundfonts/piano-fluidr3-13notes.js'
 ]
 
+# Formats importables : injectés par build.js depuis src/formats.coffee, seule
+# source des extensions et types MIME (les marqueurs sont remplacés à la
+# compilation, comme PRESERVED_CACHES).
+#   MIME_EXTENSIONS : type MIME -> extension du nom de repli (partage)
+#   SHARE_EXT_RE    : extensions retirées pour nommer une entrée partagée
+MIME_EXTENSIONS = {}
+SHARE_EXT_RE = null
+
 # Installation - cache static assets
 # Le nouveau SW reste en attente : `src/app/demarrage.coffee` propose la mise à jour,
 # puis envoie SKIP_WAITING quand l'utilisateur l'accepte.
@@ -156,23 +164,11 @@ shareFileName = (file, fallback) ->
   name = file?.name
   unless name and name isnt 'blob'
     name = fallback or "partage-#{Date.now()}"
-    ext = {
-      'application/vnd.recordare.musicxml+xml': '.musicxml'
-      'application/vnd.recordare.musicxml': '.mxl'
-      'application/xml': '.xml'
-      'text/xml': '.xml'
-      'application/zip': '.mxl'
-      'application/x-musescore': '.mscx'
-      'audio/x-musescore': '.mscx'
-      'text/x-lilypond': '.ly'
-      'text/vnd.abc': '.abc'
-      'audio/midi': '.mid'
-      'audio/x-midi': '.mid'
-    }[file?.type]
+    ext = MIME_EXTENSIONS[file?.type]
     name += ext if ext and not /\.\w+$/.test name
   name.replace /[\/\\]/g, '_'
 
-baseShareName = (name) -> name.replace /\.(xml|musicxml|mxl|mscz|mscx|ly|lilypond|abc|mid|midi)$/i, ''
+baseShareName = (name) -> name.replace SHARE_EXT_RE, ''
 
 shareEntryName = (files, title) ->
   return baseShareName(files[0].name) if files.length is 1

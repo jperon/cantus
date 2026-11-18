@@ -134,22 +134,11 @@ loadScoretk = ->
       reject new Error "scoretk indisponible : #{err.message or err}"
   scoretkLoad
 
-# Format d'entrée passé à scoretk, déduit de l'extension du fichier. `from` est
-# toujours explicite : `detect` classerait un .mscx (XML sans <museScore) en
-# musicxml, et un .ly ou .abc pourrait être mal classé selon son contenu.
-SCORETK_FROM =
-  mscz: 'mscz'
-  mscx: 'mscx'
-  ly: 'ly'
-  lilypond: 'lilypond'
-  abc: 'abc'
-  mid: 'midi'
-  midi: 'midi'
-
-# Extension inconnue : scoretk détecte le format par le contenu.
-scoretkFrom = (name) ->
-  ext = (name or '').split('.').pop().toLowerCase()
-  SCORETK_FROM[ext]
+# Format d'entrée passé à scoretk, déduit de l'extension du fichier : table
+# unique dans src/formats.coffee, injecté avant ce fichier (comme
+# timeline.coffee). Une extension inconnue laisse scoretk détecter le format par
+# le contenu.
+scoretkFrom = self.__musicaFormats?.scoretkFrom
 
 # Render one page of the currently loaded movement and send it back
 postPage = (movementId, pageNumber) ->
@@ -770,7 +759,6 @@ if typeof module isnt 'undefined' and module?.exports?
   module.exports = {
     countWrittenMeasures
     playbackCacheKey
-    scoretkFrom
     # Crochets de test : injecter un toolkit factice, déclencher le flush des
     # messages en attente et lire l'état interne des sources.
     __test: {

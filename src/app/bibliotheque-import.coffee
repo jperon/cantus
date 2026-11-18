@@ -134,9 +134,9 @@ convertScoretkToXml = (buffer, name) ->
     pendingScoretk.set id, {resolve, reject}
     worker.postMessage { type: "convertScoretk", id, bytes: buffer, name }, [buffer]
 
-# Extensions importables : source de vérité côté application. build.js tient la
-# même liste pour l'attribut `accept` des champs de fichier.
-IMPORT_EXTENSIONS = ['xml', 'musicxml', 'mxl'].concat SCORETK_EXTENSIONS
+# Extensions importables : dérivées de src/formats.coffee, source unique
+# partagée avec build.js (attribut `accept`) et le service worker.
+IMPORT_EXTENSIONS = window.__musicaFormats.baseExtensions.concat SCORETK_EXTENSIONS
 
 # Regex unique, construite une fois : test d'extension et retrait de l'extension
 IMPORT_EXT_RE = new RegExp "\\.(#{IMPORT_EXTENSIONS.join '|'})$", 'i'
