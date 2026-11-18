@@ -76,6 +76,7 @@ async function runPage(browser, url, pageName, results) {
     // passer à 160 double le facteur et divise la durée par deux, en reprenant
     // à la position courante. « Tempo du fichier » restaure 80.
     const baseTempoState = await state(page);
+    const baseNotes = await page.evaluate(() => window.__musicaAudio.getNotes());
     await L.openSettings(page);
     const tempoDefault = await page.evaluate(() => ({
       value: document.getElementById('tempo-input')?.value,
@@ -86,9 +87,12 @@ async function runPage(browser, url, pageName, results) {
       el.dispatchEvent(new Event('change', { bubbles: true }));
     });
     await waitState(page, 'playing');
-    await page.waitForTimeout(600);
+    await page.evaluate(() => window.__musicaAudio.startNoteLog());
+    await page.waitForTimeout(700);
     const fast = await page.evaluate(() => ({
       ...window.__musicaPlaybackState(),
+      notes: window.__musicaAudio.getNotes(),
+      scheduled: window.__musicaAudio.getScheduledNotes(),
       stored: Object.keys(localStorage)
         .filter((k) => k.startsWith('musica-tempo-'))
         .map((k) => localStorage.getItem(k)),
@@ -104,6 +108,22 @@ async function runPage(browser, url, pageName, results) {
       `durée ${baseTempoState.duration} → ${fast.duration} ms (×${ratioFast.toFixed(3)}), ` +
       `position ${baseTempoState.position} → ${fast.position} ms, tempo ${fast.tempo}/${fast.fileTempo}, ` +
       `facteur ${fast.tempoFactor}, état ${fast.state}, réglage ${JSON.stringify(fast.stored)}`);
+
+    // Les notes que le moteur prépare et programme réellement suivent le
+    // tempo : mêmes hauteurs, débuts et durées divisés par 2. Le journal
+    // d'ordonnancement confirme que les instants de lecture sont ceux de ces
+    // débuts, et pas seulement la durée annoncée par le transport.
+    const notesHalved = baseNotes.length > 0 && fast.notes.length === baseNotes.length &&
+      baseNotes.every((n, i) =>
+        fast.notes[i].pitch === n.pitch &&
+        Math.abs(fast.notes[i].start - n.start / 2) < 1e-9 &&
+        Math.abs(fast.notes[i].dur - n.dur / 2) < 1e-9);
+    const scheduleAligned = fast.scheduled.length > 0 && fast.scheduled.every((n) =>
+      n.offset >= n.start - 0.001 && n.offset <= n.start + 0.15);
+    L.record(results, '6. Tempo 160 : notes réellement programmées à débuts et durées /2', pageName,
+      notesHalved && scheduleAligned ? 'OK' : 'ÉCHEC',
+      `${baseNotes.length} → ${fast.notes.length} notes, débuts et durées ×0,5 : ${notesHalved}, ` +
+      `${fast.scheduled.length} note(s) ordonnancée(s), instants alignés sur les débuts : ${scheduleAligned}`);
 
     await page.click('#tempo-reset');
     await page.waitForTimeout(600);

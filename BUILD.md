@@ -191,12 +191,14 @@ Le facteur vaut `tempo choisi / tempo initial du fichier`, **dans la même
 unité** : le rapport des unités s'annule, et changer d'unité ne change pas la
 vitesse pour un même tempo musical. Il est appliqué **une seule fois**, par
 `audio.scalePlaybackData` : un facteur 2 (deux fois plus vite)
-**divise** les temps de lecture par 2. Durée, segments,
-marqueurs de synchronisation et pauses passent à l'échelle avant
-`engine.load()` et alimentent le même axe de temps pour l'ordonnancement audio,
-le transport et le suivi. Le MIDI n'est pas réécrit : les notes sont remappées
-sur les segments mis à l'échelle. Les changements de tempo internes du morceau
-sont donc conservés proportionnellement.
+**divise** les temps de lecture par 2. Durée, marqueurs de synchronisation et
+pauses passent à l'échelle avant `engine.load()` et alimentent le même axe de
+temps pour le transport et le suivi. Le MIDI n'est pas réécrit et les segments
+restent en temps source (`from`/`to` sont des positions du flux, indépendantes
+du tempo) : `scalePlaybackData` transmet le facteur, puis
+`normalizePlaybackData` divise une seule fois les débuts et durées des notes
+remappées. Les changements de tempo internes du morceau sont donc conservés
+proportionnellement.
 
 Les données brutes du worker restent dans `playbackCache` (clé mémoire) et dans
 le cache persistant (`musica-playback-cache-v5`, tempo et unité compris) :

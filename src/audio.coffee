@@ -195,29 +195,22 @@ scaleTimeValue = (value, factor) ->
   n = Number value
   if isFinite(n) then n / factor else value
 
-# Applique le facteur de tempo à TOUTES les échelles de temps des données de
-# lecture, au seul endroit où elles entrent dans le moteur et dans le suivi :
-# durée, segments, marqueurs de synchronisation et pauses. Un facteur 2 (deux
-# fois plus vite) DIVISE ces temps par 2 : ils sont exprimés en temps de
-# lecture, pas en temps musical. Les notes ne sont
-# pas dans ces données (elles sont relues du MIDI), et le MIDI lui-même ne
-# change pas : le remappage sur les segments mis à l'échelle suffit, comme
-# l'ordonnanceur lit les notes en secondes de lecture. Aucun champ d'origine
-# n'est modifié (les données brutes restent en cache, indépendantes du tempo).
+# Applique le facteur de tempo à l'axe de TEMPS DE LECTURE (sortie) : durée,
+# marqueurs de synchronisation et pauses. Un facteur 2 (deux fois plus vite)
+# DIVISE ces temps par 2. Les segments NE sont PAS mis à l'échelle : `from`/
+# `to` sont des positions dans le flux MIDI source, indépendantes du tempo.
+# Le facteur est transmis par `tempoFactor` ; normalizePlaybackData l'applique
+# une seule fois aux débuts et durées des notes remappées, après avoir
+# sélectionné celles-ci dans le temps source. Aucun champ d'origine n'est
+# modifié (les données brutes restent en cache, indépendantes du tempo).
 scalePlaybackData = (data, factor) ->
   f = Number factor
   return data unless data? and isFinite(f) and f > 0
   return data if f is 1
   scaled = {}
   scaled[key] = value for own key, value of data
+  scaled.tempoFactor = f
   scaled.duration = scaleTimeValue data.duration, f if data.duration?
-  if Array.isArray data.segments
-    scaled.segments = for segment in data.segments
-      copy = {}
-      copy[key] = value for own key, value of segment
-      for key in ['fromMs', 'toMs', 'offsetMs']
-        copy[key] = Number(copy[key]) / f if copy[key]?
-      copy
   if Array.isArray data.syncMarks
     scaled.syncMarks = for mark in data.syncMarks
       copy = {}
@@ -266,8 +259,22 @@ normalizePlaybackData = (data, parser) ->
     to: Number(segment.toMs) / 1000
     offset: Number(segment.offsetMs) / 1000
   notes = remapNotesToSegments notes, secondsSegments
-  # La durée du slice fait foi ; à défaut, la somme des segments.
-  duration = segmentsDuration secondsSegments unless duration > 0
+  # Le temps MIDI source n'est jamais mis à l'échelle : le remappage ci-dessus
+  # sélectionne et tronque les notes aux positions du flux. Seul le temps de
+  # sortie l'est, exactement une fois, ici : start = (offset + (start - from))
+  # / f et dur / f.
+  tempoFactor = Number data.tempoFactor
+  tempoFactor = 1 unless isFinite(tempoFactor) and tempoFactor > 0
+  if tempoFactor isnt 1
+    notes = for note in notes
+      start: note.start / tempoFactor
+      dur: note.dur / tempoFactor
+      pitch: note.pitch
+      velocity: note.velocity
+      track: note.track
+  # La durée du slice fait foi (déjà mise à l'échelle) ; à défaut, la somme
+  # des segments, exprimée en temps source, est ramenée en temps de lecture.
+  duration = segmentsDuration(secondsSegments) / tempoFactor unless duration > 0
   {
     midi
     tracks
@@ -301,6 +308,9 @@ createEngine = (initialOptions = {}) ->
     position: 0
     startCtxTime: 0
     noteIndex: 0
+    # Journal d'ordonnancement activé à la demande (diagnostic et tests) :
+    # null tant qu'aucune sonde ne le demande, pour ne pas croître sans fin.
+    noteLog: null
     playing: false
     timer: null
     sources: []
@@ -575,6 +585,13 @@ createEngine = (initialOptions = {}) ->
       continue if (note.start ? 0) < current - 0.05
       at = state.startCtxTime + note.start
       at = now if at < now
+      if state.noteLog?
+        state.noteLog.push {
+          start: note.start
+          dur: note.dur
+          pitch: note.pitch
+          offset: at - state.startCtxTime
+        }
       scheduleNote note, at
     if state.duration > 0 and current >= state.duration
       finish()
@@ -604,6 +621,7 @@ createEngine = (initialOptions = {}) ->
     state.loaded = true
     state.position = 0
     state.noteIndex = 0
+    state.noteLog = null
     resetEngine()
     buildGraph() if state.ctx
     normalized
@@ -664,6 +682,20 @@ createEngine = (initialOptions = {}) ->
   # Diagnostic : 'soundfont', 'oscillator' ou null tant que rien n'est chargé
   api.getEngineMode = -> state.engineMode
 
+  # Diagnostic / tests : notes que le moteur va réellement programmer (débuts
+  # et durées en secondes de lecture, donc déjà au tempo courant).
+  api.getNotes = -> state.notes.slice()
+
+  # Diagnostic / tests : journal des notes effectivement confiées à
+  # l'ordonnanceur. `offset` est l'instant de lecture relatif au départ de la
+  # lecture (secondes), aligné sur le `start` préparé. Null par défaut : aucun
+  # journal n'est tenu tant qu'une sonde ne l'a pas demandé.
+  api.startNoteLog = ->
+    state.noteLog = []
+    api
+
+  api.getScheduledNotes = -> (state.noteLog ? []).slice()
+
   api.onEnd = (callback) ->
     state.onEndCb = callback
     api
@@ -708,6 +740,7 @@ createEngine = (initialOptions = {}) ->
     state.enginePromise = null
     state.engineMode = null
     state.loaded = false
+    state.noteLog = null
     api
 
   # Exposé pour les tests purs et les intégrations avancées

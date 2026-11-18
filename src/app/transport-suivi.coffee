@@ -365,10 +365,11 @@ playbackTempoPlan = (data, movementId) ->
     factor: window.__musicaAudio.playbackTempoFactor(chosen, info.bpm)
   }
 
-# Données de lecture au tempo courant. Le facteur n'est appliqué QU'ICI (durée,
-# segments, marqueurs, pauses) : le moteur audio et le suivi consomment ensuite
-# le même axe de temps, sans conversion supplémentaire. Les données brutes
-# restent intactes pour le cache et pour un changement de tempo ultérieur.
+# Données de lecture au tempo courant. Le facteur n'est appliqué QU'ICI pour
+# l'axe de sortie (durée, marqueurs, pauses) et transmis aux segments/notes :
+# le moteur divise ensuite une seule fois les débuts et durées des notes, le
+# temps source (from/to) restant intact. Les données brutes restent intactes
+# pour le cache et pour un changement de tempo ultérieur.
 scaledPlaybackFor = (data, movementId) ->
   plan = playbackTempoPlan data, movementId
   {data: window.__musicaAudio.scalePlaybackData(data, plan.factor), plan: plan}

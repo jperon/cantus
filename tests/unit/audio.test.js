@@ -345,9 +345,10 @@ test('playbackTempoFactor : tempo choisi / tempo initial du fichier', () => {
 });
 
 // Données dérivées de la fixture RÉELLE pause_basic (slices, segments,
-// marqueurs, pauses) : le facteur doit mettre à l'échelle tout l'axe de temps
-// d'un seul coup, sans modifier les données brutes du cache.
-test('scalePlaybackData : durée, segments, marqueurs et pauses divisés par 2 (tempo ×2)', () => {
+// marqueurs, pauses) : le facteur met à l'échelle le temps de LECTURE d'un
+// seul coup, sans modifier les données brutes du cache. Les segments restent
+// en temps source : `from`/`to` sont des positions du flux MIDI.
+test('scalePlaybackData : durée, marqueurs et pauses divisés par 2, segments en temps source', () => {
   const raw = JSON.parse(fs.readFileSync(path.join(FIXTURES, 'pause_basic-expanded.json'), 'utf8'));
   const slice = timeline.movementSlice(raw, 0, null);
   const segments = timeline.buildSegments(slice);
@@ -366,11 +367,12 @@ test('scalePlaybackData : durée, segments, marqueurs et pauses divisés par 2 (
 
   assert.strictEqual(JSON.stringify(data), before, 'les données brutes ne sont pas modifiées');
   assert.strictEqual(scaled.duration, data.duration / 2);
-  assert.strictEqual(scaled.segments.length, segments.length);
+  assert.strictEqual(scaled.tempoFactor, 2, 'facteur transmis aux notes');
+  assert.strictEqual(scaled.segments, segments, 'segments laissés en temps source');
   scaled.segments.forEach((seg, i) => {
-    assert.strictEqual(seg.fromMs, segments[i].fromMs / 2, `segment ${i} fromMs`);
-    assert.strictEqual(seg.toMs, segments[i].toMs / 2, `segment ${i} toMs`);
-    assert.strictEqual(seg.offsetMs, segments[i].offsetMs / 2, `segment ${i} offsetMs`);
+    assert.strictEqual(seg.fromMs, segments[i].fromMs, `segment ${i} fromMs`);
+    assert.strictEqual(seg.toMs, segments[i].toMs, `segment ${i} toMs`);
+    assert.strictEqual(seg.offsetMs, segments[i].offsetMs, `segment ${i} offsetMs`);
   });
   assert.ok(marks.length > 0, 'marqueurs réels produits');
   scaled.syncMarks.forEach((mark, i) => {
@@ -381,6 +383,37 @@ test('scalePlaybackData : durée, segments, marqueurs et pauses divisés par 2 (
     assert.strictEqual(pause.timeUs, slice.pauses[i].timeUs / 2, `pause ${i} début`);
     assert.strictEqual(pause.endTimeUs, slice.pauses[i].endTimeUs / 2, `pause ${i} fin`);
   });
+});
+
+// Les notes sont sélectionnées dans le temps SOURCE (from/to des segments),
+// puis leurs débuts et durées de sortie sont divisés par le facteur : le MIDI
+// joué accélère réellement, au lieu d'être décalé. La fixture réelle fournit
+// les mesures et la timeline les segments.
+test('tempo ×2 : mêmes notes programmées, débuts et durées divisés par 2', () => {
+  const slice = JSON.parse(
+    fs.readFileSync(path.join(FIXTURES, 'La_foule-expanded.json'), 'utf8')
+  );
+  const segments = timeline.buildSegments(slice);
+  const midiNotes = slice.measures.map((m) => ({
+    start: m.timeUs / 1e6 + 0.01,
+    dur: 0.2,
+    pitch: 60 + (m.measure % 12),
+    velocity: 90,
+  }));
+  const parser = { parseBase64: () => ({ duration: 0, tracks: [{ index: 0, notes: midiNotes }] }) };
+  const data = { midi: 'x', segments };
+  const base = audio.normalizePlaybackData(data, parser);
+  const fast = audio.normalizePlaybackData(audio.scalePlaybackData(data, 2), parser);
+
+  assert.ok(base.notes.length > 1, 'notes préparées au tempo du fichier');
+  assert.strictEqual(fast.notes.length, base.notes.length, 'les mêmes notes sont jouées');
+  base.notes.forEach((note, i) => {
+    const other = fast.notes[i];
+    assert.strictEqual(other.pitch, note.pitch, `note ${i} : hauteur`);
+    approx(other.start, note.start / 2, `note ${i} : début`, 1e-9);
+    approx(other.dur, note.dur / 2, `note ${i} : durée`, 1e-9);
+  });
+  approx(fast.duration, base.duration / 2, 'durée totale', 1e-9);
 });
 
 test('scalePlaybackData : facteur 1 rend les données telles quelles', () => {
