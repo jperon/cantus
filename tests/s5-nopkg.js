@@ -1,4 +1,4 @@
-// Scénario 5 — build sans paquet mscz2xml (MSCZ2XML_PKG=/nonexistent) :
+// Scénario 5 — build sans paquet scoretk (SCORETK_PKG=/nonexistent) :
 // le build doit réussir et l'import .mscz doit être refusé proprement.
 // Le script reconstruit dist/ normalement à la fin.
 const fs = require('fs');
@@ -21,7 +21,7 @@ async function testPage(browser, url, pageName, results) {
   try {
     await L.waitReady(page, 90000);
     const flags = await page.evaluate(() => ({
-      available: window.__musicaMsczAvailable,
+      available: window.__musicaScoretkAvailable,
       accept: document.getElementById('file-input').accept,
     }));
     await L.importFile(page, L.FILES.byrdMscz);
@@ -31,7 +31,7 @@ async function testPage(browser, url, pageName, results) {
     const refused = /import MuseScore non disponible/.test(info.errorText) && info.svgCount === 0 && info.importHidden === false;
     L.record(results, '5. Build sans paquet : .mscz refusé proprement', pageName,
       flags.available === false && !/mscz/.test(flags.accept) && refused ? 'OK' : 'ÉCHEC',
-      `__musicaMsczAvailable=${flags.available}, accept="${flags.accept}", message « ${info.errorText} », écran d'import affiché : ${!info.importHidden}, SVG=${info.svgCount}`);
+      `__musicaScoretkAvailable=${flags.available}, accept="${flags.accept}", message « ${info.errorText} », écran d'import affiché : ${!info.importHidden}, SVG=${info.svgCount}`);
     const relevant = L.summarize(errors);
     L.record(results, '6. Erreurs JS (build sans paquet)', pageName, relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
   } catch (e) {
@@ -44,15 +44,15 @@ async function testPage(browser, url, pageName, results) {
   const results = [];
   const out = {};
   try {
-    fs.rmSync(path.join(L.DIST, 'mscz2xml'), { recursive: true, force: true });
-    const b1 = build([], { MSCZ2XML_PKG: '/nonexistent' });
+    fs.rmSync(path.join(L.DIST, 'scoretk'), { recursive: true, force: true });
+    const b1 = build([], { SCORETK_PKG: '/nonexistent' });
     out.build = { status: b1.status, mentionsMissing: /introuvable/.test(b1.output) };
-    const b2 = build(['--spa'], { MSCZ2XML_PKG: '/nonexistent' });
+    const b2 = build(['--spa'], { SCORETK_PKG: '/nonexistent' });
     out.buildSpa = { status: b2.status, mentionsMissing: /introuvable/.test(b2.output) };
-    out.noDir = !fs.existsSync(path.join(L.DIST, 'mscz2xml'));
-    L.record(results, '5. Build sans paquet mscz2xml : le build réussit', '-',
+    out.noDir = !fs.existsSync(path.join(L.DIST, 'scoretk'));
+    L.record(results, '5. Build sans paquet scoretk : le build réussit', '-',
       b1.status === 0 && b2.status === 0 && out.build.mentionsMissing && out.noDir ? 'OK' : 'ÉCHEC',
-      `build.js code ${b1.status} (paquet signalé introuvable : ${out.build.mentionsMissing}), build.js --spa code ${b2.status}, dist/mscz2xml absent : ${out.noDir}`);
+      `build.js code ${b1.status} (paquet signalé introuvable : ${out.build.mentionsMissing}), build.js --spa code ${b2.status}, dist/scoretk absent : ${out.noDir}`);
 
     const { server, url } = await L.startServer();
     const browser = await L.launch();
