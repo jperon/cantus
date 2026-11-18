@@ -208,7 +208,7 @@ test('synthétique : timeline sans mesures, durée dérivée des ticks et du tem
   const tl = {
     division: 480,
     ticks: 1920,
-    tempo: [{ tick: 0, timeUs: 0, microsecondsPerQuarter: 500000 }],
+    tempo: [{ tick: 0, timeUs: 0, microsPerQuarter: 500000 }],
     measures: [],
     pauses: [],
   };
@@ -253,7 +253,7 @@ test('synthétique : slice vide bien formé et pauseAt hors listes', () => {
 test('fileTempoInfo : tempo initial explicite 37 de la fixture Andante', () => {
   const tl = fixture('andante-expanded');
   const info = timeline.fileTempoInfo(tl, '');
-  assert.deepStrictEqual(info, { bpm: 37, explicit: true });
+  assert.deepStrictEqual(info, { bpm: 37, explicit: true, unit: 'quarter', quarterRatio: 1 });
   assert.strictEqual(timeline.defaultPlaybackTempo(info), 37);
 });
 
@@ -262,10 +262,10 @@ test('fileTempoInfo : tempo initial explicite 37 de la fixture Andante', () => {
 // de la même partition distingue l'indication réelle du défaut implicite.
 test('fileTempoInfo : 120 explicite reconnu au MusicXML converti réel', () => {
   const tl = fixture('pauses-tempo-expanded');
-  assert.deepStrictEqual(timeline.fileTempoInfo(tl, ''), { bpm: 120, explicit: false });
+  assert.deepStrictEqual(timeline.fileTempoInfo(tl, ''), { bpm: 120, explicit: false, unit: 'quarter', quarterRatio: 1 });
   const xml = fs.readFileSync(path.join(FIXTURES, 'pauses-tempo.xml'), 'utf8');
   const info = timeline.fileTempoInfo(tl, xml);
-  assert.deepStrictEqual(info, { bpm: 120, explicit: true });
+  assert.deepStrictEqual(info, { bpm: 120, explicit: true, unit: 'quarter', quarterRatio: 1 });
   assert.strictEqual(timeline.defaultPlaybackTempo(info), 120);
 });
 
@@ -277,8 +277,58 @@ test('fileTempoInfo : fichier sans tempo -> effectif 120, défaut 80', () => {
   assert.strictEqual(tl.tempo, undefined);
   const xml = fs.readFileSync(path.join(FIXTURES, '..', 'movements.xml'), 'utf8');
   const info = timeline.fileTempoInfo(tl, xml);
-  assert.deepStrictEqual(info, { bpm: 120, explicit: false });
+  assert.deepStrictEqual(info, { bpm: 120, explicit: false, unit: 'quarter', quarterRatio: 1 });
   assert.strictEqual(timeline.defaultPlaybackTempo(info), 80);
+});
+
+// Cas réels produits par scoretk (MusicXML source puis conversion) :
+// indication métronomique à la blanche, à la noire pointée, et 6/8 sans
+// indication (défaut appliqué à la noire pointée). Voir le README des fixtures.
+const xmlFixture = (name) => fs.readFileSync(path.join(FIXTURES, `${name}.xml`), 'utf8');
+
+test('tempoUnitFromXml : 2/2 avec indication à la blanche -> half, 2', () => {
+  const xml = xmlFixture('tempo-2-2');
+  assert.deepStrictEqual(timeline.tempoUnitFromXml(xml), { unit: 'half', quarterRatio: 2 });
+  assert.strictEqual(timeline.tempoUnitSymbol('half'), '\u{1D15E}');
+  assert.strictEqual(timeline.tempoUnitLabel('half'), 'blanche');
+  assert.strictEqual(timeline.tempoUnitLabel('half', true), 'blanches');
+});
+
+test('fileTempoInfo : 2/2 explicite 120 noires -> 60 blanches/min, défaut 60', () => {
+  const tl = fixture('tempo-2-2-expanded');
+  const info = timeline.fileTempoInfo(tl, xmlFixture('tempo-2-2'));
+  assert.deepStrictEqual(info, { bpm: 60, explicit: true, unit: 'half', quarterRatio: 2 });
+  assert.strictEqual(timeline.defaultPlaybackTempo(info), 60);
+});
+
+test('tempoUnitFromXml : 6/8 avec indication à la noire pointée -> 1,5 noire', () => {
+  const xml = xmlFixture('tempo-6-8');
+  assert.deepStrictEqual(timeline.tempoUnitFromXml(xml), { unit: 'dotted-quarter', quarterRatio: 1.5 });
+  assert.strictEqual(timeline.tempoUnitSymbol('dotted-quarter'), '♩.');
+  assert.strictEqual(timeline.tempoUnitLabel('dotted-quarter'), 'noire pointée');
+  assert.strictEqual(timeline.tempoUnitLabel('dotted-quarter', true), 'noires pointées');
+});
+
+test('fileTempoInfo : 6/8 explicite 120 noires -> 80 noires pointées/min', () => {
+  const tl = fixture('tempo-6-8-expanded');
+  const info = timeline.fileTempoInfo(tl, xmlFixture('tempo-6-8'));
+  assert.deepStrictEqual(info, { bpm: 80, explicit: true, unit: 'dotted-quarter', quarterRatio: 1.5 });
+  assert.strictEqual(timeline.defaultPlaybackTempo(info), 80);
+});
+
+test('fileTempoInfo : 6/8 sans tempo -> défaut 80 à la noire pointée', () => {
+  const tl = fixture('tempo-6-8-default-expanded');
+  // scoretk insère 120 noires/minute par défaut : la conversion donne 80 à la
+  // noire pointée, sans indication explicite.
+  assert.strictEqual(tl.tempo[0].microsPerQuarter, 500000);
+  const info = timeline.fileTempoInfo(tl, xmlFixture('tempo-6-8-default'));
+  assert.deepStrictEqual(info, { bpm: 80, explicit: false, unit: 'dotted-quarter', quarterRatio: 1.5 });
+  assert.strictEqual(timeline.defaultPlaybackTempo(info), 80);
+});
+
+test('tempoUnitFromXml : sans XML exploitable -> noire', () => {
+  assert.deepStrictEqual(timeline.tempoUnitFromXml(''), { unit: 'quarter', quarterRatio: 1 });
+  assert.deepStrictEqual(timeline.tempoUnitFromXml(null), { unit: 'quarter', quarterRatio: 1 });
 });
 
 test('clampPlaybackTempo : bornes 20–300 et défaut 80', () => {

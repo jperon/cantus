@@ -40,9 +40,11 @@
 #   buildSyncMarks(slice, pageByWrittenIndex, measureStart)
 #       -> {marks: [{t, page, id, xmlId?}], unresolved}
 #   pauseAt(pauses, tMs) -> pause active ou null
-#   fileTempoInfo(timeline, xml) -> {bpm, explicit}
+#   tempoUnitFromXml(xml) -> {unit, quarterRatio}
+#   fileTempoInfo(timeline, xml) -> {bpm, explicit, unit, quarterRatio}
 #   defaultPlaybackTempo(info) -> entier (tempo de lecture par défaut)
 #   clampPlaybackTempo(value) -> entier borné
+#   tempoUnitSymbol(unit), tempoUnitLabel(unit, plural)
 #
 # Le remappage des notes sur les segments reste dans audio.coffee
 # (`remapNotesToSegments`) : aucun doublon n'est créé ici.
@@ -81,9 +83,7 @@ tickToUs = (source, tick) ->
   best ?= tempo[0]
   baseTick = toNum best.tick, 0
   baseUs = toNum best.timeUs, 0
-  # scoretk expose `microsPerQuarter` ; l'ancien nom `microsecondsPerQuarter`
-  # (employé par d'anciens tests synthétiques) reste accepté.
-  mpq = toNum best.microsPerQuarter, toNum(best.microsecondsPerQuarter, 500000)
+  mpq = toNum best.microsPerQuarter, 500000
   baseUs + (target - baseTick) * mpq / division
 
 # --- Tempo de lecture -------------------------------------------------------
@@ -98,22 +98,121 @@ DEFAULT_PLAYBACK_TEMPO_BPM = 80
 TEMPO_MIN_BPM = 20
 TEMPO_MAX_BPM = 300
 
+# Contenu de la première mesure du MusicXML (sans la balise elle-même). Les
+# indications de tempo et la métrique qui comptent sont celles de cette
+# mesure ; au-delà, elles ne décrivent plus le début du morceau. Si la mesure
+# n'est pas refermée, on s'arrête à la deuxième (ou à la fin du document).
+firstMeasureXml = (xml) ->
+  return '' unless typeof xml is 'string' and xml.length
+  open = /<measure(?=[\s>])[^>]*>/i.exec xml
+  return xml unless open
+  rest = xml.slice(open.index + open[0].length)
+  close = /<\/measure>/i.exec rest
+  return rest.slice(0, close.index) if close
+  second = /<measure(?=[\s>])/i.exec rest
+  if second then rest.slice(0, second.index) else rest
+
 # Vrai si la première mesure du MusicXML (converti ou source) porte une
 # indication de tempo : `<sound tempo="…">` ajouté par scoretk, ou un
-# `<metronome>` d'origine. Au-delà de la première mesure, l'indication n'est
-# pas le tempo initial : elle sera conservée proportionnellement à la lecture.
+# `<metronome>` d'origine.
 xmlInitialTempoMark = (xml) ->
-  return false unless typeof xml is 'string' and xml.length
-  matches = /<measure(?=[\s>])/gi
-  second = null
-  count = 0
-  while match = matches.exec xml
-    count += 1
-    if count is 2
-      second = match.index
-      break
-  head = if second? then xml.slice(0, second) else xml
+  head = firstMeasureXml xml
   /<sound\b[^>]*\btempo\s*=/i.test(head) or /<metronome\b/i.test(head)
+
+# Unités de battue : identifiant stable -> valeur en noires, libellé français
+# et symbole affiché. Une unité pointée vaut 1,5 fois sa valeur simple.
+TEMPO_UNITS =
+  whole: {quarterRatio: 4, singular: 'ronde', plural: 'rondes', symbol: '\u{1D15D}'}
+  'dotted-whole': {quarterRatio: 6, singular: 'ronde pointée', plural: 'rondes pointées', symbol: '\u{1D15D}.'}
+  half: {quarterRatio: 2, singular: 'blanche', plural: 'blanches', symbol: '\u{1D15E}'}
+  'dotted-half': {quarterRatio: 3, singular: 'blanche pointée', plural: 'blanches pointées', symbol: '\u{1D15E}.'}
+  quarter: {quarterRatio: 1, singular: 'noire', plural: 'noires', symbol: '♩'}
+  'dotted-quarter': {quarterRatio: 1.5, singular: 'noire pointée', plural: 'noires pointées', symbol: '♩.'}
+  eighth: {quarterRatio: 0.5, singular: 'croche', plural: 'croches', symbol: '♪'}
+  'dotted-eighth': {quarterRatio: 0.75, singular: 'croche pointée', plural: 'croches pointées', symbol: '♪.'}
+  '16th': {quarterRatio: 0.25, singular: 'double-croche', plural: 'doubles-croches', symbol: '\u{1D161}'}
+  'dotted-16th': {quarterRatio: 0.375, singular: 'double-croche pointée', plural: 'doubles-croches pointées', symbol: '\u{1D161}.'}
+  '32nd': {quarterRatio: 0.125, singular: 'triple-croche', plural: 'triples-croches', symbol: '\u{1D162}'}
+  'dotted-32nd': {quarterRatio: 0.1875, singular: 'triple-croche pointée', plural: 'triples-croches pointées', symbol: '\u{1D162}.'}
+  '64th': {quarterRatio: 0.0625, singular: 'quadruple-croche', plural: 'quadruples-croches', symbol: '\u{1D163}'}
+  'dotted-64th': {quarterRatio: 0.09375, singular: 'quadruple-croche pointée', plural: 'quadruples-croches pointées', symbol: '\u{1D163}.'}
+
+# Ratio (en noires) -> identifiant d'unité. Sert à nommer le résultat d'une
+# indication MusicXML sans dupliquer la table ci-dessus.
+UNIT_BY_RATIO =
+  '6': 'dotted-whole'
+  '4': 'whole'
+  '3': 'dotted-half'
+  '2': 'half'
+  '1.5': 'dotted-quarter'
+  '1': 'quarter'
+  '0.75': 'dotted-eighth'
+  '0.5': 'eighth'
+  '0.375': 'dotted-16th'
+  '0.25': '16th'
+  '0.1875': 'dotted-32nd'
+  '0.125': '32nd'
+  '0.09375': 'dotted-64th'
+  '0.0625': '64th'
+
+# Valeur en noires d'une `<beat-unit>` MusicXML.
+BEAT_UNIT_RATIOS =
+  whole: 4
+  half: 2
+  quarter: 1
+  eighth: 0.5
+  '16th': 0.25
+  '32nd': 0.125
+  '64th': 0.0625
+
+DEFAULT_TEMPO_UNIT = 'quarter'
+
+tempoUnit = (ratio) ->
+  UNIT_BY_RATIO[String(ratio)] ? DEFAULT_TEMPO_UNIT
+
+tempoUnitInfo = (unit) ->
+  TEMPO_UNITS[unit] ? TEMPO_UNITS[DEFAULT_TEMPO_UNIT]
+
+tempoUnitSymbol = (unit) ->
+  tempoUnitInfo(unit).symbol
+
+tempoUnitLabel = (unit, plural = false) ->
+  info = tempoUnitInfo unit
+  if plural then info.plural else info.singular
+
+# Unité de battue du fichier, tirée de la première mesure du MusicXML :
+#   1. l'indication métronomique (`<metronome><beat-unit>` + `<beat-unit-dot/>`)
+#      quand elle existe ;
+#   2. sinon la métrique : beat-type 2 -> blanche ; métrique composée
+#      (beats multiple de 3 et > 3, beat-type 8 ou 16) -> valeur pointée de
+#      3 beat-type ; sinon noire.
+# `quarterRatio` est la valeur de l'unité en noires (blanche 2, noire pointée
+# 1,5, croche 0,5…). Sans XML exploitable, la noire est retenue.
+tempoUnitFromXml = (xml) ->
+  head = firstMeasureXml xml
+  metronome = /<metronome\b[^>]*>([\s\S]*?)<\/metronome>/i.exec head
+  if metronome
+    beat = /<beat-unit>\s*([^<\s]+)\s*<\/beat-unit>/i.exec metronome[1]
+    ratio = BEAT_UNIT_RATIOS[beat[1].toLowerCase()] if beat
+    if ratio?
+      ratio *= 1.5 if /<beat-unit-dot\b/i.test metronome[1]
+      unit = tempoUnit ratio
+      return {unit, quarterRatio: TEMPO_UNITS[unit].quarterRatio}
+  time = /<time\b[^>]*>([\s\S]*?)<\/time>/i.exec head
+  if time
+    beatsMatch = /<beats>\s*([0-9]+)\s*<\/beats>/i.exec time[1]
+    typeMatch = /<beat-type>\s*([0-9]+)\s*<\/beat-type>/i.exec time[1]
+    beats = if beatsMatch then parseInt(beatsMatch[1], 10) else NaN
+    beatType = if typeMatch then parseInt(typeMatch[1], 10) else NaN
+    if isFinite(beats) and isFinite(beatType)
+      if beatType is 2
+        unit = 'half'
+      else if beatType in [8, 16] and beats > 3 and beats % 3 is 0
+        unit = if beatType is 16 then 'dotted-eighth' else 'dotted-quarter'
+      else
+        unit = 'quarter'
+      return {unit, quarterRatio: TEMPO_UNITS[unit].quarterRatio}
+  {unit: DEFAULT_TEMPO_UNIT, quarterRatio: TEMPO_UNITS[DEFAULT_TEMPO_UNIT].quarterRatio}
 
 # Tempo initial effectif du fichier en µs/noire, tiré de la première entrée de
 # la carte (tick 0). `null` si la carte est absente (anciennes fixtures
@@ -127,25 +226,30 @@ initialTempoMicros = (timeline) ->
     continue if tick > 0
     first = entry if not first? or tick >= (toNum first.tick, 0)
   first ?= tempo[0]
-  micros = toNum first.microsPerQuarter, toNum(first.microsecondsPerQuarter, 500000)
+  micros = toNum first.microsPerQuarter, 500000
   if isFinite(micros) and micros > 0 then micros else null
 
-# Tempo initial du fichier : BPM entier (le tempo de lecture est un entier) et
-# caractère explicite de l'indication. Sans carte de tempo, le tempo effectif
-# est celui de la chaîne, 120 BPM (valeur par défaut de scoretk).
+# Tempo initial du fichier, exprimé dans son unité de battue (voir
+# tempoUnitFromXml) : BPM entier (le tempo de lecture est un entier), unité,
+# valeur de l'unité en noires, et caractère explicite de l'indication. Sans
+# carte de tempo, le tempo effectif est celui de la chaîne, 120 noires/minute
+# (valeur par défaut de scoretk), CONVERTI dans l'unité.
 fileTempoInfo = (timeline, xml) ->
   micros = initialTempoMicros timeline
-  bpm = if micros? then Math.round(60000000 / micros) else DEFAULT_FILE_TEMPO_BPM
-  bpm = DEFAULT_FILE_TEMPO_BPM unless isFinite(bpm) and bpm > 0
-  explicit = bpm isnt DEFAULT_FILE_TEMPO_BPM or xmlInitialTempoMark xml
-  {bpm, explicit}
+  quarterBpm = if micros? then Math.round(60000000 / micros) else DEFAULT_FILE_TEMPO_BPM
+  quarterBpm = DEFAULT_FILE_TEMPO_BPM unless isFinite(quarterBpm) and quarterBpm > 0
+  {unit, quarterRatio} = tempoUnitFromXml xml
+  bpm = Math.round quarterBpm / quarterRatio
+  bpm = Math.round DEFAULT_FILE_TEMPO_BPM / quarterRatio unless isFinite(bpm) and bpm > 0
+  explicit = quarterBpm isnt DEFAULT_FILE_TEMPO_BPM or xmlInitialTempoMark xml
+  {bpm, explicit, unit, quarterRatio}
 
 # Tempo par défaut du réglage : celui du fichier s'il est explicite, sinon 80.
 defaultPlaybackTempo = (info) ->
   if info?.explicit then clampPlaybackTempo info.bpm else DEFAULT_PLAYBACK_TEMPO_BPM
 
-# Le réglage est un entier de 20 à 300 noires/minute. Une valeur absente ou
-# aberrante retombe sur le défaut 80.
+# Le réglage est un entier de 20 à 300 dans l'unité affichée (noires, blanches,
+# noires pointées…). Une valeur absente ou aberrante retombe sur le défaut 80.
 clampPlaybackTempo = (value) ->
   return DEFAULT_PLAYBACK_TEMPO_BPM unless value? and value isnt ''
   n = Math.round Number value
@@ -406,6 +510,7 @@ pauseAt = (pauses, tMs) ->
 
 api = {
   movementSlice, buildSegments, buildSyncMarks, pauseAt
+  tempoUnitFromXml, tempoUnitSymbol, tempoUnitLabel
   fileTempoInfo, defaultPlaybackTempo, clampPlaybackTempo
   DEFAULT_FILE_TEMPO_BPM, DEFAULT_PLAYBACK_TEMPO_BPM, TEMPO_MIN_BPM, TEMPO_MAX_BPM
 }

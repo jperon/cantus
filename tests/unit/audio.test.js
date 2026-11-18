@@ -296,10 +296,10 @@ test('normalizePlaybackData : mode linéaire, durée écrite et notes remappées
 });
 
 // --- Intégration : timeline réelle -> données de lecture ---------------------
-// Régression : `buildSegments` produit `{measure, fromMs, toMs, offsetMs}`. Si
-// la conversion en secondes relit l'ancienne forme `from`/`to`/`offset`, tous
-// les champs valent NaN et `remapNotesToSegments` écarte TOUTES les notes
-// (mesuré : 0/813) — l'horloge avance alors sans aucune source audio.
+// Régression : `buildSegments` produit `{measure, fromMs, toMs, offsetMs}`,
+// noms que la conversion en secondes lit sans repli. Une forme différente
+// laisserait tous les champs NaN et `remapNotesToSegments` écarterait TOUTES
+// les notes (mesuré : 0/813) — l'horloge avancerait sans aucune source audio.
 test('intégration : buildSegments(fixture) -> normalizePlaybackData garde les notes', () => {
   const slice = JSON.parse(
     fs.readFileSync(path.join(FIXTURES, 'La_foule-expanded.json'), 'utf8')

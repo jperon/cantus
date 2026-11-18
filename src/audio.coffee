@@ -215,7 +215,7 @@ scalePlaybackData = (data, factor) ->
     scaled.segments = for segment in data.segments
       copy = {}
       copy[key] = value for own key, value of segment
-      for key in ['fromMs', 'toMs', 'offsetMs', 'from', 'to', 'offset']
+      for key in ['fromMs', 'toMs', 'offsetMs']
         copy[key] = Number(copy[key]) / f if copy[key]?
       copy
   if Array.isArray data.syncMarks
@@ -261,12 +261,10 @@ normalizePlaybackData = (data, parser) ->
   # incluses) : tout le flux MIDI est remappé dessus, dans les deux modes.
   # Le worker les exprime en millisecondes (`fromMs`/`toMs`/`offsetMs`, cf.
   # timeline.buildSegments) : on les ramène en secondes, l'unité de `notes`.
-  # Repli sur l'ancienne forme `from`/`to`/`offset` pour un cache
-  # playbackData encore en v13/v4.
   secondsSegments = for segment in segments
-    from: Number(segment.fromMs ? segment.from) / 1000
-    to: Number(segment.toMs ? segment.to) / 1000
-    offset: Number(segment.offsetMs ? segment.offset) / 1000
+    from: Number(segment.fromMs) / 1000
+    to: Number(segment.toMs) / 1000
+    offset: Number(segment.offsetMs) / 1000
   notes = remapNotesToSegments notes, secondsSegments
   # La durée du slice fait foi ; à défaut, la somme des segments.
   duration = segmentsDuration secondsSegments unless duration > 0

@@ -1,0 +1,1 @@
+{"division":480,"ticks":2880,"tempo":[{"tick":0,"timeUs":0,"microsPerQuarter":500000}],"measures":[{"measure":0,"ordinal":0,"segment":0,"passage":1,"tick":0,"endTick":1440,"timeUs":0,"endTimeUs":1500000,"xmlId":"p0-m0"},{"measure":1,"ordinal":1,"segment":0,"passage":1,"tick":1440,"endTick":2880,"timeUs":1500000,"endTimeUs":3000000,"xmlId":"p0-m1"}],"pauses":[]}
