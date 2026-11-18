@@ -82,13 +82,6 @@ Reste à faire uniquement. Pour l'architecture et les décisions déjà prises, 
 - **Piste** : dériver `verovio-toolkit-wasm.js` et le paquet scoretk comme
   entrées Nix.
 
-### `tests/run.sh` dépendant du devShell ambiant
-
-- Le script invoque encore `nix-shell -p nodejs` en interne alors qu'on le lance
-  depuis le devShell du flake, et le chemin de scratch `SCRATCH` est codé en dur.
-- À remplacer par `$NODE`/`command -v node` et un répertoire temporaire produit
-  par `mktemp -d`.
-
 ### Données de test hors dépôt
 
 - Les données de test vivent hors dépôt dans `$CANTUS_TEST_DATA` (défaut
@@ -98,3 +91,4 @@ Reste à faire uniquement. Pour l'architecture et les décisions déjà prises, 
 ## Vérifications de référence
 
 Campagne : `nix develop -c bash -lc 'tests/run.sh'` (s1→s9 + unitaires) ; le harnais échoue si une assertion échoue.
+- Si `TMPDIR` est un chemin long (scratchpad d'agent), Chromium échoue (« Socket path too long ») : lancer avec `TMPDIR=$(mktemp -d /tmp/ct.XXXX)`.
