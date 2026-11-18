@@ -6,15 +6,88 @@ const L = require('./lib');
 const PAGES = ['index.html', 'spa.html'];
 const MOVEMENTS_FIXTURE = path.join(__dirname, 'fixtures', 'movements.xml');
 
+// Bornes explicites des attentes de ce scénario, en millisecondes.
+//
+// Avant, chaque attente portait son délai en dur (5 à 240 s) : quand une
+// étape ratait, ces délais s'additionnaient sans dire laquelle avait bloqué.
+// Chaque borne vaut au moins 3 à 5 fois la durée observée maximale d'une
+// campagne complète (index.html + spa.html, Chromium headless) ; les planchers
+// (10 s pour un état, 20 s pour un chargement ou un rechargement) couvrent une
+// machine plus lente et une campagne chargée. Durées observées le 18/11/2026 :
+const WAIT = {
+  // État du transport après un clic ou une touche : max 1,1 s (stopped).
+  transportState: 10000,
+  // Écran de chargement masqué, y compris après un rechargement : max 1,5 s.
+  ready: 20000,
+  // Bibliothèque proposée après un rechargement : max 13 ms.
+  libraryReady: 20000,
+  // Rechargement complet du document : max 0,6 s.
+  reload: 20000,
+  // Changement de page après un tap : max 11 ms.
+  pageChange: 10000,
+  // SVG de la page cible après un saut : max 7 ms.
+  pageRendered: 10000,
+  // Cale de la tête sur le premier marqueur de la page : max 0,3 s. Cette
+  // attente est volontairement tolérante (elle contient la temporisation de
+  // 700 ms du suivi) car un échec est ici un résultat testé, pas une panne.
+  seekToPage: 5000,
+  // Premier SVG après import d'une partition : max 3,4 s (Magnificat .mscz).
+  // Le plancher de 20 s couvre une machine chargée pendant la campagne.
+  firstSvg: 20000,
+  // Fin du rendu de fond après import : l'indicateur est souvent déjà masqué
+  // au premier SVG (max observé 0,3 s), donc cette borne n'est payée qu'en
+  // cas de vrai blocage ; 60 s laisse le temps au rendu des gros fichiers.
+  backgroundLoaded: 60000,
+  // Arrêt de la lecture après changement de fichier ou redimensionnement :
+  // max 0,3 s. Plancher de 20 s, le re-rendu complet peut être plus long.
+  playbackStop: 20000,
+  // Réponse playbackData d'un mouvement demandé directement au worker :
+  // max 0,4 s pour un mouvement réel (sonde sur les quatre fichiers du
+  // scénario). Un mouvement inexistant ne répond jamais : c'est cette borne
+  // qui termine la collecte des reprises.
+  playbackData: 10000,
+};
+
+// Exécute une attente bornée et, en cas de dépassement, nomme l'étape et sa
+// borne : le message d'échec du scénario dit ainsi quelle attente a bloqué.
+async function bounded(step, ms, promise) {
+  try {
+    return await promise;
+  } catch (e) {
+    if (e && e.name === 'TimeoutError') {
+      throw new Error(`attente « ${step} » dépassée (borne ${ms} ms)`);
+    }
+    throw e;
+  }
+}
+
+function waitReady(page) {
+  return bounded('écran de chargement masqué', WAIT.ready, L.waitReady(page, WAIT.ready));
+}
+
+function waitFirstSvg(page) {
+  return bounded('premier SVG de la partition', WAIT.firstSvg, L.waitFirstSvg(page, WAIT.firstSvg));
+}
+
+function waitBackgroundLoaded(page) {
+  return bounded('fin du rendu de fond', WAIT.backgroundLoaded,
+    L.waitBackgroundLoaded(page, WAIT.backgroundLoaded));
+}
+
+function reloadPage(page) {
+  return bounded('rechargement de la page', WAIT.reload,
+    page.reload({ waitUntil: 'domcontentloaded', timeout: WAIT.reload }));
+}
+
 async function state(page) {
   return page.evaluate(() => (window.__musicaPlaybackState ? window.__musicaPlaybackState() : null));
 }
 
-async function waitState(page, expected, timeout = 30000) {
-  await page.waitForFunction((name) => {
+async function waitState(page, expected, timeout = WAIT.transportState) {
+  await bounded(`état du transport « ${expected} »`, timeout, page.waitForFunction((name) => {
     const s = window.__musicaPlaybackState ? window.__musicaPlaybackState() : null;
     return s && s.state === name;
-  }, expected, { timeout, polling: 100 });
+  }, expected, { timeout, polling: 100 }));
 }
 
 async function transportHidden(page) {
@@ -75,7 +148,7 @@ async function partVolumeValues(page) {
 // Données de lecture complètes demandées directement au worker (le probe de
 // l'application ne renvoie que les premiers marqueurs).
 async function playbackSample(page, movementId = 1, linearRepeats = false) {
-  return page.evaluate(({ id, linear }) => new Promise((resolve, reject) => {
+  return page.evaluate(({ id, linear, timeout }) => new Promise((resolve, reject) => {
     const w = window.__musicaWorker;
     const done = (fn, value) => {
       w.removeEventListener('message', onMessage);
@@ -95,10 +168,11 @@ async function playbackSample(page, movementId = 1, linearRepeats = false) {
         done(reject, new Error(d.message || 'playbackError'));
       }
     };
-    const timer = setTimeout(() => done(reject, new Error('délai playbackData dépassé')), 120000);
+    const timer = setTimeout(() => done(reject, new Error(
+      `attente « données de lecture du mouvement ${id} » dépassée (borne ${timeout} ms)`)), timeout);
     w.addEventListener('message', onMessage);
     w.postMessage({ type: 'getPlaybackData', movementId: id, linearRepeats: linear });
-  }), { id: movementId, linear: !!linearRepeats });
+  }), { id: movementId, linear: !!linearRepeats, timeout: WAIT.playbackData });
 }
 
 // Après un rechargement, le worker peut encore démarrer : attendre que la
@@ -111,26 +185,26 @@ async function displayedPageNumber(page) {
   });
 }
 
-async function waitLibraryReady(page, timeout = 60000) {
-  await page.waitForFunction(() => {
+async function waitLibraryReady(page, timeout = WAIT.libraryReady) {
+  await bounded('bibliothèque proposée', timeout, page.waitForFunction(() => {
     const overlay = document.getElementById('library-overlay');
     const button = document.getElementById('btn-library');
     return (overlay && !overlay.classList.contains('hidden')) ||
       (button && !button.classList.contains('hidden'));
-  }, null, { timeout, polling: 100 });
+  }, null, { timeout, polling: 100 }));
 }
 
 async function runPage(browser, url, pageName, results) {
   const { page, ctx, errors } = await L.newPage(browser, url, { pageName });
   try {
-    await L.waitReady(page);
+    await waitReady(page);
     const hiddenBefore = await transportHidden(page);
     L.record(results, '6. Transport masqué avant tout import', pageName,
       hiddenBefore ? 'OK' : 'ÉCHEC', `hidden = ${hiddenBefore}`);
 
     await L.importFile(page, L.FILES.telemannXml);
-    await L.waitFirstSvg(page, 180000);
-    await L.waitBackgroundLoaded(page, 180000);
+    await waitFirstSvg(page);
+    await waitBackgroundLoaded(page);
     await page.waitForTimeout(800);
     const hiddenAfter = await transportHidden(page);
     L.record(results, '6. Transport visible une fois la partition affichée', pageName,
@@ -319,10 +393,10 @@ async function runPage(browser, url, pageName, results) {
   {
     const { page, ctx: ctx2, errors: errors2 } = await L.newPage(browser, url, { pageName });
     try {
-      await L.waitReady(page);
+      await waitReady(page);
       await L.importFile(page, L.FILES.telemannXml);
-      await L.waitFirstSvg(page, 180000);
-      await L.waitBackgroundLoaded(page, 180000);
+      await waitFirstSvg(page);
+      await waitBackgroundLoaded(page);
       await page.waitForTimeout(600);
       await L.openSettings(page);
       await page.$eval('#master-volume-range', (el) => {
@@ -334,8 +408,8 @@ async function runPage(browser, url, pageName, results) {
       const labelSet = await page.textContent('#master-volume-value');
       const savedSet = await page.evaluate(() => JSON.parse(localStorage.getItem('musica-settings') || '{}').masterVolume);
       await L.closeSettings(page);
-      await page.reload({ waitUntil: 'domcontentloaded', timeout: 60000 });
-      await L.waitReady(page, 60000);
+      await reloadPage(page);
+      await waitReady(page);
       await page.waitForTimeout(500);
       const afterReload = await page.evaluate(() => ({
         slider: document.getElementById('master-volume-range')?.value,
@@ -363,10 +437,10 @@ async function runPage(browser, url, pageName, results) {
   {
     const { page, ctx: ctx3, errors: errors3 } = await L.newPage(browser, url, { pageName });
     try {
-      await L.waitReady(page);
+      await waitReady(page);
       await L.importFile(page, L.FILES.faureMscz);
-      await L.waitFirstSvg(page, 180000);
-      await L.waitBackgroundLoaded(page, 180000);
+      await waitFirstSvg(page);
+      await waitBackgroundLoaded(page);
       await page.waitForTimeout(800);
       const first = await L.pageInfo(page);
       await page.click('#transport-play');
@@ -378,7 +452,7 @@ async function runPage(browser, url, pageName, results) {
         await page.waitForTimeout(400);
         // Le rendu de la page cible est asynchrone : attendre son SVG plutôt
         // qu'une durée fixe (la campagne complète ralentit le worker).
-        await page.waitForFunction(() => {
+        await bounded('rendu de la page cible (suivi horizontal)', WAIT.pageRendered, page.waitForFunction(() => {
           const txt = document.getElementById('page-number')?.textContent || '';
           const m = txt.match(/(\d+)\s*\/\s*(\d+)/);
           const top = m ? parseInt(m[1], 10) : null;
@@ -388,7 +462,7 @@ async function runPage(browser, url, pageName, results) {
           }));
           const topPage = pages.find((p) => p.page === top);
           return !!(topPage && topPage.hasSvg && pages.some((p) => p.hasSvg));
-        }, null, { timeout: 20000, polling: 100 });
+        }, null, { timeout: WAIT.pageRendered, polling: 100 }));
         const view = await page.evaluate(() => {
           const txt = document.getElementById('page-number')?.textContent || '';
           const m = txt.match(/(\d+)\s*\/\s*(\d+)/);
@@ -482,10 +556,10 @@ async function runPage(browser, url, pageName, results) {
   {
     const { page, ctx: ctxSeek, errors: errorsSeek } = await L.newPage(browser, url, { pageName });
     try {
-      await L.waitReady(page);
+      await waitReady(page);
       await L.importFile(page, L.FILES.telemannXml);
-      await L.waitFirstSvg(page, 180000);
-      await L.waitBackgroundLoaded(page, 180000);
+      await waitFirstSvg(page);
+      await waitBackgroundLoaded(page);
       await page.waitForTimeout(800);
 
       // Temps du premier marqueur de chaque page (telemann : une page par
@@ -510,7 +584,7 @@ async function runPage(browser, url, pageName, results) {
         };
       });
       await L.tap(page, 'right');
-      await L.waitPageChange(page, 1, 30000);
+      await bounded('changement de page', WAIT.pageChange, L.waitPageChange(page, 1, WAIT.pageChange));
       await page.waitForTimeout(700);
       const noData = await page.evaluate(() => ({
         page: (() => {
@@ -540,13 +614,15 @@ async function runPage(browser, url, pageName, results) {
       const targetPlaying = firstOfPage[targetPlayingPage];
       let reachedPlaying = null;
       try {
-        reachedPlaying = await page.waitForFunction(({ target, expected }) => {
-          const s = window.__musicaPlaybackState ? window.__musicaPlaybackState() : null;
-          const m = (document.getElementById('page-number')?.textContent || '').match(/(\d+)\s*\//);
-          const shown = m ? parseInt(m[1], 10) : null;
-          if (!s || shown !== expected) return false;
-          return Math.abs(s.position - target) <= 150 ? { position: s.position, state: s.state } : false;
-        }, { target: targetPlaying, expected: targetPlayingPage }, { timeout: 5000, polling: 20 }).then((h) => h.jsonValue());
+        reachedPlaying = await bounded('cale de la tête sur la nouvelle page', WAIT.seekToPage,
+          page.waitForFunction(({ target, expected }) => {
+            const s = window.__musicaPlaybackState ? window.__musicaPlaybackState() : null;
+            const m = (document.getElementById('page-number')?.textContent || '').match(/(\d+)\s*\//);
+            const shown = m ? parseInt(m[1], 10) : null;
+            if (!s || shown !== expected) return false;
+            return Math.abs(s.position - target) <= 150 ? { position: s.position, state: s.state } : false;
+          }, { target: targetPlaying, expected: targetPlayingPage },
+          { timeout: WAIT.seekToPage, polling: 20 }).then((h) => h.jsonValue()));
       } catch {
         reachedPlaying = null;
       }
@@ -662,10 +738,10 @@ async function runPage(browser, url, pageName, results) {
   if (L.FILES.magnificatBachMscz && require('fs').existsSync(L.FILES.magnificatBachMscz)) {
     const { page, ctx: ctxLoop, errors: errorsLoop } = await L.newPage(browser, url, { pageName });
     try {
-      await L.waitReady(page);
+      await waitReady(page);
       await L.importFile(page, L.FILES.magnificatBachMscz);
-      await L.waitFirstSvg(page, 240000);
-      await L.waitBackgroundLoaded(page, 240000);
+      await waitFirstSvg(page);
+      await waitBackgroundLoaded(page);
       await page.waitForTimeout(800);
 
       // Marqueurs du mouvement affiché (mouvement 1) : le premier doit être au
@@ -872,10 +948,10 @@ async function runPage(browser, url, pageName, results) {
   {
     const { page, ctx: ctx4, errors: errors4 } = await L.newPage(browser, url, { pageName });
     try {
-      await L.waitReady(page);
+      await waitReady(page);
       await L.importFile(page, L.FILES.telemannXml);
-      await L.waitFirstSvg(page, 180000);
-      await L.waitBackgroundLoaded(page, 180000);
+      await waitFirstSvg(page);
+      await waitBackgroundLoaded(page);
       await page.waitForTimeout(800);
       await L.markSvg(page);
       await page.click('#transport-play');
@@ -927,12 +1003,12 @@ async function runPage(browser, url, pageName, results) {
         markerAfterClose ? 'OK' : 'ÉCHEC', `SVG marqué toujours affiché : ${markerAfterClose}`);
 
       // Persistance après rechargement et réouverture depuis la bibliothèque
-      await page.reload({ waitUntil: 'domcontentloaded', timeout: 60000 });
-      await L.waitReady(page, 60000);
+      await reloadPage(page);
+      await waitReady(page);
       await waitLibraryReady(page);
       await L.openLibraryEntry(page, 0);
-      await L.waitFirstSvg(page, 180000);
-      await L.waitBackgroundLoaded(page, 180000);
+      await waitFirstSvg(page);
+      await waitBackgroundLoaded(page);
       await page.waitForTimeout(800);
       await L.openSettings(page);
       const volumesReload = await partVolumeValues(page);
@@ -962,12 +1038,12 @@ async function runPage(browser, url, pageName, results) {
         delete data.volumes;
         localStorage.setItem(key, JSON.stringify(data));
       });
-      await page.reload({ waitUntil: 'domcontentloaded', timeout: 60000 });
-      await L.waitReady(page, 60000);
+      await reloadPage(page);
+      await waitReady(page);
       await waitLibraryReady(page);
       await L.openLibraryEntry(page, 0);
-      await L.waitFirstSvg(page, 180000);
-      await L.waitBackgroundLoaded(page, 180000);
+      await waitFirstSvg(page);
+      await waitBackgroundLoaded(page);
       await page.waitForTimeout(800);
       await L.openSettings(page);
       const volumesLegacy = await partVolumeValues(page);
@@ -989,10 +1065,10 @@ async function runPage(browser, url, pageName, results) {
   {
     const { page, ctx: ctxHidden, errors: errorsHidden } = await L.newPage(browser, url, { pageName });
     try {
-      await L.waitReady(page);
+      await waitReady(page);
       await L.importFile(page, L.FILES.telemannXml);
-      await L.waitFirstSvg(page, 180000);
-      await L.waitBackgroundLoaded(page, 180000);
+      await waitFirstSvg(page);
+      await waitBackgroundLoaded(page);
       await page.waitForTimeout(600);
       await L.openSettings(page);
       const rows = await L.partRows(page);
@@ -1003,8 +1079,8 @@ async function runPage(browser, url, pageName, results) {
         el.dispatchEvent(new Event('change', { bubbles: true }));
       });
       await L.closeSettings(page);
-      await L.waitFirstSvg(page, 180000);
-      await L.waitBackgroundLoaded(page, 180000);
+      await waitFirstSvg(page);
+      await waitBackgroundLoaded(page);
       await page.waitForTimeout(800);
       await page.click('#transport-play');
       await waitState(page, 'playing');
@@ -1042,10 +1118,10 @@ async function runPage(browser, url, pageName, results) {
   {
     const { page, ctx: ctx5, errors: errors5 } = await L.newPage(browser, url, { pageName });
     try {
-      await L.waitReady(page);
+      await waitReady(page);
       await L.importFile(page, L.FILES.telemannXml);
-      await L.waitFirstSvg(page, 180000);
-      await L.waitBackgroundLoaded(page, 180000);
+      await waitFirstSvg(page);
+      await waitBackgroundLoaded(page);
       await page.waitForTimeout(800);
       await page.click('#transport-play');
       await waitState(page, 'playing');
@@ -1054,11 +1130,11 @@ async function runPage(browser, url, pageName, results) {
       // Changement de fichier en pleine lecture : la lecture est arrêtée,
       // le nouveau document se charge, aucune exception JS.
       await L.importFile(page, MOVEMENTS_FIXTURE);
-      await L.waitFirstSvg(page, 180000);
-      await page.waitForFunction(() => {
+      await waitFirstSvg(page);
+      await bounded('arrêt après changement de fichier', WAIT.playbackStop, page.waitForFunction(() => {
         const s = window.__musicaPlaybackState ? window.__musicaPlaybackState() : null;
         return s && s.state === 'stopped' && s.position === 0;
-      }, null, { timeout: 60000, polling: 100 });
+      }, null, { timeout: WAIT.playbackStop, polling: 100 }));
       const afterChange = await state(page);
       L.record(results, '6. Changement de fichier pendant la lecture : lecture arrêtée', pageName,
         afterChange.state === 'stopped' && afterChange.position === 0 ? 'OK' : 'ÉCHEC',
@@ -1069,10 +1145,10 @@ async function runPage(browser, url, pageName, results) {
       await page.click('#transport-play');
       await waitState(page, 'playing');
       await page.setViewportSize({ width: 900, height: 500 });
-      await page.waitForFunction(() => {
+      await bounded('arrêt après redimensionnement', WAIT.playbackStop, page.waitForFunction(() => {
         const s = window.__musicaPlaybackState ? window.__musicaPlaybackState() : null;
         return s && s.state === 'stopped';
-      }, null, { timeout: 90000, polling: 150 });
+      }, null, { timeout: WAIT.playbackStop, polling: 150 }));
       const afterResize = await state(page);
       L.record(results, '6. Redimensionnement pendant la lecture : lecture arrêtée', pageName,
         afterResize.state === 'stopped' ? 'OK' : 'ÉCHEC',
@@ -1095,10 +1171,10 @@ async function runPage(browser, url, pageName, results) {
   {
     const { page, ctx: ctxReprises, errors: errorsReprises } = await L.newPage(browser, url, { pageName });
     try {
-      await L.waitReady(page);
+      await waitReady(page);
       await L.importFile(page, L.FILES.laFouleMxl);
-      await L.waitFirstSvg(page, 180000);
-      await L.waitBackgroundLoaded(page, 180000);
+      await waitFirstSvg(page);
+      await waitBackgroundLoaded(page);
       await page.waitForTimeout(600);
 
       // Le fichier est découpé en mouvements : collecter les marqueurs de
@@ -1218,7 +1294,7 @@ async function runPage(browser, url, pageName, results) {
       const running = await state(page);
       const durationOk = Math.abs(running.duration - probeLinear.duration) <= 1000;
       await seekFraction(page, 0.995);
-      await waitState(page, 'stopped', 30000);
+      await waitState(page, 'stopped');
       const finished = await state(page);
       L.record(results, '6. Reprises décochées : lecture jusqu’au bout sans erreur', pageName,
         durationOk && finished.state === 'stopped' ? 'OK' : 'ÉCHEC',
@@ -1258,10 +1334,10 @@ async function runPage(browser, url, pageName, results) {
   {
     const { page, ctx: ctx6, errors: errors6 } = await L.newPage(browser, url, { pageName });
     try {
-      await L.waitReady(page);
+      await waitReady(page);
       await L.importFile(page, L.FILES.telemannXml);
-      await L.waitFirstSvg(page, 180000);
-      await L.waitBackgroundLoaded(page, 180000);
+      await waitFirstSvg(page);
+      await waitBackgroundLoaded(page);
       await page.waitForTimeout(600);
       await page.evaluate(() => {
         const w = window.__musicaWorker;

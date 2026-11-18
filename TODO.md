@@ -60,8 +60,10 @@ Reste à faire uniquement. Pour l'architecture et les décisions déjà prises, 
 
 ### `s6-audio`
 
-- Attentes de 60 à 120 s qui s'additionnent ; le découper en scénarios plus
-  courts.
+- Attentes bornées (fait) : constantes `WAIT` en tête du fichier (10 à 60 s,
+  justifiées par les durées observées) ; un dépassement nomme l'étape et sa
+  borne. Campagne : 12 min 44 s → 5 min 14 s.
+- Découpage en scénarios plus courts : reste à faire (reporté).
 
 ### Résidus à examiner
 
