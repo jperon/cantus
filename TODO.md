@@ -21,12 +21,6 @@ Reste à faire uniquement. Pour l'architecture et les décisions déjà prises, 
 
 ## Dette technique
 
-### Listes d'extensions scoretk dispersées
-
-- `SCORETK_EXTENSIONS` (`src/app/sources.coffee`) est la source côté application, mais
-  `SCORETK_FROM` (worker.coffee), `IMPORT_EXTENSIONS_SCORETK` (build.js), le
-  manifeste et `pwa/sw.coffee` gardent chacun leur liste : à tenir ensemble.
-
 ### Tests unitaires contre des contrats imaginaires
 
 - Deux cas rencontrés : `pauseBefore`, puis `from`/`to`/`offset`.

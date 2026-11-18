@@ -69,6 +69,42 @@ instruction exécutée au chargement (`addEventListener`, appels,
 initialisations d'état) par rapport aux autres : seule la découpe en fichiers
 change, pas l'ordre d'exécution.
 
+## Formats importables (`src/formats.coffee`)
+
+`src/formats.coffee` est la **source unique** des formats importables :
+extensions, format d'entrée scoretk (`from`), types MIME et listes `accept`.
+Il suit le patron de `src/timeline.coffee` : api exposée sur
+`window.__musicaFormats` (page), `self.__musicaFormats` (worker) et
+`module.exports` (build.js et tests Node). Le build l'injecte en `formats.js`
+avant `timeline.js` et avant le worker, et avant l'application dans les deux
+pages.
+
+- `FORMATS` : une entrée par format (`extensions`, `scoretk`, `from`, `share`).
+  **Ajouter un format importable se fait ici**, plus ses types MIME dans
+  `MIME_TYPES` s'il en a : `SCORETK_EXTENSIONS`, `SCORETK_EXT_RE`,
+  `IMPORT_EXTENSIONS` (application) et `scoretkFrom` (worker) en sont dérivés.
+- `MIME_TYPES` : type MIME → extensions acceptées, extension de repli quand le
+  nom d'un fichier partagé est perdu, et présence dans `file_handlers`. L'ordre
+  de la table fixe celui de `file_handlers` ; `share_target` reprend tous ces
+  types.
+
+`build.js` en dérive l'attribut `accept` des champs de fichier,
+`dist/manifest.json` et deux valeurs injectées dans `dist/sw.js` :
+
+- **`dist/manifest.json` est régénéré** : les listes `accept` de
+  `pwa/manifest.json` sont des emplacements vides (`{}` et `[]`) ; le dist
+  reçoit exclusivement celles de `src/formats.coffee`, le reste du manifeste
+  (nom, icônes, actions…) étant recopié tel quel. Ne pas éditer ces `accept`
+  dans `pwa/manifest.json`.
+- dans `dist/sw.js`, `MIME_EXTENSIONS` (repli MIME → extension) et
+  `SHARE_EXT_RE` (extensions retirées pour nommer une entrée partagée) sont
+  injectés par remplacement de marqueur, comme `PRESERVED_CACHES` : le build
+  échoue si le marqueur a disparu.
+
+Les tests unitaires (`tests/unit/scoretk-from.test.js`) vérifient `scoretkFrom`
+et la cohérence des tables (chaque extension scoretk a un `from`, chaque type
+MIME pointe vers une extension connue).
+
 ## Aperçu audio et synchronisation (scoretk)
 
 Verovio ne fournit **plus** le MIDI ni les temps de lecture : il ne sert qu'au
