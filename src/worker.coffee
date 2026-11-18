@@ -622,8 +622,10 @@ renderMovementPage = (movementId, pageNumber) ->
 
 handleMessage = (e) ->
   { type } = e.data
-  # These need the toolkit: keep them instead of dropping them before initialization
-  if not tk and type in ["loadMovement", "renderMovementPage", "clearMovements", "getPlaybackData"]
+  # These need the toolkit: keep them instead of dropping them before initialization.
+  # registerSource doit rester dans la file pour préserver son ordre relatif avec
+  # clearMovements : sinon un clearMovements rejoué efface la source déjà enregistrée.
+  if not tk and type in ["loadMovement", "renderMovementPage", "clearMovements", "getPlaybackData", "registerSource"]
     pending.push e.data
     return
   try
@@ -750,4 +752,12 @@ if typeof module isnt 'undefined' and module?.exports?
   module.exports = {
     countWrittenMeasures
     playbackCacheKey
+    # Crochets de test : injecter un toolkit factice, déclencher le flush des
+    # messages en attente et lire l'état interne des sources.
+    __test: {
+      setToolkit: (value) -> tk = value
+      notifyReady
+      getSources: -> sources
+      getPending: -> pending
+    }
   }
