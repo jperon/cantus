@@ -4,26 +4,14 @@
 set -u
 cd "$(dirname "$0")/.."
 
-SCRATCH=/tmp/claude-1000/-home-jacques-programmes-musique-cantus/73505585-ba9d-4437-9275-b28fef3b2ac0/scratchpad
-if [ -n "${NODE:-}" ]; then
-  :
-elif [ -f "$SCRATCH/node-path" ]; then
-  NODE=$(cat "$SCRATCH/node-path")
-else
-  NODE=$(command -v node || true)
-fi
+NODE=${NODE:-$(command -v node || true)}
 if [ -z "${NODE:-}" ]; then
-  echo "node introuvable : lancer via nix-shell -p nodejs" >&2
+  echo "node introuvable : lancer depuis \`nix develop\` ou définir NODE" >&2
   exit 1
 fi
 
 CHROMIUM=${CHROMIUM:-/run/current-system/sw/bin/chromium}
 export CHROMIUM
-
-echo "== Build normal =="
-nix-shell -p nodejs --run "node build.js" || exit 1
-echo "== Build SPA =="
-nix-shell -p nodejs --run "node build.js --spa" || exit 1
 
 # Tests unitaires Node : ils ne dépendent pas du navigateur et doivent passer
 # avant la campagne Playwright. Un échec interrompt la campagne.
@@ -37,6 +25,11 @@ if [ "$status" -ne 0 ]; then
   echo "Tests unitaires en échec : campagne navigateur interrompue." >&2
   exit "$status"
 fi
+
+echo "== Build normal =="
+"$NODE" build.js || exit 1
+echo "== Build SPA =="
+"$NODE" build.js --spa || exit 1
 
 if [ "$#" -eq 0 ]; then
   set -- s1-import.js s2-folder.js s3-settings.js s4-offline.js s5-nopkg.js s6-audio.js s7-share.js s8-boucle.js s9-synchro.js
