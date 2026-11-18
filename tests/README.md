@@ -102,8 +102,8 @@ Si `pwa/soundfonts/piano-fluidr3-13notes.js` est absent, le build passe
 
 ## Scénarios
 
-- `s1-import.js` — import `.xml`, `.mxl`, `.mscz`, `.ly` et `.abc` seuls,
-  navigation (flèches, tap), découpage en mouvements
+- `s1-import.js` — import `.xml`, `.mxl`, `.mscz`, `.ly`, `.abc` et `.mid`
+  seuls, navigation (flèches, tap), découpage en mouvements
   (`fixtures/movements.xml`), réouverture à la page mémorisée, boutons de
   navigation. `index.html` et `spa.html`.
 - `s2-folder.js` — dossier Magnificat par bouton et par sélection multiple,

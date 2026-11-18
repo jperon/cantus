@@ -1,4 +1,4 @@
-// Scénario 1 — import d'un fichier seul (.xml, .mxl, .mscz, .ly, .abc),
+// Scénario 1 — import d'un fichier seul (.xml, .mxl, .mscz, .ly, .abc, .mid),
 // navigation, découpage en mouvements, réouverture à la page mémorisée.
 const path = require('path');
 const L = require('./lib');
@@ -217,6 +217,39 @@ async function runPage(browser, url, pageName, results) {
       L.record(results, '6. Erreurs JS (abc)', pageName, relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
     } catch (e) {
       L.record(results, '1. Import .abc', pageName, 'ÉCHEC', 'exception du test : ' + e.message);
+    }
+    await ctx.close();
+  }
+
+  // --- .mid via scoretk : transcription + indication ---
+  {
+    const { page, ctx, errors } = await L.newPage(browser, url, { pageName });
+    try {
+      await L.waitReady(page);
+      const fixture = path.join(__dirname, 'fixtures', 'petit-essai.mid');
+      await L.importFile(page, fixture);
+      await page.waitForFunction(() => {
+        const el = document.getElementById('transcription-notice');
+        return el && el.style.display !== 'none' && /transcri/i.test(el.textContent || '');
+      }, null, { timeout: 60000 });
+      const first = await L.waitFirstSvg(page, 180000);
+      const info = await L.pageInfo(page);
+      const notice = await page.evaluate(() => {
+        const el = document.getElementById('transcription-notice');
+        return el ? { text: el.textContent, visible: el.style.display !== 'none' } : null;
+      });
+      await L.openLibrary(page);
+      const names = (await L.libraryEntries(page)).map((e) => e.name);
+      const ok = first.svgCount > 0 && names.includes('petit-essai')
+        && notice?.visible && /transcri/i.test(notice.text);
+      L.record(results, '1. Import .mid : affichage, nom sans extension, indication de transcription', pageName,
+        ok ? 'OK' : 'ÉCHEC',
+        ok ? `affiche en ${first.ms} ms, ${info.total} page(s), bibliothèque : ${names.join(', ')}, indication : « ${notice.text} »`
+          : JSON.stringify({ first, info, names, notice }));
+      const relevant = L.summarize(errors);
+      L.record(results, '6. Erreurs JS (mid)', pageName, relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
+    } catch (e) {
+      L.record(results, '1. Import .mid', pageName, 'ÉCHEC', 'exception du test : ' + e.message);
     }
     await ctx.close();
   }

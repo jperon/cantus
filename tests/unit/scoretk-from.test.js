@@ -32,13 +32,15 @@ function loadWorker() {
 const tests = [];
 const test = (name, fn) => tests.push({ name, fn });
 
-test('extensions MuseScore, LilyPond et ABC mappées explicitement', () => {
+test('extensions MuseScore, LilyPond, ABC et MIDI mappées explicitement', () => {
   const { scoretkFrom } = loadWorker();
   assert.strictEqual(scoretkFrom('partition.mscz'), 'mscz');
   assert.strictEqual(scoretkFrom('partition.mscx'), 'mscx');
   assert.strictEqual(scoretkFrom('chanson.ly'), 'ly');
   assert.strictEqual(scoretkFrom('chanson.lilypond'), 'lilypond');
   assert.strictEqual(scoretkFrom('chanson.abc'), 'abc');
+  assert.strictEqual(scoretkFrom('transcription.mid'), 'midi');
+  assert.strictEqual(scoretkFrom('transcription.midi'), 'midi');
 });
 
 test('extension insensible à la casse et nom sans extension', () => {
@@ -46,6 +48,7 @@ test('extension insensible à la casse et nom sans extension', () => {
   assert.strictEqual(scoretkFrom('PARTITION.MSCZ'), 'mscz');
   assert.strictEqual(scoretkFrom('Chanson.LY'), 'ly');
   assert.strictEqual(scoretkFrom('Chanson.Abc'), 'abc');
+  assert.strictEqual(scoretkFrom('Transcription.MID'), 'midi');
   assert.strictEqual(scoretkFrom('sans-extension'), undefined);
   assert.strictEqual(scoretkFrom(undefined), undefined);
 });
