@@ -2553,10 +2553,20 @@ convertMsczToXml = (buffer, name) ->
     pendingMscz.set id, {resolve, reject}
     worker.postMessage { type: "convertMscz", id, bytes: buffer, name }, [buffer]
 
-# Extensions gardées dans un dossier (les autres, p. ex. .pdf, sont ignorées)
-isCompatibleFile = (name) -> /\.(xml|musicxml|mxl|mscz|mscx)$/i.test name
+# Extensions importables : source de vérité côté application. build.js tient la
+# même liste pour l'attribut `accept` des champs de fichier.
+IMPORT_EXTENSIONS = ['xml', 'musicxml', 'mxl', 'mscz', 'mscx']
 
-baseName = (name) -> name.replace /\.(xml|musicxml|mxl|mscz|mscx)$/i, ""
+# Regex unique, construite une fois : test d'extension et retrait de l'extension
+IMPORT_EXT_RE = new RegExp "\\.(#{IMPORT_EXTENSIONS.join '|'})$", 'i'
+
+# Texte du message d'erreur, dérivé de la même liste
+IMPORT_EXTENSIONS_TEXT = (".#{ext}" for ext in IMPORT_EXTENSIONS).join ', '
+
+# Extensions gardées dans un dossier (les autres, p. ex. .pdf, sont ignorées)
+isCompatibleFile = (name) -> IMPORT_EXT_RE.test name
+
+baseName = (name) -> name.replace IMPORT_EXT_RE, ""
 
 # Lit le contenu brut d'un fichier (aucune conversion à l'import)
 readFileBuffer = (file) ->
@@ -2585,7 +2595,7 @@ entryNameFor = (files) ->
 handleFolderImport = (fileList) ->
   files = Array.from(fileList or []).filter (file) -> isCompatibleFile file.name
   unless files.length > 0
-    return showError "Aucun fichier compatible (.xml, .musicxml, .mxl, .mscz, .mscx)"
+    return showError "Aucun fichier compatible (#{IMPORT_EXTENSIONS_TEXT})"
   showLoading()
   hideImport()
   hideLibrary()
@@ -2639,7 +2649,7 @@ handleImportFiles = (fileList) ->
   # une extension inconnue est refusée proprement au lieu d'échouer au rendu.
   files = files.filter (file) -> isCompatibleFile file.name
   unless files.length > 0
-    showError "Aucun fichier compatible (.xml, .musicxml, .mxl, .mscz, .mscx)"
+    showError "Aucun fichier compatible (#{IMPORT_EXTENSIONS_TEXT})"
     showImport()
     return
   if files.length is 1
