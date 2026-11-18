@@ -53,11 +53,9 @@ self.addEventListener 'install', (event) ->
 # dépendent pas de la version du service worker et sont préservés aux mises à
 # jour. Le cache de lecture doit rester ici, sinon MIDI + syncMarks seraient
 # recalculés à chaque déploiement.
-PRESERVED_CACHES = [
-  'musica-structure-cache-v1'
-  'musica-svg-cache-v2'
-  'musica-playback-cache-v3'
-]
+# Renseigné au build depuis CACHE_NAME de src/svgCache.coffee et
+# src/playbackCache.coffee (build.js échoue si une valeur manque).
+PRESERVED_CACHES = []
 
 # Un cache est ancien s'il appartient à ce service worker mais pas à cette
 # version, et qu'il n'est pas un cache de rendu préservé.

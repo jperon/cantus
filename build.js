@@ -32,6 +32,19 @@ function importAccept(scoretkAvailable) {
   return extensions.map((ext) => `.${ext}`).join(',');
 }
 
+// Noms des caches de rendu préservés par le service worker : ils sont lus dans
+// les modules qui les possèdent (CACHE_NAME), pour qu'il n'y ait qu'une valeur
+// par cache. Lève une erreur si un module ne déclare plus CACHE_NAME.
+function preservedCacheNames() {
+  return ['svgCache.coffee', 'playbackCache.coffee'].map((file) => {
+    const match = readSrc(file).match(/^[ \t]*CACHE_NAME = "([^"]+)"/m);
+    if (!match) {
+      throw new Error(`CACHE_NAME introuvable dans src/${file}`);
+    }
+    return match[1];
+  });
+}
+
 // Minification (désactivée en --watch ou --no-minify pour déboguer)
 const MINIFY = !process.argv.includes('--watch') && !process.argv.includes('--no-minify');
 const minify = (js) => MINIFY ? esbuild.transformSync(js, { minify: true }).code : js;
@@ -204,7 +217,14 @@ function copyPwaFiles(buildDate) {
   console.log('  Compiling sw.coffee...');
   const swJs = CoffeeScript.compile(fs.readFileSync(path.join(PWA, 'sw.coffee'), 'utf-8'), { bare: true });
   const swWithVersion = swJs.replace("VERSION = 'dev'", `VERSION = '${buildDate}'`);
-  fs.writeFileSync(path.join(DIST, 'sw.js'), minify(swWithVersion));
+  // Caches de rendu préservés : noms injectés depuis les modules source
+  const placeholder = 'PRESERVED_CACHES = []';
+  if (!swWithVersion.includes(placeholder)) {
+    throw new Error(`« ${placeholder} » introuvable dans pwa/sw.coffee compilé`);
+  }
+  const caches = JSON.stringify(preservedCacheNames());
+  const swWithCaches = swWithVersion.replace(placeholder, () => `PRESERVED_CACHES = ${caches}`);
+  fs.writeFileSync(path.join(DIST, 'sw.js'), minify(swWithCaches));
 
   const faviconSrc = path.join(PWA, 'favicon.ico');
   if (fs.existsSync(faviconSrc)) {
