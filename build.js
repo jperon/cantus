@@ -19,6 +19,19 @@ const SCORETK_CLASSIC = path.join(
 const SOUNDFONTS_SRC = path.join(PWA, 'soundfonts');
 const SOUNDFONT_SAMPLES = path.join(SOUNDFONTS_SRC, 'piano-fluidr3-13notes.js');
 
+// Extensions importables : même liste que IMPORT_EXTENSIONS de src/app.coffee,
+// découpée ici entre formats de base et formats lus par scoretk (MuseScore).
+// Seul l'attribut `accept` des champs de fichier en dérive.
+const IMPORT_EXTENSIONS_BASE = ['xml', 'musicxml', 'mxl'];
+const IMPORT_EXTENSIONS_SCORETK = ['mscz', 'mscx'];
+
+function importAccept(scoretkAvailable) {
+  const extensions = IMPORT_EXTENSIONS_BASE.concat(
+    scoretkAvailable ? IMPORT_EXTENSIONS_SCORETK : []
+  );
+  return extensions.map((ext) => `.${ext}`).join(',');
+}
+
 // Minification (désactivée en --watch ou --no-minify pour déboguer)
 const MINIFY = !process.argv.includes('--watch') && !process.argv.includes('--no-minify');
 const minify = (js) => MINIFY ? esbuild.transformSync(js, { minify: true }).code : js;
@@ -286,6 +299,7 @@ async function build() {
     buildDate,
     scoretkAvailable,
     soundfontsAvailable,
+    importAccept: importAccept(scoretkAvailable),
   });
 
   // 13. Write dist/index.html
@@ -388,6 +402,7 @@ ${workerJs}
     buildDate,
     scoretkAvailable,
     scoretkInline,
+    importAccept: importAccept(scoretkAvailable),
   });
 
   // 8. Write dist/spa.html

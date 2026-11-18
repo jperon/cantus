@@ -28,9 +28,9 @@ html(lang="fr")
         h1 Liseuse MusicXML
         p Ouvrir un fichier MusicXML pour commencer
         button#import-btn Ouvrir un fichier
-        input#file-input(type="file" multiple accept=scoretkAvailable ? ".xml,.musicxml,.mxl,.mscz,.mscx" : ".xml,.musicxml,.mxl")
+        input#file-input(type="file" multiple accept=importAccept)
         button#folder-btn Ouvrir un dossier
-        input#folder-input(type="file" webkitdirectory accept=scoretkAvailable ? ".xml,.musicxml,.mxl,.mscz,.mscx" : ".xml,.musicxml,.mxl")
+        input#folder-input(type="file" webkitdirectory accept=importAccept)
         #install-section.hidden
           button#btn-install Installer Cantus
           p.install-subtitle Transformez Cantus en application native
@@ -125,9 +125,9 @@ html(lang="fr")
       #library-list
       #library-actions
         button#library-import-btn Ajouter un fichier
-        input#library-file-input(type="file" multiple accept=scoretkAvailable ? ".xml,.musicxml,.mxl,.mscz,.mscx" : ".xml,.musicxml,.mxl")
+        input#library-file-input(type="file" multiple accept=importAccept)
         button#library-folder-btn Ajouter un dossier
-        input#library-folder-input(type="file" webkitdirectory accept=scoretkAvailable ? ".xml,.musicxml,.mxl,.mscz,.mscx" : ".xml,.musicxml,.mxl")
+        input#library-folder-input(type="file" webkitdirectory accept=importAccept)
     #page-indicator
     #loading-indicator.hidden
       .spinner-small
