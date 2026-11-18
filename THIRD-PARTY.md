@@ -119,15 +119,14 @@ L'attribution CC-BY 3.0 doit rester visible : elle figure dans l'en-tête de
 l'asset, dans ce fichier et doit être reprise dans l'écran « À propos » (ou
 la section d'attribution de l'interface) avec un lien vers la licence.
 
-## mscz2xml
+## scoretk
 
 - Licence : GNU GPL v3 seulement (GPL-3.0-only)
 - Source : <https://github.com/jperon/scoretk>
 
-mscz2xml, qui fait partie du projet scoretk, est un portage du code de
-MuseScore Studio, Copyright © MuseScore Limited and others, distribué sous
-GNU GPL v3 seulement (GPL-3.0-only). Il n'est chargé que lors de l'import
-d'un fichier `.mscz` ou `.mscx`.
+scoretk est un portage du code de MuseScore Studio, Copyright © MuseScore
+Limited and others, distribué sous GNU GPL v3 seulement (GPL-3.0-only). Il
+n'est chargé que lors de l'import d'un fichier `.mscz` ou `.mscx`.
 
 ---
 

@@ -6,8 +6,8 @@ verovioLoaded = false
 movements = {}  # movementId -> {pageCount, loaded, xml, options}
 currentMovement = null
 pending = []  # messages waiting for the toolkit, replayed once Verovio is ready
-msczLoad = null  # mscz2xml loading promise, created on first MuseScore conversion
-msczInline = null  # SPA: {wasmJs, js, wasm} sources sent by the page
+scoretkLoad = null  # scoretk loading promise, created on first MuseScore conversion
+scoretkInline = null  # SPA: {glue, wasm} sources sent by the page
 playbackCache = {}  # movementId -> playbackData, invalidated on each loadData
 
 # Clear all movements (call before loading new file)
@@ -96,26 +96,33 @@ initVerovio = (resolve, reject) ->
   .catch (err) ->
     reject(err)
 
-# Load the MuseScore converter once: the package in the normal build, the
-# inlined wasm module in the SPA. Both resolve an object with convert(bytes).
-loadMscz2xml = ->
-  return msczLoad if msczLoad
-  msczLoad = new Promise (resolve, reject) ->
+# Load the scoretk converter once: the package in the normal build, the
+# inlined glue and wasm module in the SPA. Both resolve an object exposing
+# convert(bytes, {from, to}) -> Uint8Array.
+loadScoretk = ->
+  return scoretkLoad if scoretkLoad
+  scoretkLoad = new Promise (resolve, reject) ->
     try
-      if msczInline
-        # SPA : évaluer wasm-bindgen (portée globale) puis lui donner le .wasm inliné
-        self.eval msczInline.wasmJs + '\nself.wasm_bindgen = wasm_bindgen;'
-        bytes = Uint8Array.from atob(msczInline.wasm), (c) -> c.charCodeAt 0
-        self.wasm_bindgen { module_or_path: bytes }
+      if scoretkInline
+        # SPA : évaluer le glue wasm-bindgen (portée globale) puis lui donner
+        # le module compilé depuis le .wasm inliné en base64.
+        self.eval scoretkInline.glue + '\nself.wasm_bindgen = wasm_bindgen;'
+        bytes = Uint8Array.from atob(scoretkInline.wasm), (c) -> c.charCodeAt 0
+        module = new WebAssembly.Module bytes
+        self.wasm_bindgen { module_or_path: module }
           .then -> resolve self.wasm_bindgen
           .catch reject
       else
-        self.MSCZ2XML_BASE_URL = new URL('mscz2xml/', self.location.href).href
-        importScripts 'mscz2xml/mscz2xml.js'
-        self.mscz2xml.ready.then -> resolve self.mscz2xml
+        importScripts 'scoretk/scoretk.js'
+        unless self.scoretk?.ready
+          reject new Error "paquet scoretk absent : import MuseScore désactivé"
+          return
+        self.scoretk.ready
+          .then -> resolve self.scoretk
+          .catch reject
     catch err
-      reject err
-  msczLoad
+      reject new Error "scoretk indisponible : #{err.message or err}"
+  scoretkLoad
 
 # Render one page of the currently loaded movement and send it back
 postPage = (movementId, pageNumber) ->
@@ -668,14 +675,18 @@ handleMessage = (e) ->
       when "init"
         notifyReady() if tk
 
-      when "msczInline"
-        msczInline = e.data
+      when "scoretkInline"
+        scoretkInline = e.data
 
       when "convertMscz"
-        { id, bytes } = e.data
-        loadMscz2xml()
-          .then (api) -> api.convert new Uint8Array(bytes)
-          .then (xml) ->
+        { id, bytes, name } = e.data
+        # `from` est explicite : detect classerait un XML sans <museScore en
+        # musicxml, donc un .mscx serait mal interprété.
+        from = if /\.mscx$/i.test(name or '') then 'mscx' else 'mscz'
+        loadScoretk()
+          .then (api) -> api.convert new Uint8Array(bytes), { from }
+          .then (result) ->
+            xml = new TextDecoder().decode result
             self.postMessage { type: "msczConverted", id, xml }
           .catch (err) ->
             self.postMessage {

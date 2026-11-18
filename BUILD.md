@@ -22,17 +22,18 @@ le devShell pour retrouver les variables d'environnement.
 `build.js` lit deux chemins hors du dépôt :
 
 - `../partitura/verovio-toolkit-wasm.js` (symlink vers le paquet Verovio) ;
-- `../musescore/result-wasm/classic`, surchargeable par `MSCZ2XML_PKG`.
+- `../musescore/result/classic`, surchargeable par `SCORETK_PKG`.
 
-Le flake positionne `MSCZ2XML_PKG` par défaut à
-`$PWD/../musescore/result-wasm`. Le build reste utilisable si le paquet
-mscz2xml est absent (avertissement, import MuseScore désactivé) ; en revanche
-le toolkit Verovio est obligatoire.
+Le flake positionne `SCORETK_PKG` par défaut à `$PWD/../musescore/result`.
+Le build reste utilisable si le paquet scoretk est absent (avertissement,
+import MuseScore désactivé) ; en revanche le toolkit Verovio est obligatoire.
+Le paquet est copié dans `dist/scoretk/` (wrapper, glue et `.wasm`) ; le SPA
+inline le glue et le `.wasm` en base64 dans `spa.html`.
 
 Ces chemins ne sont pas des entrées Nix : `packages.default` est donc un
 script de construction (`cantus-site-build`) qui opère dans le dépôt courant,
 et **non** une dérivation hermétique du site. C'est volontaire : un build
-sandboxé exigerait de figer Verovio et mscz2xml comme dépendances.
+sandboxé exigerait de figer Verovio et scoretk comme dépendances.
 
 ## Module timeline (préparation scoretk)
 

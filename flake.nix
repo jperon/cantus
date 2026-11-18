@@ -46,7 +46,7 @@
 
       # Script de construction du site. Ce n'est PAS une dérivation hermétique :
       # build.js lit ../partitura/verovio-toolkit-wasm.js et
-      # ../musescore/result-wasm/classic, et écrit dans dist/ du dépôt courant.
+      # ../musescore/result/classic, et écrit dans dist/ du dépôt courant.
       # On expose donc honnêtement un script, pas un artefact figé.
       siteBuild =
         pkgs:
@@ -58,7 +58,7 @@
               echo "cantus : lancer depuis la racine du dépôt (build.js introuvable)" >&2
               exit 1
             fi
-            export MSCZ2XML_PKG="''${MSCZ2XML_PKG:-$PWD/../musescore/result-wasm}"
+            export SCORETK_PKG="''${SCORETK_PKG:-$PWD/../musescore/result}"
             exec node build.js "$@"
           '';
         };
@@ -130,8 +130,8 @@
               fi
               export PATH="$ANDROID_HOME/platform-tools:$PATH"
 
-              # Paquet mscz2xml attendu par build.js (import MuseScore).
-              export MSCZ2XML_PKG="''${MSCZ2XML_PKG:-$PWD/../musescore/result-wasm}"
+              # Paquet scoretk attendu par build.js (import MuseScore).
+              export SCORETK_PKG="''${SCORETK_PKG:-$PWD/../musescore/result}"
 
               echo "Cantus : node $(node --version), java $(java -version 2>&1 | head -n1), gradle $(gradle --version 2>/dev/null | awk '/^Gradle/{print $2}')"
               echo "  build   : nix run .#build  (ou node build.js)"

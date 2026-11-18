@@ -2093,11 +2093,11 @@ convertSource = (source) ->
   else if /\.mxl$/i.test name
     Promise.resolve().then -> window.__musicaMxl.extractMxl data
   else if /\.msc[zx]$/i.test name
-    unless window.__musicaMsczAvailable
+    unless window.__musicaScoretkAvailable
       Promise.reject new Error "import MuseScore non disponible dans cette version"
     else
       # le worker détache le tampon qu'il reçoit : lui donner une copie
-      convertMsczToXml data.slice 0
+      convertMsczToXml data.slice(0), name
   else
     Promise.resolve new TextDecoder().decode new Uint8Array(data)
 
@@ -2462,12 +2462,13 @@ setupNavigation = ->
         e.preventDefault()
         goPrev()
 
-# Ask the worker to convert a MuseScore file (.mscz/.mscx) to MusicXML
-convertMsczToXml = (buffer) ->
+# Ask the worker to convert a MuseScore file (.mscz/.mscx) to MusicXML.
+# `name` permet au worker de passer `from` explicitement ('mscz' ou 'mscx').
+convertMsczToXml = (buffer, name) ->
   new Promise (resolve, reject) ->
     id = ++msczRequestId
     pendingMscz.set id, {resolve, reject}
-    worker.postMessage { type: "convertMscz", id, bytes: buffer }, [buffer]
+    worker.postMessage { type: "convertMscz", id, bytes: buffer, name }, [buffer]
 
 # Extensions gardées dans un dossier (les autres, p. ex. .pdf, sont ignorées)
 isCompatibleFile = (name) -> /\.(xml|musicxml|mxl|mscz|mscx)$/i.test name

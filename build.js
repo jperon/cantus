@@ -9,9 +9,10 @@ const SRC = path.join(__dirname, 'src');
 const PWA = path.join(__dirname, 'pwa');
 const DIST = path.join(__dirname, 'dist');
 const VEROVIO_TOOLKIT = path.join(__dirname, '..', 'partitura', 'verovio-toolkit-wasm.js');
-// Paquet wasm d'import MuseScore (mscz2xml), produit par le projet ../musescore
-const MSCZ2XML_CLASSIC = path.join(
-  process.env.MSCZ2XML_PKG || path.join(__dirname, '..', 'musescore', 'result-wasm'),
+// Paquet wasm scoretk (import MuseScore et autres formats), produit par le
+// projet ../musescore. Seule la variante classic est utilisée dans le worker.
+const SCORETK_CLASSIC = path.join(
+  process.env.SCORETK_PKG || path.join(__dirname, '..', 'musescore', 'result'),
   'classic'
 );
 // Échantillons audio (sous-ensemble FluidR3_GM, format MIDI.js)
@@ -76,39 +77,40 @@ function readFflate() {
   return minify(`(function(){${src}; window.__fflate = fflate;})()`);
 }
 
-// Copie le paquet mscz2xml dans dist/mscz2xml ; renvoie false s'il est absent
-function copyMscz2xml() {
-  if (!fs.existsSync(MSCZ2XML_CLASSIC)) {
-    console.warn(`  Attention : ${MSCZ2XML_CLASSIC} introuvable, import MuseScore désactivé`);
+// Copie le paquet scoretk dans dist/scoretk ; renvoie false s'il est absent
+function copyScoretk() {
+  if (!fs.existsSync(SCORETK_CLASSIC)) {
+    console.warn(`  Attention : ${SCORETK_CLASSIC} introuvable, import MuseScore désactivé`);
     return false;
   }
-  console.log('  Copying mscz2xml...');
-  ensureDir(path.join(DIST, 'mscz2xml'));
-  for (const file of fs.readdirSync(MSCZ2XML_CLASSIC)) {
+  console.log('  Copying scoretk...');
+  ensureDir(path.join(DIST, 'scoretk'));
+  for (const file of fs.readdirSync(SCORETK_CLASSIC)) {
     // Seuls le JS et le wasm servent au navigateur
     if (!file.endsWith('.js') && !file.endsWith('.wasm')) continue;
-    const dest = path.join(DIST, 'mscz2xml', file);
+    const dest = path.join(DIST, 'scoretk', file);
     // Le paquet vient du store Nix, en lecture seule : une destination
     // existante et en lecture seule ferait échouer la copie (EACCES)
     fs.rmSync(dest, { force: true });
-    fs.copyFileSync(path.join(MSCZ2XML_CLASSIC, file), dest);
+    fs.copyFileSync(path.join(SCORETK_CLASSIC, file), dest);
     fs.chmodSync(dest, 0o644);
   }
-  console.log('  -> dist/mscz2xml');
+  console.log('  -> dist/scoretk');
   return true;
 }
 
-// Sources du paquet mscz2xml pour le SPA (tout est inliné dans la page)
-function readMscz2xml() {
-  if (!fs.existsSync(MSCZ2XML_CLASSIC)) {
-    console.warn(`  Attention : ${MSCZ2XML_CLASSIC} introuvable, import MuseScore désactivé`);
+// Sources du paquet scoretk pour le SPA (tout est inliné dans la page) : le
+// glue no-modules et le .wasm, tous deux évalués dans le worker.
+function readScoretk() {
+  if (!fs.existsSync(SCORETK_CLASSIC)) {
+    console.warn(`  Attention : ${SCORETK_CLASSIC} introuvable, import MuseScore désactivé`);
     return null;
   }
-  const read = (file) => fs.readFileSync(path.join(MSCZ2XML_CLASSIC, file), 'utf-8');
-  console.log('  Reading mscz2xml...');
+  const read = (file) => fs.readFileSync(path.join(SCORETK_CLASSIC, file), 'utf-8');
+  console.log('  Reading scoretk...');
   return {
-    wasmJs: read('mscz2xml_wasm.js'),
-    wasm: fs.readFileSync(path.join(MSCZ2XML_CLASSIC, 'mscz2xml_wasm_bg.wasm')).toString('base64'),
+    glue: read('scoretk_wasm.js'),
+    wasm: fs.readFileSync(path.join(SCORETK_CLASSIC, 'scoretk_wasm_bg.wasm')).toString('base64'),
   };
 }
 
@@ -128,7 +130,7 @@ function copySoundfontSamples() {
   ensureDir(path.join(DIST, 'soundfonts'));
   for (const file of files) {
     const dest = path.join(DIST, 'soundfonts', file);
-    // Même précaution que copyMscz2xml : la destination peut être en lecture seule
+    // Même précaution que copyScoretk : la destination peut être en lecture seule
     fs.rmSync(dest, { force: true });
     fs.copyFileSync(path.join(SOUNDFONTS_SRC, file), dest);
     fs.chmodSync(dest, 0o644);
@@ -237,7 +239,7 @@ async function build() {
   fs.copyFileSync(verovioToolkit(), path.join(DIST, 'verovio-toolkit-wasm.js'));
   console.log('  -> dist/verovio-toolkit-wasm.js (partitura)');
 
-  const msczAvailable = copyMscz2xml();
+  const scoretkAvailable = copyScoretk();
   const soundfontsAvailable = copySoundfontSamples();
 
   const fflateSetup = readFflate();
@@ -280,7 +282,7 @@ async function build() {
     playbackJs,
     appJs,
     buildDate,
-    msczAvailable,
+    scoretkAvailable,
     soundfontsAvailable,
   });
 
@@ -318,8 +320,8 @@ async function buildSpa() {
   const soundfontPlayerJs = readSoundfontPlayer();
   const soundfontSamples = readSoundfontSamples();
   const { mxlJs, storageJs, svgCacheJs, playbackCacheJs, midiJs, timelineJs, audioJs, playbackJs, workerJs, appJs } = compileScripts();
-  const msczInline = readMscz2xml();
-  const msczAvailable = !!msczInline;
+  const scoretkInline = readScoretk();
+  const scoretkAvailable = !!scoretkInline;
 
   // 4. Read CSS
   const css = readCss();
@@ -350,13 +352,13 @@ ${workerJs}
       // Tell worker Verovio is already loaded (inline)
       worker.postMessage({type: 'verovioInline'});
 
-      // MuseScore import: the wasm module is inlined too
-      var msczWasmJs = document.getElementById('mscz2xml-wasm-src');
-      if (msczWasmJs) {
+      // MuseScore import: scoretk's glue and wasm module are inlined too
+      var scoretkGlue = document.getElementById('scoretk-wasm-src');
+      if (scoretkGlue) {
         worker.postMessage({
-          type: 'msczInline',
-          wasmJs: msczWasmJs.textContent,
-          wasm: document.getElementById('mscz2xml-wasm-b64').textContent
+          type: 'scoretkInline',
+          glue: scoretkGlue.textContent,
+          wasm: document.getElementById('scoretk-wasm-b64').textContent
         });
       }
     })();
@@ -381,8 +383,8 @@ ${workerJs}
     playbackJs,
     appJs,
     buildDate,
-    msczAvailable,
-    msczInline,
+    scoretkAvailable,
+    scoretkInline,
   });
 
   // 8. Write dist/spa.html
