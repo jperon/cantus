@@ -140,9 +140,16 @@ Il n'existe **ni `pauseBefore`**, ni `ticksPerQuarter`, ni `durationTicks` ou
 `measures[dernier].endTimeUs` (repli sur `ticks` converti par la carte de
 tempo si `measures` est vide). Les pauses sont détectées par **coïncidence**
 entre `pause.tick` et la fin (`endTick`) d'une mesure ; la position dans
-`measures[]` et `segment` font foi, `passage` n'est pas un discriminant. Les
-fixtures versionnées sont dans `tests/fixtures/scoretk/` (provenance et
+`measures[]` et `segment` font foi, `passage` n'est pas un discriminant, et
+`ordinal` ne se distingue jamais de `measure` (identique sur toutes les
+fixtures versionnées, dans `tests/fixtures/scoretk/` ; provenance et
 normalisation dans son `README.md`).
+
+### Limites connues de scoretk
+
+- Fermatas et respirations non modélisées : la timeline les ignore.
+- Trémolo à deux accords : seule la première note pilote les deux attaques
+  (parité MuseScore).
 
 ## Tests Playwright
 

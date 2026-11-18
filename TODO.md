@@ -19,33 +19,6 @@ Reste à faire uniquement. Pour l'architecture et les décisions déjà prises, 
 - L'APK n'est pas versionné (`apk/` est ignoré) et la signature dépend de
   `~/.config/cantus/apk.env` et des variables `BUBBLEWRAP_*`/`CANTUS_*`.
 
-## Dette technique
-
-### Tests unitaires contre des contrats imaginaires
-
-- Deux cas rencontrés : `pauseBefore`, puis `from`/`to`/`offset`.
-- **Règle** : tester les modules contre les fixtures réelles du paquet
-  (`tests/fixtures/scoretk/`), jamais contre des objets écrits à la main.
-
-### Champs annoncés absents
-
-- scoretk ne fournit ni `durationUs`, ni `pauseBefore`, ni `ordinal` distinct de
-  `measure` ; `passage` n'est pas un discriminant d'occurrence.
-- Ces conventions sont documentées dans `BUILD.md` (section « Aperçu audio et
-  synchronisation ») : vérifier qu'elles y restent à chaque évolution de scoretk.
-
-### Limites assumées de scoretk
-
-- Fermatas et respirations non modélisées.
-- Trémolo à deux accords : seule la première note pilote les deux attaques
-  (parité MuseScore).
-
-### Résidus à examiner
-
-- `/tmp/cantus-old` conserve des scripts `tests/probe-*.js` non suivis à
-  examiner.
-- `../cantus-wt-O-voix.js` : fichier égaré à côté du dépôt.
-
 ## Industrialisation
 
 ### Flake Nix non hermétique

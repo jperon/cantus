@@ -99,6 +99,10 @@ le processeur) : c'est la durée du lot qui diminue.
 
 ## Tests unitaires
 
+**Règle des fixtures** : tester les modules contre les fixtures réelles du
+paquet (`tests/fixtures/scoretk/`), jamais contre des objets écrits à la main —
+un contrat imaginé (`pauseBefore`, `from`/`to`/`offset`) ne prouve rien.
+
 - `tests/unit/midi.test.js` — parseur SMF (`src/midi.coffee`).
 - `tests/unit/audio.test.js` — logique audio pure : volumes, mapping des voix,
   ordonnancement, normalisation de `playbackData`.
