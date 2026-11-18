@@ -812,19 +812,29 @@ horizontalHalfPage = (page, id) ->
 # de lecture. Appelé une fois par frame de défilement et après chaque saut
 # explicite (setScrollPos : boutons de page, ±5, goto). Le debounce évite de
 # bouger la lecture à chaque frame d'un geste de défilement.
-schedulePageSeek = (page) ->
+schedulePageSeek = (page, fromScroll = false) ->
   return if lastDisplayedPage is null
   return if page is lastDisplayedPage
   # Pendant le suivi automatique, c'est followPlaybackFrame qui mémorise la
   # page visée (la page effectivement mesurée peut être en retard d'une frame) :
   # ne rien programmer ici.
   return if followSuppressSeek
+  # Un événement `scroll` arrive à la frame suivante : il peut encore mesurer
+  # la page d'AVANT le déplacement du suivi (SVG pas encore posé, liseuse
+  # lente). Cale + suivi se renverraient alors la balle : seek vers le début de
+  # la page précédente, suivi qui y revient, nouvel événement périmé, etc. —
+  # la lecture recule sans fin. Pendant la lecture avec suivi actif, seul
+  # applyFollowScroll pilote le défilement (il mémorise sa cible) ; une mesure
+  # issue d'un `scroll` ne doit donc jamais programmer de cale. Les sauts
+  # explicites (boutons, tap, goto) appellent noteDisplayedPage() sans ce
+  # drapeau et restent actifs, y compris en lecture.
+  return if fromScroll and followPlaybackEnabled and playback.state is "playing"
   lastDisplayedPage = page
   pageSeekPending = true
   clearTimeout pageSeekTimer if pageSeekTimer
   pageSeekTimer = setTimeout (-> seekToDisplayedPage page), pageSeekDebounceMs
 
-noteDisplayedPage = ->
+noteDisplayedPage = (fromScroll = false) ->
   page = displayedPage()
   # Premier affichage (ou rechargement) : simple prise de référence, sinon on
   # déplacerait la lecture au chargement sans geste de l'utilisateur.
@@ -836,7 +846,7 @@ noteDisplayedPage = ->
   if page is followTargetPage
     lastDisplayedPage = page
     return
-  schedulePageSeek page
+  schedulePageSeek page, fromScroll
 
 # Place la tête de lecture au temps du premier marqueur de la page affichée.
 # Les données de lecture ne sont jamais demandées ici : sans données déjà
@@ -3205,8 +3215,11 @@ document.addEventListener "DOMContentLoaded", ->
       scrollScheduled = false
       applyVerticalAlignment()
       # Défilement manuel : seule une page affichée différente déclenche la
-      # cale (après debounce), pas chaque frame du geste.
-      noteDisplayedPage()
+      # cale (après debounce), pas chaque frame du geste. fromScroll distingue
+      # ce cas asynchrone des sauts explicites : pendant la lecture avec suivi,
+      # une mesure périmée ne doit pas faire reculer la tête (voir
+      # schedulePageSeek).
+      noteDisplayedPage true
       if scrollMode is "vertical"
         showIndicator()
         prefetch()

@@ -20,6 +20,8 @@ const FILES = {
   faureMscz: path.join(DATA, 'downloads/Cantique de Jean Racine - Fauré.mscz'),
   laFouleMxl: path.join(ROOT, 'La_foule.mxl'),
   magnificatDir: path.join(DATA, 'magnificat'),
+  // Fichier réel du 1er mouvement du Magnificat de Bach (bug de boucle de
+  // lecture signalé sur la version publiée 821b248).
   magnificatBachMscz: path.join(DATA, 'magnificat-bach/01- Magnificat.mscz'),
 };
 
