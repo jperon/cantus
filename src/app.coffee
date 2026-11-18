@@ -411,6 +411,7 @@ loadToken = 0  # incrémenté à chaque chargement : arrête les chaînes de con
 movementLoadTokens = new Map()  # movementId -> loadToken de la demande en cours
 playbackCache = new Map()  # "movementId:variante de voix" -> données de lecture
 pendingPlayback = new Map()  # même clé -> {resolve, reject}
+workerSources = new Set()  # sources déjà enregistrées dans le worker (XML complet)
 
 # Transport audio (lot 1) : état de la lecture du mouvement affiché.
 # position et duration sont en millisecondes ; loadToken invalide une demande
@@ -425,6 +426,7 @@ playback =
   loadToken: 0
   rafId: null
   marks: []  # syncMarks du mouvement chargé (t en ms, page locale)
+  pauses: []  # pauses du mouvement (timeUs/endTimeUs), pour geler le suivi
   followKey: null  # dernière cible de suivi appliquée
 
 # Worker message handler
@@ -530,9 +532,9 @@ worker.onmessage = (e) ->
         pending.reject new Error message
 
     when "playbackData"
-      {movementId, midi, syncMarks, staffLabels, trackMap, duration, segments, linearRepeats} = e.data
-      key = playbackKey movementId
-      data = {midi, syncMarks, staffLabels, trackMap, duration, segments: segments ? [], linearRepeats: !!linearRepeats}
+      {movementId, midi, syncMarks, staffLabels, trackMap, duration, segments, pauses, linearRepeats} = e.data
+      key = playbackKey movementId, !!linearRepeats
+      data = {midi, syncMarks, staffLabels, trackMap, duration, segments: segments ? [], pauses: pauses ? [], linearRepeats: !!linearRepeats}
       playbackCache.set key, data
       pending = pendingPlayback.get key
       if pending
@@ -540,10 +542,10 @@ worker.onmessage = (e) ->
         pending.resolve data
 
     when "playbackError"
-      {movementId, message} = e.data
+      {movementId, message, linearRepeats} = e.data
       # PR 1 : aucune UI de lecture, une erreur ici ne doit rien casser
       console.warn "Données de lecture indisponibles pour le mouvement #{movementId}: #{message}"
-      key = playbackKey movementId
+      key = playbackKey movementId, !!linearRepeats
       pending = pendingPlayback.get key
       if pending
         pendingPlayback.delete key
@@ -602,26 +604,32 @@ requestFromWorker = (movementId, localPage) ->
 # Clé du cache de lecture : une sélection de voix différente (masquage ou
 # taille) produit un autre rendu Verovio, donc d'autres données de lecture.
 # Les données sont calculées à partir du XML chargé dans le worker : c'est sa
-# variante qui compte, pas l'état courant des réglages.
-playbackKey = (movementId) ->
-  mode = if expandRepeats then "expanded" else "linear"
-  "#{movementId}:#{loadedVariant movementId}:#{mode}"
+# variante qui compte, pas l'état courant des réglages. Le mode et les bornes
+# du mouvement en font partie : les données des deux modes ne se mélangent pas.
+playbackKey = (movementId, linear = not expandRepeats) ->
+  movement = movements.find (m) -> m.id is movementId
+  mode = if linear then "linear" else "expanded"
+  bounds = "#{movement?.measureStart ? 0}:#{movement?.measureEnd ? ''}"
+  "#{movementId}:#{loadedVariant movementId}:#{mode}:#{bounds}"
 
 # Demande les données de lecture (MIDI, synchronisation) : cache mémoire,
 # cache persistant (compressé, clé géométrique) puis worker. La clé persistante
 # inclut fichier, mouvement, dimensions, échelle et variante de voix, donc un
 # zoom, une rotation ou un masquage ne réutilise jamais des marqueurs périmés.
-requestPlaybackData = (movementId) ->
-  key = playbackKey movementId
+requestPlaybackData = (movementId, linear = not expandRepeats) ->
+  key = playbackKey movementId, linear
   return Promise.resolve(playbackCache.get key) if playbackCache.has key
   return pendingPlayback.get(key).promise if pendingPlayback.has key
   fileId = currentFileId
   width = currentPageWidth
   height = currentPageHeight
   scale = currentScale
-  # Le mode de reprise fait partie de la clé persistante : les données des
-  # deux modes ne se servent jamais l'une pour l'autre.
-  variant = "#{loadedVariant movementId}|#{if expandRepeats then 'expanded' else 'linear'}"
+  movement = movements.find (m) -> m.id is movementId
+  measureStart = movement?.measureStart ? 0
+  measureEnd = movement?.measureEnd ? null
+  # Le mode de reprise et les bornes font partie de la clé persistante : les
+  # données des deux modes ne se servent jamais l'une pour l'autre.
+  variant = "#{loadedVariant movementId}|#{if linear then 'linear' else 'expanded'}|#{measureStart}:#{measureEnd ? ''}"
   promise = new Promise (resolve, reject) ->
     pendingPlayback.set key, {resolve, reject}
     cached = if playbackStore?.get? and fileId
@@ -642,7 +650,9 @@ requestPlaybackData = (movementId) ->
         worker.postMessage
           type: "getPlaybackData"
           movementId: movementId
-          linearRepeats: not expandRepeats
+          linearRepeats: linear
+          measureStart: measureStart
+          measureEnd: measureEnd
   # Écrire le résultat dans le cache persistant, sans retarder la lecture
   promise.then (data) ->
     if data and playbackStore?.set? and fileId
@@ -851,6 +861,11 @@ followPlaybackFrame = ->
   # Une cale manuelle attend son debounce : ne pas la contredire en ramenant
   # l'écran sur la page de la position courante avant qu'elle s'applique.
   return if pageSeekPending
+  # Pendant une pause (silence écrit), la partition ne doit pas avancer : le
+  # temps continue mais aucun marqueur n'est atteint.
+  timeline = window.__musicaTimeline
+  if timeline?.pauseAt? and Array.isArray(playback.pauses) and playback.pauses.length
+    return if timeline.pauseAt playback.pauses, currentPlaybackPosition()
   followSuppressSeek = true
   try
     target = applyFollowScroll()
@@ -974,6 +989,7 @@ resetPlayback = ->
   playback.duration = 0
   playback.loading = false
   playback.marks = []
+  playback.pauses = []
   playback.followKey = null
   renderTransport()
 
@@ -1062,6 +1078,7 @@ startPlayback = ->
       playback.duration = Math.max 0, Number(data.duration) or 0
       playback.position = 0
       playback.marks = data.syncMarks ? []
+      playback.pauses = data.pauses ? []
       playback.followKey = null
       try
         engine.load data
@@ -2116,7 +2133,10 @@ ensureSource = (index) ->
 
 # Ajoute les mouvements d'une source à la fin de la liste globale
 appendSourceMovements = (index, info) ->
-  count = info.splitInfo.splitPoints.length + 1
+  splitPoints = info.splitInfo.splitPoints ? []
+  totalMeasures = info.splitInfo.totalMeasures ? 0
+  bounds = [0, ...splitPoints, totalMeasures]
+  count = splitPoints.length + 1
   for localIndex in [0...count]
     movements.push
       id: movements.length + 1
@@ -2125,7 +2145,22 @@ appendSourceMovements = (index, info) ->
       loaded: false
       sourceIndex: index
       localIndex: localIndex
+      # Bornes globales au fichier (indices de mesures écrites) : le worker
+      # en découpe la timeline scoretk.
+      measureStart: bounds[localIndex] ? 0
+      measureEnd: bounds[localIndex + 1] ? null
   console.log "Source #{index + 1}/#{currentSources.length} : #{count} mouvement(s), #{movements.length} au total"
+
+# Enregistre une fois par source le XML complet dans le worker : le MIDI
+# scoretk est global au fichier, pas au mouvement élagué.
+ensureWorkerSource = (index, info) ->
+  return unless info?.xml?
+  return if workerSources.has index
+  workerSources.add index
+  worker.postMessage
+    type: "registerSource"
+    sourceId: index
+    xml: info.xml
 
 # Charge une entrée : un fichier seul est une source, un dossier en a plusieurs.
 # La première source est convertie et affichée tout de suite, les suivantes
@@ -2171,6 +2206,7 @@ startLoad = (startPage = 1) ->
   pendingPlayback.forEach (pending) -> pending.reject new Error "Chargement remplacé"
   pendingPlayback.clear()
   playbackCache.clear()
+  workerSources.clear()
   pushedPages = {}
   movements = []
   awaitingLoad = true
@@ -2214,7 +2250,10 @@ loadFirstSource = (token) ->
       mvXml = extractMovement info.splitInfo, 0
       unless mvXml
         return loadFirstSource token
-      loadMovementAndWait(1, mvXml, currentPageWidth, currentPageHeight)
+      ensureWorkerSource index, info
+      firstMovement = movements[0]
+      loadMovementAndWait(1, mvXml, currentPageWidth, currentPageHeight, index,
+        firstMovement?.measureStart, firstMovement?.measureEnd)
       # Subsequent movements and sources are loaded once this one is displayed
       # (see movementLoaded handler)
       fileLoaded = true
@@ -2253,9 +2292,11 @@ stepLoad = (token) ->
     unless mvXml
       pending.loaded = true
       return stepLoad token
+    ensureWorkerSource pending.sourceIndex, info
     pageWidth = Math.round(window.innerWidth * 100 / currentScale)
     pageHeight = Math.round(window.innerHeight * 100 / currentScale)
-    loadMovementAndWait(pending.id, mvXml, pageWidth, pageHeight).then ->
+    loadMovementAndWait(pending.id, mvXml, pageWidth, pageHeight, pending.sourceIndex,
+      pending.measureStart, pending.measureEnd).then ->
       stepLoad token
     return
 
@@ -2309,7 +2350,7 @@ tryNavigateTarget = ->
   goToPage page
 
 # Load a movement in worker and return Promise that resolves when loaded
-loadMovementAndWait = (movementId, xmlString, pageWidth, pageHeight) ->
+loadMovementAndWait = (movementId, xmlString, pageWidth, pageHeight, sourceId = null, measureStart = 0, measureEnd = null) ->
   new Promise (resolve) ->
     # Store resolver to be called when movementLoaded message arrives
     pendingMovementLoads.set movementId, resolve
@@ -2326,6 +2367,9 @@ loadMovementAndWait = (movementId, xmlString, pageWidth, pageHeight) ->
       pageWidth: pageWidth
       pageHeight: pageHeight
       scale: currentScale
+      sourceId: sourceId
+      measureStart: measureStart
+      measureEnd: measureEnd
 
 # Loading indicator for background movement loading
 showLoadingIndicator = ->

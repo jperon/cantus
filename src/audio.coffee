@@ -190,7 +190,6 @@ normalizePlaybackData = (data, parser) ->
   midi = if typeof data.midi is 'string' then parser.parseBase64(data.midi) else parser.parse(data.midi)
   tracks = midi.tracks ? []
   notes = []
-  lastEnd = 0
   for track in tracks
     index = track.index ? tracks.indexOf track
     for note in (track.notes ? [])
@@ -203,27 +202,21 @@ normalizePlaybackData = (data, parser) ->
       velocity = Number note.velocity
       velocity = 100 unless isFinite velocity
       notes.push {start, dur: duration, pitch, velocity, track: index}
-      end = start + duration
-      lastEnd = end if end > lastEnd
   notes.sort (a, b) -> (a.start - b.start) or (a.pitch - b.pitch)
   segments = if Array.isArray(data.segments) then data.segments else []
   durationMs = Number data.duration
   duration = if isFinite(durationMs) and durationMs > 0 then durationMs / 1000 else 0
-  if segments.length
-    # Mode linéaire : la durée écrite fait foi, jamais la durée du MIDI
-    # complet (qui contient les reprises) ni la fin des notes d'origine.
-    # Le worker exprime les segments en millisecondes : on les ramène en
-    # secondes, l'unité de `notes`.
-    secondsSegments = for segment in segments
-      from: Number(segment.from) / 1000
-      to: Number(segment.to) / 1000
-      offset: Number(segment.offset) / 1000
-    notes = remapNotesToSegments notes, secondsSegments
-    duration = segmentsDuration secondsSegments unless duration > 0
-  else
-    # La durée du timemap fait foi ; on ne descend jamais sous la fin réelle
-    # du MIDI ni sous la dernière note, pour ne pas tronquer la lecture.
-    duration = Math.max duration, Number(midi.duration) or 0, lastEnd
+  # Le worker fournit toujours des segments (un par mesure jouée, pauses
+  # incluses) : tout le flux MIDI est remappé dessus, dans les deux modes.
+  # Le worker les exprime en millisecondes : on les ramène en secondes,
+  # l'unité de `notes`.
+  secondsSegments = for segment in segments
+    from: Number(segment.from) / 1000
+    to: Number(segment.to) / 1000
+    offset: Number(segment.offset) / 1000
+  notes = remapNotesToSegments notes, secondsSegments
+  # La durée du slice fait foi ; à défaut, la somme des segments.
+  duration = segmentsDuration secondsSegments unless duration > 0
   {
     midi
     tracks
