@@ -402,8 +402,8 @@ pushedPages = {}  # movementId -> last page of the initial push received (in ord
 movementVariants = {}  # movementId -> variante du XML chargé
 memoryVariant = null  # variante des entrées de memoryCache
 pendingMovementLoads = new Map()  # movementId -> resolve function
-pendingMscz = new Map()  # MuseScore conversion id -> {resolve, reject}
-msczRequestId = 0
+pendingScoretk = new Map()  # scoretk conversion id -> {resolve, reject}
+scoretkRequestId = 0
 targetPage = null  # Page to navigate to once all movements are loaded
 awaitingLoad = false  # A new load is posted: ignore the previous render's replies
 currentSources = null  # [{name, data}] : sources de l'entrée courante (XML ou binaire)
@@ -524,12 +524,12 @@ worker.onmessage = (e) ->
       else
         showError message
 
-    when "msczConverted", "msczError"
+    when "scoretkConverted", "scoretkError"
       {id, xml, message} = e.data
-      pending = pendingMscz.get id
+      pending = pendingScoretk.get id
       return unless pending
-      pendingMscz.delete id
-      if type is "msczConverted"
+      pendingScoretk.delete id
+      if type is "scoretkConverted"
         pending.resolve xml
       else
         pending.reject new Error message
@@ -2142,6 +2142,9 @@ preprocessMusicXML = (doc) ->
         nextMeasure.insertBefore printEl, nextMeasure.firstChild
   doc
 
+# Formats lus par scoretk ; le worker choisit `from` d'après l'extension.
+SCORETK_EXT_RE = /\.(mscz|mscx|ly|lilypond|abc)$/i
+
 # Convertit une source en MusicXML. Aucune conversion n'a lieu à l'import :
 # le contenu brut est converti à la demande.
 convertSource = (source) ->
@@ -2152,12 +2155,13 @@ convertSource = (source) ->
     Promise.resolve data
   else if /\.mxl$/i.test name
     Promise.resolve().then -> window.__musicaMxl.extractMxl data
-  else if /\.msc[zx]$/i.test name
+  else if SCORETK_EXT_RE.test name
     unless window.__musicaScoretkAvailable
-      Promise.reject new Error "import MuseScore non disponible dans cette version"
+      Promise.reject new Error "import de ce format indisponible : paquet scoretk absent de cette version"
     else
-      # le worker détache le tampon qu'il reçoit : lui donner une copie
-      convertMsczToXml data.slice(0), name
+      # le worker détache le tampon qu'il reçoit : lui donner une copie. Les
+      # .ly et .abc sont du texte : scoretk attend leurs octets UTF-8 bruts.
+      convertScoretkToXml data.slice(0), name
   else
     Promise.resolve new TextDecoder().decode new Uint8Array(data)
 
@@ -2555,17 +2559,26 @@ setupNavigation = ->
         e.preventDefault()
         goPrev()
 
-# Ask the worker to convert a MuseScore file (.mscz/.mscx) to MusicXML.
-# `name` permet au worker de passer `from` explicitement ('mscz' ou 'mscx').
-convertMsczToXml = (buffer, name) ->
+# Ask the worker to convert a scoretk file (MuseScore, LilyPond, ABC) to
+# MusicXML. `name` permet au worker de déduire `from` de l'extension.
+convertScoretkToXml = (buffer, name) ->
   new Promise (resolve, reject) ->
-    id = ++msczRequestId
-    pendingMscz.set id, {resolve, reject}
-    worker.postMessage { type: "convertMscz", id, bytes: buffer, name }, [buffer]
+    id = ++scoretkRequestId
+    pendingScoretk.set id, {resolve, reject}
+    worker.postMessage { type: "convertScoretk", id, bytes: buffer, name }, [buffer]
 
 # Extensions importables : source de vérité côté application. build.js tient la
 # même liste pour l'attribut `accept` des champs de fichier.
-IMPORT_EXTENSIONS = ['xml', 'musicxml', 'mxl', 'mscz', 'mscx']
+IMPORT_EXTENSIONS = [
+  'xml'
+  'musicxml'
+  'mxl'
+  'mscz'
+  'mscx'
+  'ly'
+  'lilypond'
+  'abc'
+]
 
 # Regex unique, construite une fois : test d'extension et retrait de l'extension
 IMPORT_EXT_RE = new RegExp "\\.(#{IMPORT_EXTENSIONS.join '|'})$", 'i'

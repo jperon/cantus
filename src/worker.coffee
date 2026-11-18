@@ -125,7 +125,7 @@ loadScoretk = ->
       else
         importScripts 'scoretk/scoretk.js'
         unless self.scoretk?.ready
-          reject new Error "paquet scoretk absent : import MuseScore désactivé"
+          reject new Error "paquet scoretk absent : conversion de partitions désactivée"
           return
         self.scoretk.ready
           .then -> resolve self.scoretk
@@ -133,6 +133,21 @@ loadScoretk = ->
     catch err
       reject new Error "scoretk indisponible : #{err.message or err}"
   scoretkLoad
+
+# Format d'entrée passé à scoretk, déduit de l'extension du fichier. `from` est
+# toujours explicite : `detect` classerait un .mscx (XML sans <museScore) en
+# musicxml, et un .ly ou .abc pourrait être mal classé selon son contenu.
+SCORETK_FROM =
+  mscz: 'mscz'
+  mscx: 'mscx'
+  ly: 'ly'
+  lilypond: 'lilypond'
+  abc: 'abc'
+
+# Extension inconnue : scoretk détecte le format par le contenu.
+scoretkFrom = (name) ->
+  ext = (name or '').split('.').pop().toLowerCase()
+  SCORETK_FROM[ext]
 
 # Render one page of the currently loaded movement and send it back
 postPage = (movementId, pageNumber) ->
@@ -664,19 +679,17 @@ handleMessage = (e) ->
       when "registerSource"
         registerSource e.data.sourceId, e.data.xml
 
-      when "convertMscz"
+      when "convertScoretk"
         { id, bytes, name } = e.data
-        # `from` est explicite : detect classerait un XML sans <museScore en
-        # musicxml, donc un .mscx serait mal interprété.
-        from = if /\.mscx$/i.test(name or '') then 'mscx' else 'mscz'
+        from = scoretkFrom name
         loadScoretk()
           .then (api) -> api.convert new Uint8Array(bytes), { from }
           .then (result) ->
             xml = new TextDecoder().decode result
-            self.postMessage { type: "msczConverted", id, xml }
+            self.postMessage { type: "scoretkConverted", id, xml }
           .catch (err) ->
             self.postMessage {
-              type: "msczError"
+              type: "scoretkError"
               id
               message: err.message or String(err)
             }
@@ -755,6 +768,7 @@ if typeof module isnt 'undefined' and module?.exports?
   module.exports = {
     countWrittenMeasures
     playbackCacheKey
+    scoretkFrom
     # Crochets de test : injecter un toolkit factice, déclencher le flush des
     # messages en attente et lire l'état interne des sources.
     __test: {
