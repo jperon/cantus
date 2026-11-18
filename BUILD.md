@@ -148,27 +148,49 @@ normalisation dans son `README.md`).
 
 ### Tempo de lecture
 
-Le réglage **Tempo** (noires/minute, entier 20–300) est propre au fichier,
-comme les voix : il est stocké dans `localStorage` sous
-`musica-tempo-<fileId>` (clé absente = tempo du fichier). Il est appliqué par
-`src/app/transport-suivi.coffee`.
+Le réglage **Tempo** est propre au fichier, comme les voix : il est stocké
+dans `localStorage` sous `musica-tempo-<fileId>` (clé absente = tempo du
+fichier), dans l'**unité de battue** affichée. La valeur est un entier 20–300
+dans cette unité ; le symbole (♩, 𝅗𝅥, ♩., ♪…) est affiché à côté du champ. Il
+est appliqué par `src/app/transport-suivi.coffee`. Aucune compatibilité n'est
+assurée avec d'anciennes valeurs stockées en noires/minute : une valeur
+existante est interprétée dans l'unité courante.
+
+L'unité est donnée par la fonction pure
+`timeline.tempoUnitFromXml(xml) -> {unit, quarterRatio}`, où `quarterRatio`
+est la valeur de l'unité en noires (blanche 2, noire pointée 1,5, croche
+0,5…), dans cet ordre :
+
+1. l'indication métronomique de la **première mesure** du MusicXML converti
+   (`<metronome><beat-unit>` et `<beat-unit-dot/>`), comme
+   `xmlInitialTempoMark` ;
+2. sinon la métrique de la première mesure
+   (`<time><beats>/<beat-type>`), par la règle simple : beat-type 2 (2/2, 3/2,
+   4/2…) → blanche ; métrique composée (`beats % 3 == 0`, `beats > 3`,
+   beat-type 8 ou 16) → valeur pointée de 3 beat-type (6/8, 9/8, 12/8 →
+   noire pointée ; /16 → croche pointée) ; sinon noire ;
+3. sans XML exploitable, noire.
 
 D'où vient le défaut :
 
 - scoretk insère **toujours** un tempo à `tick 0` dans `timeline.tempo`. Sans
   indication dans la partition, c'est 500 000 µs/noire, soit **120 BPM**.
-- `timeline.fileTempoInfo(timeline, xml)` donne ce tempo initial (arrondi à
-  l'entier) et son caractère explicite. Une valeur différente de 120 est
-  forcément une indication réelle. Un `120` explicite est indistinguable par
-  la seule valeur : le MusicXML converti est alors consulté, car une indication
-  réelle produit `<sound tempo="…">` ou un `<metronome>` dans la **première
-  mesure** (scoretk réexporte le tempo en `<sound>`).
+- `timeline.fileTempoInfo(timeline, xml)` donne ce tempo initial **converti
+  dans l'unité** (`bpm = noires/minute / quarterRatio`, arrondi à l'entier),
+  l'unité et son caractère explicite. Une valeur différente de 120 noires/minute
+  est forcément une indication réelle. Un `120` explicite est indistinguable
+  par la seule valeur : le MusicXML converti est alors consulté, car une
+  indication réelle produit `<sound tempo="…">` ou un `<metronome>` dans la
+  **première mesure** (scoretk réexporte le tempo en `<sound>`).
 - `timeline.defaultPlaybackTempo(info)` renvoie le tempo du fichier s'il est
-  explicite, sinon **80**. Le bouton « Tempo du fichier » (ou un champ vidé)
-  supprime le réglage et revient à ce défaut.
+  explicite, sinon **80 dans l'unité** (80 à la noire pointée en 6/8). Le
+  bouton « Tempo du fichier » (ou un champ vidé) supprime le réglage et revient
+  à ce défaut.
 
-Le facteur vaut `tempo choisi / tempo initial du fichier`. Il est appliqué **une
-seule fois**, par `audio.scalePlaybackData` : un facteur 2 (deux fois plus vite)
+Le facteur vaut `tempo choisi / tempo initial du fichier`, **dans la même
+unité** : le rapport des unités s'annule, et changer d'unité ne change pas la
+vitesse pour un même tempo musical. Il est appliqué **une seule fois**, par
+`audio.scalePlaybackData` : un facteur 2 (deux fois plus vite)
 **divise** les temps de lecture par 2. Durée, segments,
 marqueurs de synchronisation et pauses passent à l'échelle avant
 `engine.load()` et alimentent le même axe de temps pour l'ordonnancement audio,
@@ -177,8 +199,9 @@ sur les segments mis à l'échelle. Les changements de tempo internes du morceau
 sont donc conservés proportionnellement.
 
 Les données brutes du worker restent dans `playbackCache` (clé mémoire) et dans
-le cache persistant (`musica-playback-cache-v4`, tempo compris) : changer le
-tempo ne les invalide pas et ne touche jamais le cache SVG. Pendant la lecture,
+le cache persistant (`musica-playback-cache-v5`, tempo et unité compris) :
+changer le tempo ne les invalide pas et ne touche jamais le cache SVG. Pendant
+la lecture,
 un changement relance le moteur à la même position musicale
 (`position × ancien facteur / nouveau facteur`) ; le suivi reprend sans
 re-rendu.

@@ -43,7 +43,7 @@ de scoretk (`res.musicxml`). `tempo-2-2` porte un `<beat-unit>half</beat-unit>`,
 `tempo-6-8-default` ni métronome ni `<sound>`, avec
 `<time><beats>6</beats><beat-type>8</beat-type></time>`.
 
-Total : 54574 o. `pauses-tempo.xml` est la preuve réelle qu'un
+Total : 51043 o. `pauses-tempo.xml` est la preuve réelle qu'un
 `<sound tempo="120">` explicite existe dans la première mesure : la seule
 carte de tempo (500 000 µs au tick 0) ne le distingue pas du défaut implicite.
 
