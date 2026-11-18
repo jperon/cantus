@@ -1,0 +1,223 @@
+# État global partagé (modules, caches, chargement, transport) et
+# répartiteur des messages reçus du worker.
+storage = window.__musicaStorage
+worker = window.__musicaWorker
+svgStore = window.__svgCache  # Persistent cache with compression
+playbackStore = window.__playbackCache  # Données de lecture persistantes
+scrollPos = 0
+pageCount = 0
+pendingPageScroll = null  # page à amener en haut après un saut (mode vertical)
+memoryCache = new Map()  # In-memory cache for current session
+pendingRequests = new Map()  # Pending page requests for deduplication
+fileLoaded = false
+indicatorTimeout = null
+scrollScheduled = false  # Scroll events are handled once per frame
+currentFileId = null
+lastWidth = window.innerWidth
+resizeTimer = null
+positionTimer = null
+workerReady = false
+currentScale = 40
+verticalScrollRatio = 0
+currentPageWidth = 0
+currentPageHeight = 0
+hiddenParts = new Set()  # Libellés des voix masquées pour le fichier courant
+partSizes = {}  # Libellé de voix -> taille en % (100 = taille normale)
+partVolumes = {}  # Libellé de voix -> volume en % (100 = volume normal)
+partsChanged = false  # Réglages de voix modifiés, à appliquer à la fermeture
+followPlaybackEnabled = true  # Suivi du défilement pendant la lecture
+expandRepeats = true  # Dérouler les reprises (false : lecture linéaire écrite)
+# Cale de la tête de lecture sur la page affichée ---------------------------------
+# Un changement de page (défilement, boutons, goto) place la tête de lecture au
+# premier marqueur de synchronisation de cette page, après un court debounce le
+# temps que le geste se stabilise. Drapeau anti-boucle : vrai pendant que le
+# suivi automatique applique lui-même son déplacement ; les changements de page
+# qu'il provoque ne doivent pas re-déclencher un seek (oscillation, blocage).
+pageSeekTimer = null
+pageSeekDebounceMs = 250
+lastDisplayedPage = null
+followSuppressSeek = false
+# Page visée par le dernier déplacement du suivi : les `scroll` différés qu'il
+# provoque ne sont pas un geste de l'utilisateur et ne doivent pas se caler.
+followTargetPage = null
+# Une cale de lecture est en attente après un changement de page manuel : le
+# suivi automatique est suspendu jusque-là, sinon il ramènerait le défilement
+# sur la page de la position courante avant le debounce et le geste serait
+# perdu (la page ne changerait jamais vraiment).
+pageSeekPending = false
+currentScrollUnit = "page"  # Dernier réglage « Défilement » appliqué
+
+# Pages pre-rendered around the displayed one
+PREFETCH_AHEAD = 6
+PREFETCH_BEHIND = 1
+
+# Scroll mode: "horizontal" (1 system) or "vertical" (2+ systems)
+scrollMode = null
+systemHeight = 0  # Height of a single system in vertical mode
+
+# Movement tracking
+movements = []  # [{id, pageCount, pushed, loaded}]
+pendingRenders = new Map()  # "movementId:page" -> resolve function
+pushedPages = {}  # movementId -> last page of the initial push received (in order)
+# Variante de voix du XML chargé dans le worker, par mouvement. Un rendu (SVG
+# ou données de lecture) dépend du XML chargé, pas de l'état courant des
+# réglages : c'est cette variante qui doit servir de clé de cache. Quand une
+# taille change dans les réglages, partSizes est mis à jour tout de suite mais
+# le XML du worker ne l'est qu'au rechargement.
+movementVariants = {}  # movementId -> variante du XML chargé
+memoryVariant = null  # variante des entrées de memoryCache
+pendingMovementLoads = new Map()  # movementId -> resolve function
+pendingScoretk = new Map()  # scoretk conversion id -> {resolve, reject}
+scoretkRequestId = 0
+transcriptionNoticeTimer = null  # minuterie du message « transcription MIDI »
+targetPage = null  # Page to navigate to once all movements are loaded
+awaitingLoad = false  # A new load is posted: ignore the previous render's replies
+currentSources = null  # [{name, data}] : sources de l'entrée courante (XML ou binaire)
+sourceCache = new Map()  # index de source -> {xml, splitInfo}
+nextSourceToLoad = 0  # prochaine source à convertir
+allSourcesLoaded = false  # toutes les sources sont converties et leurs mouvements connus
+loadToken = 0  # incrémenté à chaque chargement : arrête les chaînes de conversion en cours
+movementLoadTokens = new Map()  # movementId -> loadToken de la demande en cours
+playbackCache = new Map()  # "movementId:variante de voix" -> données de lecture
+pendingPlayback = new Map()  # même clé -> {resolve, reject}
+workerSources = new Set()  # sources déjà enregistrées dans le worker (XML complet)
+
+# Transport audio (lot 1) : état de la lecture du mouvement affiché.
+# position et duration sont en millisecondes ; loadToken invalide une demande
+# de données de lecture devenue obsolète (arrêt, changement de mouvement).
+playback =
+  movementId: null
+  hasData: false
+  state: "stopped"  # "stopped" | "playing" | "paused" | "loading"
+  position: 0
+  duration: 0
+  loading: false
+  loadToken: 0
+  rafId: null
+  marks: []  # syncMarks du mouvement chargé (t en ms, page locale)
+  pauses: []  # pauses du mouvement (timeUs/endTimeUs), pour geler le suivi
+  followKey: null  # dernière cible de suivi appliquée
+
+# Worker message handler
+worker.onmessage = (e) ->
+  {type} = e.data
+  # Replies still in flight from the previous render would be mapped onto the
+  # movements just reset (page counts at 0) and shown in its place: drop them
+  # until the new first movement is loaded.
+  if awaitingLoad
+    return if type is "svg"
+    return if type is "movementLoaded" and e.data.movementId isnt 1
+  switch type
+    when "ready"
+      console.log "Worker Verovio prêt"
+      workerReady = true
+      hideLoading()
+      startApp()
+
+    when "movementLoaded"
+      # Réponse d'un chargement abandonné (suppression, rechargement) : ignorer
+      return if (movementLoadTokens.get e.data.movementId) isnt loadToken
+      awaitingLoad = false
+      {movementId, pageCount: mvPages, pushed} = e.data
+      mv = movements.find (m) -> m.id is movementId
+      if mv
+        mv.pageCount = mvPages
+        mv.loaded = true
+        mv.pushed = pushed
+      # Update total page count
+      pageCount = movements.reduce (sum, m) ->
+        sum + (m.pageCount or 0)
+      , 0
+      # Update page indicator
+      showIndicator()
+      # Resolve pending movement load promise if any
+      if pendingMovementLoads?.has(movementId)
+        pendingMovementLoads.get(movementId)()
+        pendingMovementLoads.delete(movementId)
+      # Hide loading overlay and show the first page as soon as it arrives
+      if movementId is 1
+        hideLoading()
+        if mvPages > 0
+          # Page 1 is part of the pushed pages: display it on arrival
+          requestPage(1, 1).then (svg) ->
+            # Detect scroll mode from first page before displaying
+            detectScrollMode(svg)
+            displayView()
+            prefetch()
+            # Now load subsequent movements after first page is displayed
+            loadRemainingMovements()
+      # Navigate to the remembered page as soon as its movement is loaded
+      tryNavigateTarget()
+
+    when "svg"
+      {movementId, page, svg} = e.data
+      # Convert movement-local page to global page number
+      globalPage = page
+      for m in movements when m.id < movementId
+        globalPage += m.pageCount or 0
+      # Pushes arrive in page order: remember how far the worker got
+      pushedPages[movementId] = page if page > (pushedPages[movementId] or 0)
+      # Le SVG a été rendu à partir du XML chargé dans le worker : il vaut
+      # pour la variante de ce XML, pas pour les réglages courants. Après un
+      # changement de tailles non encore appliqué, une page en vol ne doit ni
+      # entrer dans les caches sous la nouvelle variante (elle y resterait
+      # périmée et serait resservie), ni être affichée.
+      variant = loadedVariant movementId
+      stale = variant isnt partsVariant()
+      unless stale
+        memoryCache.set globalPage, svg
+        # Store in persistent cache (async, non-blocking)
+        if currentFileId and currentPageWidth and currentPageHeight
+          svgStore.set(currentFileId, globalPage, svg, currentPageWidth, currentPageHeight, variant).catch (err) ->
+            console.error "Erreur stockage SVG:", err
+      # Resolve pending render if any
+      key = "#{movementId}:#{page}"
+      if pendingRenders.has(key)
+        pendingRenders.get(key)(if stale then "" else svg)
+        pendingRenders.delete(key)
+      # Note: displayView() is now async, so we don't call it here
+      # The async displayView will update when pages are loaded
+
+      # Hide loading indicator once the whole score is loaded and cached
+      if not stale and allSourcesLoaded and memoryCache.size >= pageCount and pageCount > 0
+        hideLoadingIndicator()
+
+    when "error"
+      {message, movementId} = e.data
+      console.error "Worker error:", message
+      if movementId
+        showError "Erreur mouvement #{movementId}: #{message}"
+      else
+        showError message
+
+    when "scoretkConverted", "scoretkError"
+      {id, xml, message} = e.data
+      pending = pendingScoretk.get id
+      return unless pending
+      pendingScoretk.delete id
+      if type is "scoretkConverted"
+        pending.resolve xml
+      else
+        pending.reject new Error message
+
+    when "playbackData"
+      {movementId, midi, syncMarks, staffLabels, trackMap, duration, segments, pauses, linearRepeats} = e.data
+      key = playbackKey movementId, !!linearRepeats
+      data = {midi, syncMarks, staffLabels, trackMap, duration, segments: segments ? [], pauses: pauses ? [], linearRepeats: !!linearRepeats}
+      playbackCache.set key, data
+      pending = pendingPlayback.get key
+      if pending
+        pendingPlayback.delete key
+        pending.resolve data
+
+    when "playbackError"
+      {movementId, message, linearRepeats} = e.data
+      # PR 1 : aucune UI de lecture, une erreur ici ne doit rien casser
+      console.warn "Données de lecture indisponibles pour le mouvement #{movementId}: #{message}"
+      key = playbackKey movementId, !!linearRepeats
+      pending = pendingPlayback.get key
+      if pending
+        pendingPlayback.delete key
+        pending.reject new Error message
+
+# Calculate global page from movementId and localPage
