@@ -1,4 +1,4 @@
-// Scénario 1 — import d'un fichier seul (.xml, .mxl, .mscz),
+// Scénario 1 — import d'un fichier seul (.xml, .mxl, .mscz, .ly, .abc),
 // navigation, découpage en mouvements, réouverture à la page mémorisée.
 const path = require('path');
 const L = require('./lib');
@@ -169,6 +169,54 @@ async function runPage(browser, url, pageName, results) {
       L.record(results, '6. Erreurs JS (mscz)', pageName, relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
     } catch (e) {
       L.record(results, '1. Import .mscz seul + réouverture', pageName, 'ÉCHEC', 'exception du test : ' + e.message);
+    }
+    await ctx.close();
+  }
+
+  // --- .ly (LilyPond) via scoretk ---
+  {
+    const { page, ctx, errors } = await L.newPage(browser, url, { pageName });
+    try {
+      await L.waitReady(page);
+      const fixture = path.join(__dirname, 'fixtures', 'petit-essai.ly');
+      await L.importFile(page, fixture);
+      const first = await L.waitFirstSvg(page, 180000);
+      const info = await L.pageInfo(page);
+      await L.openLibrary(page);
+      const names = (await L.libraryEntries(page)).map((e) => e.name);
+      const ok = first.svgCount > 0 && names.includes('petit-essai');
+      L.record(results, '1. Import .ly (LilyPond) : affichage + nom sans extension', pageName,
+        ok ? 'OK' : 'ÉCHEC',
+        ok ? `affiche en ${first.ms} ms, ${info.total} page(s), bibliothèque : ${names.join(', ')}`
+          : JSON.stringify({ first, info, names }));
+      const relevant = L.summarize(errors);
+      L.record(results, '6. Erreurs JS (ly)', pageName, relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
+    } catch (e) {
+      L.record(results, '1. Import .ly (LilyPond)', pageName, 'ÉCHEC', 'exception du test : ' + e.message);
+    }
+    await ctx.close();
+  }
+
+  // --- .abc via scoretk ---
+  {
+    const { page, ctx, errors } = await L.newPage(browser, url, { pageName });
+    try {
+      await L.waitReady(page);
+      const fixture = path.join(__dirname, 'fixtures', 'petit-essai.abc');
+      await L.importFile(page, fixture);
+      const first = await L.waitFirstSvg(page, 180000);
+      const info = await L.pageInfo(page);
+      await L.openLibrary(page);
+      const names = (await L.libraryEntries(page)).map((e) => e.name);
+      const ok = first.svgCount > 0 && names.includes('petit-essai');
+      L.record(results, '1. Import .abc : affichage + nom sans extension', pageName,
+        ok ? 'OK' : 'ÉCHEC',
+        ok ? `affiche en ${first.ms} ms, ${info.total} page(s), bibliothèque : ${names.join(', ')}`
+          : JSON.stringify({ first, info, names }));
+      const relevant = L.summarize(errors);
+      L.record(results, '6. Erreurs JS (abc)', pageName, relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
+    } catch (e) {
+      L.record(results, '1. Import .abc', pageName, 'ÉCHEC', 'exception du test : ' + e.message);
     }
     await ctx.close();
   }

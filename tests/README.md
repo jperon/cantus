@@ -7,7 +7,7 @@ dans `dist/`, sans modifier `src/`, `pwa/` ni `build.js`.
 
 - `node_modules/` (le worktree peut pointer vers celui du dépôt principal :
   `ln -s ../cantus/node_modules node_modules`) ;
-- le paquet mscz2xml dans `../musescore/result-wasm/classic` ;
+- le paquet scoretk dans `../musescore/result/classic` (ou `$SCORETK_PKG`) ;
 - Chromium du système (`/run/current-system/sw/bin/chromium`).
 
 ## Données de test
@@ -102,10 +102,10 @@ Si `pwa/soundfonts/piano-fluidr3-13notes.js` est absent, le build passe
 
 ## Scénarios
 
-- `s1-import.js` — import `.xml`, `.mxl`, `.mscz` seuls, navigation
-  (flèches, tap), découpage en mouvements (`fixtures/movements.musicxml`),
-  réouverture à la page mémorisée, boutons de navigation. `index.html` et
-  `spa.html`.
+- `s1-import.js` — import `.xml`, `.mxl`, `.mscz`, `.ly` et `.abc` seuls,
+  navigation (flèches, tap), découpage en mouvements
+  (`fixtures/movements.xml`), réouverture à la page mémorisée, boutons de
+  navigation. `index.html` et `spa.html`.
 - `s2-folder.js` — dossier Magnificat par bouton et par sélection multiple,
   entrée unique, premier affichage avant la fin des conversions, parcours des
   12 mouvements puis page par page, réouverture dans un mouvement tardif,
