@@ -141,7 +141,9 @@ Si `pwa/soundfonts/piano-fluidr3-13notes.js` est absent, le build passe
   suppression pendant le chargement de fond.
 - `s3-settings.js` — tailles de voix (Telemann, Bach), régénération seulement
   à la fermeture, bouton « Toutes les voix à 100 % », voix masquée (fichier
-  seul et dossier), zoom, défilement par page / système et recouvrement.
+  seul et dossier), zoom, défilement par page / système et recouvrement,
+  tempo de lecture (défaut du fichier, réglage par fichier, retour au défaut,
+  sans re-rendu SVG).
 - `s4-offline.js` — installation du service worker, mise en cache des trois
   fichiers mscz2xml, rechargement et import `.mscz` avec `setOffline(true)`,
   puis lecture audio hors ligne (position qui progresse, soundfont précaché ou
@@ -155,8 +157,10 @@ Si `pwa/soundfonts/piano-fluidr3-13notes.js` est absent, le build passe
   `spa.html`. Chaque fichier s6 déclare un budget global (`budgetMs`) : au-delà,
   il sort en code 1 avec une ligne `ERREUR GÉNÉRALE budget dépassé : <fichier>`.
 - `s6a-transport.js` — structure de la barre, lecture/pause/arrêt, raccourcis
-  `p`/`s`, suivi vertical par système et par page, volume général, volume par
-  voix et voix masquée. `index.html` et `spa.html`.
+  `p`/`s`, tempo de lecture (défaut affiché, 80 → 160 : durée divisée par
+  deux et reprise à la position courante), suivi vertical par système et par
+  page, volume général, volume par voix et voix masquée. `index.html` et
+  `spa.html`.
 - `s6b-suivi.js` — suivi horizontal (Fauré) : sauts avant/arrière sans page
   blanche, granularité en demi-pages, puis cale de la tête sur le premier
   marqueur de la page affichée. `index.html` et `spa.html`.
@@ -190,6 +194,11 @@ Le panneau Réglages expose :
 - **Volume par voix** (10–100) : propre à chaque fichier, appliqué au
   `GainNode` de la voix sans re-rendu ; conservé avec les voix masquées dans
   `musica-hidden-parts-<fileId>`.
+- **Tempo de lecture** (20–300 noires/minute) : propre à chaque fichier,
+  conservé dans `musica-tempo-<fileId>`. Défaut = tempo initial explicite du
+  fichier, sinon 80. Le bouton « Tempo du fichier » (ou un champ vidé) efface
+  le réglage. Appliqué sans re-rendu SVG ; un changement pendant la lecture
+  reprend à la même position musicale (voir BUILD.md, « Tempo de lecture »).
 - **Suivre le défilement** : pendant la lecture, amène la page ou le système
   courant à l'écran (défaut activé, sans re-rendu).
 - **Vider le cache** : purge les caches de rendu SVG et de données de lecture,
@@ -206,9 +215,12 @@ node tools/build-soundfont-subset.js /tmp/piano-mp3.js \
 
 ## Notes
 
-- Le cache persistant `musica-playback-cache-v1` stocke MIDI + `syncMarks`
-  compressés, avec une clé fichier/mouvement/largeur/hauteur/échelle/variante
-  de voix. Il est préservé par le service worker aux mises à jour et purgé par
+- Le cache persistant `musica-playback-cache-v4` stocke MIDI + `syncMarks` +
+  tempo initial du fichier, compressés, avec une clé
+  fichier/mouvement/largeur/hauteur/échelle/variante de voix. Les données sont
+  à l'échelle du fichier : le réglage Tempo ne les invalide pas (le facteur est
+  appliqué à la lecture). La v3 n'est jamais resservie (elle n'a pas le tempo).
+  Le cache est préservé par le service worker aux mises à jour et purgé par
   « Vider le cache ».
 - `s4` enregistre le service worker manuellement lorsque l'application ne le
   fait pas, afin de distinguer un défaut d'enregistrement d'un défaut de

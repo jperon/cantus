@@ -71,6 +71,51 @@ async function runPage(browser, url, pageName, results) {
       timeOk ? 'OK' : 'ÉCHEC',
       `« ${timeBefore.trim()} » → « ${timeAfter.trim()} », durée ${growth.after.duration} ms`);
 
+    // --- Tempo de lecture, pendant la lecture ---
+    // Telemann : 80 noires/min dans le fichier. Le défaut affiché est 80 ;
+    // passer à 160 double le facteur et divise la durée par deux, en reprenant
+    // à la position courante. « Tempo du fichier » restaure 80.
+    const baseTempoState = await state(page);
+    await L.openSettings(page);
+    const tempoDefault = await page.evaluate(() => ({
+      value: document.getElementById('tempo-input')?.value,
+      hint: document.getElementById('tempo-hint')?.textContent || '',
+    }));
+    await page.$eval('#tempo-input', (el) => {
+      el.value = '160';
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await waitState(page, 'playing');
+    await page.waitForTimeout(600);
+    const fast = await page.evaluate(() => ({
+      ...window.__musicaPlaybackState(),
+      stored: Object.keys(localStorage)
+        .filter((k) => k.startsWith('musica-tempo-'))
+        .map((k) => localStorage.getItem(k)),
+    }));
+    const ratioFast = baseTempoState.duration > 0 ? fast.duration / baseTempoState.duration : 0;
+    L.record(results, '6. Tempo 80 → 160 : durée divisée par 2, reprise à la position courante', pageName,
+      tempoDefault.value === '80' && /80/.test(tempoDefault.hint) &&
+        fast.state === 'playing' && fast.tempo === 160 && fast.fileTempo === 80 &&
+        Math.abs(fast.tempoFactor - 2) < 1e-9 &&
+        Math.abs(ratioFast - 0.5) < 0.02 && fast.position > 0 &&
+        fast.stored.length === 1 && fast.stored[0] === '160' ? 'OK' : 'ÉCHEC',
+      `défaut affiché ${tempoDefault.value}, indication « ${tempoDefault.hint.trim()} » ; ` +
+      `durée ${baseTempoState.duration} → ${fast.duration} ms (×${ratioFast.toFixed(3)}), ` +
+      `position ${baseTempoState.position} → ${fast.position} ms, tempo ${fast.tempo}/${fast.fileTempo}, ` +
+      `facteur ${fast.tempoFactor}, état ${fast.state}, réglage ${JSON.stringify(fast.stored)}`);
+
+    await page.click('#tempo-reset');
+    await page.waitForTimeout(600);
+    const restored = await page.evaluate(() => window.__musicaPlaybackState());
+    const ratioRestored = baseTempoState.duration > 0 ? restored.duration / baseTempoState.duration : 0;
+    L.record(results, '6. « Tempo du fichier » : durée et lecture restaurées', pageName,
+      restored.state === 'playing' && restored.tempo === 80 && Math.abs(restored.tempoFactor - 1) < 1e-9 &&
+        Math.abs(ratioRestored - 1) < 0.02 ? 'OK' : 'ÉCHEC',
+      `durée ${restored.duration} ms (×${ratioRestored.toFixed(3)}), position ${restored.position} ms, ` +
+      `tempo ${restored.tempo}, facteur ${restored.tempoFactor}, état ${restored.state}`);
+    await L.closeSettings(page);
+
     // Pause : position stable
     await page.click('#transport-play');
     await waitState(page, 'paused');

@@ -118,7 +118,8 @@ du mapping (elles redeviendraient audibles sur le master).
 `src/timeline.coffee` est injecté dans le worker avant `worker.coffee` (build
 normal et SPA) et dans la page (`timelineJs`). Il fournit les manipulations
 pures de la timeline (slices de mouvement, segments de lecture, pauses,
-marqueurs de synchronisation) utilisées telles quelles par le worker et par
+marqueurs de synchronisation, tempo initial du fichier) utilisées telles
+quelles par le worker et par
 `src/app/*.coffee`. Le remappage des notes sur les segments reste dans
 `audio.coffee` (`remapNotesToSegments`), désormais seul chemin.
 
@@ -131,9 +132,9 @@ pagination Verovio ne change pas quand on coche ou décoche les reprises.
 
 Champs **réellement produits par scoretk-wasm 0.1.0**, et seuls consommés :
 `timeline.division`, `ticks`, `tempo`, `measures`, `pauses` ;
-`measures[i].measure`/`ordinal`, `segment`, `tick`, `endTick`, `timeUs`,
-`endTimeUs`, `xmlId` (optionnel) ; `pauses[i].tick`, `endTick`, `timeUs`,
-`endTimeUs`, `seconds`.
+`tempo[i].tick`, `timeUs`, `microsPerQuarter` ; `measures[i].measure`/`ordinal`,
+`segment`, `tick`, `endTick`, `timeUs`, `endTimeUs`, `xmlId` (optionnel) ;
+`pauses[i].tick`, `endTick`, `timeUs`, `endTimeUs`, `seconds`.
 
 Il n'existe **ni `pauseBefore`**, ni `ticksPerQuarter`, ni `durationTicks` ou
 `durationUs` à la racine, ni de durée par mesure. La durée totale se dérive de
@@ -144,6 +145,43 @@ entre `pause.tick` et la fin (`endTick`) d'une mesure ; la position dans
 `ordinal` ne se distingue jamais de `measure` (identique sur toutes les
 fixtures versionnées, dans `tests/fixtures/scoretk/` ; provenance et
 normalisation dans son `README.md`).
+
+### Tempo de lecture
+
+Le réglage **Tempo** (noires/minute, entier 20–300) est propre au fichier,
+comme les voix : il est stocké dans `localStorage` sous
+`musica-tempo-<fileId>` (clé absente = tempo du fichier). Il est appliqué par
+`src/app/transport-suivi.coffee`.
+
+D'où vient le défaut :
+
+- scoretk insère **toujours** un tempo à `tick 0` dans `timeline.tempo`. Sans
+  indication dans la partition, c'est 500 000 µs/noire, soit **120 BPM**.
+- `timeline.fileTempoInfo(timeline, xml)` donne ce tempo initial (arrondi à
+  l'entier) et son caractère explicite. Une valeur différente de 120 est
+  forcément une indication réelle. Un `120` explicite est indistinguable par
+  la seule valeur : le MusicXML converti est alors consulté, car une indication
+  réelle produit `<sound tempo="…">` ou un `<metronome>` dans la **première
+  mesure** (scoretk réexporte le tempo en `<sound>`).
+- `timeline.defaultPlaybackTempo(info)` renvoie le tempo du fichier s'il est
+  explicite, sinon **80**. Le bouton « Tempo du fichier » (ou un champ vidé)
+  supprime le réglage et revient à ce défaut.
+
+Le facteur vaut `tempo choisi / tempo initial du fichier`. Il est appliqué **une
+seule fois**, par `audio.scalePlaybackData` : un facteur 2 (deux fois plus vite)
+**divise** les temps de lecture par 2. Durée, segments,
+marqueurs de synchronisation et pauses passent à l'échelle avant
+`engine.load()` et alimentent le même axe de temps pour l'ordonnancement audio,
+le transport et le suivi. Le MIDI n'est pas réécrit : les notes sont remappées
+sur les segments mis à l'échelle. Les changements de tempo internes du morceau
+sont donc conservés proportionnellement.
+
+Les données brutes du worker restent dans `playbackCache` (clé mémoire) et dans
+le cache persistant (`musica-playback-cache-v4`, tempo compris) : changer le
+tempo ne les invalide pas et ne touche jamais le cache SVG. Pendant la lecture,
+un changement relance le moteur à la même position musicale
+(`position × ancien facteur / nouveau facteur`) ; le suivi reprend sans
+re-rendu.
 
 ### Limites connues de scoretk
 

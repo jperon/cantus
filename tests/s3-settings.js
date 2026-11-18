@@ -379,6 +379,74 @@ async function runPartSizeCacheRace(browser, url, pageName, results) {
   await ctx.close();
 }
 
+// Tempo de lecture : défaut tiré du fichier (Fauré : 72 noires/min dans la
+// partition), réglage propre au fichier, retour au défaut sans re-rendu SVG.
+async function runTempo(browser, url, pageName, results) {
+  const { page, ctx, errors } = await L.newPage(browser, url, { pageName });
+  try {
+    await importLoaded(page, L.FILES.faureMscz, 300000);
+    await L.markSvg(page);
+    await L.openSettings(page);
+    // Le tempo du fichier demande les données de lecture (cache de lecture),
+    // jamais un re-rendu de page.
+    await page.waitForFunction(() => {
+      const input = document.getElementById('tempo-input');
+      return input && input.value === '72';
+    }, null, { timeout: 120000, polling: 250 });
+    const initial = await page.evaluate(() => ({
+      value: document.getElementById('tempo-input')?.value,
+      hint: document.getElementById('tempo-hint')?.textContent || '',
+      resetDisabled: document.getElementById('tempo-reset')?.disabled,
+      stored: Object.keys(localStorage).filter((k) => k.startsWith('musica-tempo-')),
+      marker: !!document.querySelector('#page-current .scroll-page svg[data-test-mark="1"]'),
+    }));
+    L.record(results, '3. Tempo : défaut du fichier affiché (Fauré = 72)', pageName,
+      initial.value === '72' && /72/.test(initial.hint) && initial.resetDisabled === true &&
+        initial.stored.length === 0 && initial.marker ? 'OK' : 'ÉCHEC',
+      `champ ${initial.value}, indication « ${initial.hint.trim()} », bouton défaut désactivé ${initial.resetDisabled}, ` +
+      `clés ${JSON.stringify(initial.stored)}, SVG marqué conservé ${initial.marker}`);
+
+    await page.$eval('#tempo-input', (el) => {
+      el.value = '144';
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await page.waitForTimeout(300);
+    const changed = await page.evaluate(() => ({
+      value: document.getElementById('tempo-input')?.value,
+      resetDisabled: document.getElementById('tempo-reset')?.disabled,
+      stored: Object.keys(localStorage)
+        .filter((k) => k.startsWith('musica-tempo-'))
+        .map((k) => [k, localStorage.getItem(k)]),
+      marker: !!document.querySelector('#page-current .scroll-page svg[data-test-mark="1"]'),
+    }));
+    L.record(results, '3. Tempo 144 propre au fichier, sans re-rendu SVG', pageName,
+      changed.value === '144' && changed.resetDisabled === false &&
+        changed.stored.length === 1 && changed.stored[0][1] === '144' && changed.marker ? 'OK' : 'ÉCHEC',
+      `champ ${changed.value}, bouton défaut actif ${!changed.resetDisabled}, ` +
+      `réglage ${JSON.stringify(changed.stored)}, SVG marqué conservé ${changed.marker}`);
+
+    await L.closeSettings(page);
+    await L.openSettings(page);
+    const persisted = await page.evaluate(() => document.getElementById('tempo-input')?.value);
+    await page.click('#tempo-reset');
+    await page.waitForTimeout(300);
+    const reset = await page.evaluate(() => ({
+      value: document.getElementById('tempo-input')?.value,
+      resetDisabled: document.getElementById('tempo-reset')?.disabled,
+      stored: Object.keys(localStorage).filter((k) => k.startsWith('musica-tempo-')),
+    }));
+    L.record(results, '3. Tempo conservé puis « Tempo du fichier » restaure 72', pageName,
+      persisted === '144' && reset.value === '72' && reset.resetDisabled === true && reset.stored.length === 0 ? 'OK' : 'ÉCHEC',
+      `réouverture ${persisted}, après bouton ${reset.value}, réglages restants ${JSON.stringify(reset.stored)}`);
+    await L.closeSettings(page);
+    const relevant = L.summarize(errors);
+    L.record(results, '6. Erreurs JS (tempo)', pageName, relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
+  } catch (e) {
+    L.record(results, '3. Tempo', pageName, 'ÉCHEC', 'exception du test : ' + e.message);
+  }
+  await ctx.close();
+}
+
 async function runFolderVoices(browser, url, pageName, results) {
   const { page, ctx, errors } = await L.newPage(browser, url, { pageName });
   try {
@@ -430,6 +498,7 @@ async function runFolderVoices(browser, url, pageName, results) {
       await runZoomAndScroll(browser, url, pageName, results);
       await runBach(browser, url, pageName, results);
       await runPartSizeCacheRace(browser, url, pageName, results);
+      await runTempo(browser, url, pageName, results);
       await runFolderVoices(browser, url, pageName, results);
     }
   } catch (e) {
