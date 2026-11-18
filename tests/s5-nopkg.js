@@ -28,7 +28,7 @@ async function testPage(browser, url, pageName, results) {
     await page.waitForFunction(() => document.getElementById('protocol-error')?.style.display === 'block', null, { timeout: 30000 });
     await page.waitForTimeout(800);
     const info = await L.pageInfo(page);
-    const refused = /import MuseScore non disponible/.test(info.errorText) && info.svgCount === 0 && info.importHidden === false;
+    const refused = /paquet scoretk absent/.test(info.errorText) && info.svgCount === 0 && info.importHidden === false;
     L.record(results, '5. Build sans paquet : .mscz refusé proprement', pageName,
       flags.available === false && !/mscz/.test(flags.accept) && refused ? 'OK' : 'ÉCHEC',
       `__musicaScoretkAvailable=${flags.available}, accept="${flags.accept}", message « ${info.errorText} », écran d'import affiché : ${!info.importHidden}, SVG=${info.svgCount}`);
