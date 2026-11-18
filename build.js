@@ -19,7 +19,8 @@ const SCORETK_CLASSIC = path.join(
 const SOUNDFONTS_SRC = path.join(PWA, 'soundfonts');
 const SOUNDFONT_SAMPLES = path.join(SOUNDFONTS_SRC, 'piano-fluidr3-13notes.js');
 
-// Extensions importables : même liste que IMPORT_EXTENSIONS de src/app.coffee,
+// Extensions importables : même liste que IMPORT_EXTENSIONS de
+// src/app/sources.coffee,
 // découpée ici entre formats de base et formats lus par scoretk (MuseScore,
 // LilyPond, ABC, MIDI). Seul l'attribut `accept` des champs de fichier en dérive.
 const IMPORT_EXTENSIONS_BASE = ['xml', 'musicxml', 'mxl'];
@@ -82,6 +83,39 @@ function readCss() {
 function compileCoffee(file) {
   const src = readSrc(file);
   return CoffeeScript.compile(src, { bare: true });
+}
+
+// Sources de l'application principale, dans l'ordre de concaténation. Le
+// découpage est purement physique : les fichiers sont mis bout à bout puis
+// compilés en un seul programme (bare: true), donc une portée globale unique et
+// aucune frontière de module. L'ordre est celui du monolithe d'origine et il est
+// significatif : les initialisations exécutées au chargement (écouteurs,
+// appels, état global) et le câblage final d'init.coffee en dépendent. Pour
+// ajouter du code, le placer dans le fichier thématique correspondant ; pour
+// créer un fichier, l'insérer ici à sa place dans l'ordre du chargement.
+const APP_SOURCES = [
+  'demarrage.coffee',              // PWA, service worker, date de build
+  'etat.coffee',                   // état global, répartiteur des messages worker
+  'pages-lecture.coffee',          // pages SVG et données de lecture (caches)
+  'transport-suivi.coffee',        // transport audio et suivi du défilement
+  'reglages-voix.coffee',          // réglages, voix, variantes de cache
+  'affichage-navigation.coffee',   // affichage des pages, défilement, navigation
+  'decoupage-xml.coffee',          // découpage MusicXML, masquage et tailles
+  'sources.coffee',                // conversion scoretk, chargement des sources
+  'bibliotheque-import.coffee',    // bibliothèque, tap, import de fichiers
+  'reglages-ui.coffee',            // panneau de réglages
+  'integration.coffee',            // stockage, protocole, URL, partage
+  'init.coffee',                   // câblage DOMContentLoaded
+];
+
+// Contenu de l'application d'origine : concaténation sans séparateur ajouté, les
+// fichiers se terminant chacun par un saut de ligne.
+function readAppSource() {
+  return APP_SOURCES.map((file) => readSrc(path.join('app', file))).join('');
+}
+
+function compileApp() {
+  return CoffeeScript.compile(readAppSource(), { bare: true });
 }
 
 function prepareDist() {
@@ -205,7 +239,7 @@ function compileScripts() {
     audioJs: minify(compileCoffee('audio.coffee')),
     playbackJs: minify(compileCoffee('playback.coffee')),
     workerJs: minify(compileCoffee('worker.coffee')),
-    appJs: minify(compileCoffee('app.coffee')),
+    appJs: minify(compileApp()),
   };
 }
 
