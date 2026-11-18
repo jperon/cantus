@@ -8,7 +8,7 @@
 # Champs RÉELLEMENT produits par scoretk (scoretk-wasm 0.1.0), et seuls
 # consommés ici :
 #   timeline : { division, ticks, tempo: [{tick, timeUs,
-#                microsecondsPerQuarter}], measures, pauses }
+#                microsPerQuarter}], measures, pauses }
 #   measures[i] : { measure, ordinal, segment, passage, tick, endTick,
 #                   timeUs, endTimeUs, xmlId? }
 #   pauses[i]   : { tick, endTick, timeUs, endTimeUs, seconds }
@@ -40,6 +40,9 @@
 #   buildSyncMarks(slice, pageByWrittenIndex, measureStart)
 #       -> {marks: [{t, page, id, xmlId?}], unresolved}
 #   pauseAt(pauses, tMs) -> pause active ou null
+#   fileTempoInfo(timeline, xml) -> {bpm, explicit}
+#   defaultPlaybackTempo(info) -> entier (tempo de lecture par défaut)
+#   clampPlaybackTempo(value) -> entier borné
 #
 # Le remappage des notes sur les segments reste dans audio.coffee
 # (`remapNotesToSegments`) : aucun doublon n'est créé ici.
@@ -78,8 +81,76 @@ tickToUs = (source, tick) ->
   best ?= tempo[0]
   baseTick = toNum best.tick, 0
   baseUs = toNum best.timeUs, 0
-  mpq = toNum best.microsecondsPerQuarter, 500000
+  # scoretk expose `microsPerQuarter` ; l'ancien nom `microsecondsPerQuarter`
+  # (employé par d'anciens tests synthétiques) reste accepté.
+  mpq = toNum best.microsPerQuarter, toNum(best.microsecondsPerQuarter, 500000)
   baseUs + (target - baseTick) * mpq / division
+
+# --- Tempo de lecture -------------------------------------------------------
+# scoretk insère TOUJOURS un tempo au tick 0 : 500 000 µs/noire (120 BPM)
+# quand aucune indication n'ouvre la partition, sinon la valeur de la première
+# indication. La seule carte de tempo ne distingue donc pas un défaut implicite
+# de 120 d'un « = 120 » explicite ; le MusicXML converti porte alors
+# `<sound tempo="…">` (ou un `<metronome>`) dans sa première mesure. Une valeur
+# différente de 120 est en revanche toujours une indication réelle.
+DEFAULT_FILE_TEMPO_BPM = 120
+DEFAULT_PLAYBACK_TEMPO_BPM = 80
+TEMPO_MIN_BPM = 20
+TEMPO_MAX_BPM = 300
+
+# Vrai si la première mesure du MusicXML (converti ou source) porte une
+# indication de tempo : `<sound tempo="…">` ajouté par scoretk, ou un
+# `<metronome>` d'origine. Au-delà de la première mesure, l'indication n'est
+# pas le tempo initial : elle sera conservée proportionnellement à la lecture.
+xmlInitialTempoMark = (xml) ->
+  return false unless typeof xml is 'string' and xml.length
+  matches = /<measure(?=[\s>])/gi
+  second = null
+  count = 0
+  while match = matches.exec xml
+    count += 1
+    if count is 2
+      second = match.index
+      break
+  head = if second? then xml.slice(0, second) else xml
+  /<sound\b[^>]*\btempo\s*=/i.test(head) or /<metronome\b/i.test(head)
+
+# Tempo initial effectif du fichier en µs/noire, tiré de la première entrée de
+# la carte (tick 0). `null` si la carte est absente (anciennes fixtures
+# normalisées avant la prise en charge du tempo).
+initialTempoMicros = (timeline) ->
+  tempo = timeline?.tempo
+  return null unless Array.isArray(tempo) and tempo.length
+  first = null
+  for entry in tempo
+    tick = toNum entry.tick, 0
+    continue if tick > 0
+    first = entry if not first? or tick >= (toNum first.tick, 0)
+  first ?= tempo[0]
+  micros = toNum first.microsPerQuarter, toNum(first.microsecondsPerQuarter, 500000)
+  if isFinite(micros) and micros > 0 then micros else null
+
+# Tempo initial du fichier : BPM entier (le tempo de lecture est un entier) et
+# caractère explicite de l'indication. Sans carte de tempo, le tempo effectif
+# est celui de la chaîne, 120 BPM (valeur par défaut de scoretk).
+fileTempoInfo = (timeline, xml) ->
+  micros = initialTempoMicros timeline
+  bpm = if micros? then Math.round(60000000 / micros) else DEFAULT_FILE_TEMPO_BPM
+  bpm = DEFAULT_FILE_TEMPO_BPM unless isFinite(bpm) and bpm > 0
+  explicit = bpm isnt DEFAULT_FILE_TEMPO_BPM or xmlInitialTempoMark xml
+  {bpm, explicit}
+
+# Tempo par défaut du réglage : celui du fichier s'il est explicite, sinon 80.
+defaultPlaybackTempo = (info) ->
+  if info?.explicit then clampPlaybackTempo info.bpm else DEFAULT_PLAYBACK_TEMPO_BPM
+
+# Le réglage est un entier de 20 à 300 noires/minute. Une valeur absente ou
+# aberrante retombe sur le défaut 80.
+clampPlaybackTempo = (value) ->
+  return DEFAULT_PLAYBACK_TEMPO_BPM unless value? and value isnt ''
+  n = Math.round Number value
+  return DEFAULT_PLAYBACK_TEMPO_BPM unless isFinite n
+  Math.max TEMPO_MIN_BPM, Math.min(TEMPO_MAX_BPM, n)
 
 # Durée totale en µs d'une timeline : dernier `endTimeUs` des mesures jouées,
 # sinon `ticks` converti par la carte de tempo.
@@ -333,7 +404,11 @@ pauseAt = (pauses, tMs) ->
     return pause if t >= startMs and t < endMs
   null
 
-api = {movementSlice, buildSegments, buildSyncMarks, pauseAt}
+api = {
+  movementSlice, buildSegments, buildSyncMarks, pauseAt
+  fileTempoInfo, defaultPlaybackTempo, clampPlaybackTempo
+  DEFAULT_FILE_TEMPO_BPM, DEFAULT_PLAYBACK_TEMPO_BPM, TEMPO_MIN_BPM, TEMPO_MAX_BPM
+}
 
 window.__musicaTimeline = api if typeof window isnt 'undefined'
 self.__musicaTimeline = api if typeof self isnt 'undefined'

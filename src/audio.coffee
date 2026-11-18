@@ -182,6 +182,57 @@ segmentsDuration = (segments) ->
     duration = end if isFinite(end) and end > duration
   duration
 
+# Facteur de tempo d'une lecture : tempo choisi / tempo initial du fichier.
+# 1 laisse la partition telle quelle ; 2 joue deux fois plus vite (les durées
+# sont divisées par 2). Un tempo de fichier absent ou nul ne change rien.
+playbackTempoFactor = (chosenBpm, fileBpm) ->
+  chosen = Number chosenBpm
+  base = Number fileBpm
+  return 1 unless isFinite(chosen) and chosen > 0 and isFinite(base) and base > 0
+  chosen / base
+
+scaleTimeValue = (value, factor) ->
+  n = Number value
+  if isFinite(n) then n / factor else value
+
+# Applique le facteur de tempo à TOUTES les échelles de temps des données de
+# lecture, au seul endroit où elles entrent dans le moteur et dans le suivi :
+# durée, segments, marqueurs de synchronisation et pauses. Un facteur 2 (deux
+# fois plus vite) DIVISE ces temps par 2 : ils sont exprimés en temps de
+# lecture, pas en temps musical. Les notes ne sont
+# pas dans ces données (elles sont relues du MIDI), et le MIDI lui-même ne
+# change pas : le remappage sur les segments mis à l'échelle suffit, comme
+# l'ordonnanceur lit les notes en secondes de lecture. Aucun champ d'origine
+# n'est modifié (les données brutes restent en cache, indépendantes du tempo).
+scalePlaybackData = (data, factor) ->
+  f = Number factor
+  return data unless data? and isFinite(f) and f > 0
+  return data if f is 1
+  scaled = {}
+  scaled[key] = value for own key, value of data
+  scaled.duration = scaleTimeValue data.duration, f if data.duration?
+  if Array.isArray data.segments
+    scaled.segments = for segment in data.segments
+      copy = {}
+      copy[key] = value for own key, value of segment
+      for key in ['fromMs', 'toMs', 'offsetMs', 'from', 'to', 'offset']
+        copy[key] = Number(copy[key]) / f if copy[key]?
+      copy
+  if Array.isArray data.syncMarks
+    scaled.syncMarks = for mark in data.syncMarks
+      copy = {}
+      copy[key] = value for own key, value of mark
+      copy.t = Number(copy.t) / f if copy.t?
+      copy
+  if Array.isArray data.pauses
+    scaled.pauses = for pause in data.pauses
+      copy = {}
+      copy[key] = value for own key, value of pause
+      for key in ['timeUs', 'endTimeUs', 'timeMs', 'endTimeMs', 'seconds']
+        copy[key] = Number(copy[key]) / f if copy[key]?
+      copy
+  scaled
+
 # Analyse le MIDI une seule fois et normalise les notes en secondes, avec
 # l'indice de piste de chacune.
 normalizePlaybackData = (data, parser) ->
@@ -672,6 +723,8 @@ createEngine = (initialOptions = {}) ->
   api.notesToSchedule = notesToSchedule
   api.remapNotesToSegments = remapNotesToSegments
   api.segmentsDuration = segmentsDuration
+  api.playbackTempoFactor = playbackTempoFactor
+  api.scalePlaybackData = scalePlaybackData
   api.FLOOR = FLOOR
   api
 

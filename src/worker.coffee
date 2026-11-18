@@ -509,6 +509,10 @@ loadSourcePlayback = (sourceId, linearRepeats) ->
       data = {
         midi
         timeline: result.timeline
+        # Tempo initial du FICHIER (la timeline scoretk est globale à la
+        # source) : sa carte de tempo commence toujours au tick 0. `explicit`
+        # distingue une indication réelle du défaut implicite de 120 BPM.
+        fileTempo: timelineApi.fileTempoInfo result.timeline, source.xml
         staffLabels
         trackMap: buildTrackMap midi, staffLabels, staffSequence
       }
@@ -613,6 +617,9 @@ buildPlaybackData = (movementId, linearRepeats = false, measureStart, measureEnd
       segments
       pauses: slice.pauses
       linearRepeats: !!linearRepeats
+      # Tempo initial du fichier : le réglage « Tempo » en dérive son défaut.
+      fileTempoBpm: source.fileTempo?.bpm ? 120
+      fileTempoExplicit: source.fileTempo?.explicit is true
     }
     playbackCache[cacheKey] = data
     data
@@ -724,6 +731,8 @@ handleMessage = (e) ->
               segments: data.segments ? []
               pauses: data.pauses ? []
               linearRepeats: !!data.linearRepeats
+              fileTempoBpm: data.fileTempoBpm
+              fileTempoExplicit: data.fileTempoExplicit
             }
           .catch (playbackErr) ->
             self.postMessage {

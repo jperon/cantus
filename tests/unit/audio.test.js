@@ -334,6 +334,61 @@ test('intégration : buildSegments(fixture) -> normalizePlaybackData garde les n
   }
 });
 
+// --- Tempo de lecture ------------------------------------------------------
+
+test('playbackTempoFactor : tempo choisi / tempo initial du fichier', () => {
+  approx(audio.playbackTempoFactor(160, 80), 2, '160 sur un fichier à 80');
+  approx(audio.playbackTempoFactor(80, 120), 2 / 3, '80 sur la référence 120');
+  approx(audio.playbackTempoFactor(37, 37), 1, 'défaut du fichier');
+  assert.strictEqual(audio.playbackTempoFactor(80, 0), 1, 'fichier inconnu : inchangé');
+  assert.strictEqual(audio.playbackTempoFactor(NaN, 80), 1, 'choix invalide : inchangé');
+});
+
+// Données dérivées de la fixture RÉELLE pause_basic (slices, segments,
+// marqueurs, pauses) : le facteur doit mettre à l'échelle tout l'axe de temps
+// d'un seul coup, sans modifier les données brutes du cache.
+test('scalePlaybackData : durée, segments, marqueurs et pauses divisés par 2 (tempo ×2)', () => {
+  const raw = JSON.parse(fs.readFileSync(path.join(FIXTURES, 'pause_basic-expanded.json'), 'utf8'));
+  const slice = timeline.movementSlice(raw, 0, null);
+  const segments = timeline.buildSegments(slice);
+  // Une page unique : le mapping page est un paramètre du marqueur, pas une
+  // donnée de la carte scoretk.
+  const pages = slice.measures.map(() => 1);
+  const marks = timeline.buildSyncMarks(slice, pages, 0).marks;
+  const data = {
+    duration: slice.durationMs,
+    segments,
+    syncMarks: marks,
+    pauses: slice.pauses,
+  };
+  const before = JSON.stringify(data);
+  const scaled = audio.scalePlaybackData(data, 2);
+
+  assert.strictEqual(JSON.stringify(data), before, 'les données brutes ne sont pas modifiées');
+  assert.strictEqual(scaled.duration, data.duration / 2);
+  assert.strictEqual(scaled.segments.length, segments.length);
+  scaled.segments.forEach((seg, i) => {
+    assert.strictEqual(seg.fromMs, segments[i].fromMs / 2, `segment ${i} fromMs`);
+    assert.strictEqual(seg.toMs, segments[i].toMs / 2, `segment ${i} toMs`);
+    assert.strictEqual(seg.offsetMs, segments[i].offsetMs / 2, `segment ${i} offsetMs`);
+  });
+  assert.ok(marks.length > 0, 'marqueurs réels produits');
+  scaled.syncMarks.forEach((mark, i) => {
+    assert.strictEqual(mark.t, marks[i].t / 2, `marqueur ${i}`);
+  });
+  assert.ok(slice.pauses.length > 0, 'pauses réelles');
+  scaled.pauses.forEach((pause, i) => {
+    assert.strictEqual(pause.timeUs, slice.pauses[i].timeUs / 2, `pause ${i} début`);
+    assert.strictEqual(pause.endTimeUs, slice.pauses[i].endTimeUs / 2, `pause ${i} fin`);
+  });
+});
+
+test('scalePlaybackData : facteur 1 rend les données telles quelles', () => {
+  const data = { duration: 1000, segments: [{ fromMs: 0, toMs: 1000, offsetMs: 0 }] };
+  assert.strictEqual(audio.scalePlaybackData(data, 1), data);
+  assert.strictEqual(audio.scalePlaybackData(data, 0), data);
+});
+
 // --- Exécution -------------------------------------------------------------
 
 let passed = 0;

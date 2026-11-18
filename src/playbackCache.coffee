@@ -11,11 +11,15 @@
 # v3 : la forme des données change (segments/linearRepeats) et la variante
 # porte le mode de reprise. Bumper le cache garantit qu'aucune entrée v2
 # (sans ces champs, toujours déroulée) ne soit resservie après la mise à jour.
+# v4 : les données portent le tempo initial du fichier (fileTempoBpm,
+# fileTempoExplicit). Une entrée v3 n'a pas ces champs et ferait retomber le
+# défaut du réglage sur 80 sans savoir si le fichier a un tempo : elle n'est
+# jamais resservie. Le cache SVG n'est pas concerné.
 
 # IIFE : les modules inline partagent la portée globale. Sans cela, `cache`,
 # `get`, `set`… écraseraient ceux de svgCache.coffee (même page, scripts inline).
 do ->
-  CACHE_NAME = "musica-playback-cache-v3"
+  CACHE_NAME = "musica-playback-cache-v4"
   MAX_STORAGE_BYTES = 50 * 1024 * 1024  # 50 MB
 
   cache = null

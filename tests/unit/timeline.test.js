@@ -247,6 +247,50 @@ test('synthétique : slice vide bien formé et pauseAt hors listes', () => {
   assert.strictEqual(timeline.pauseAt(null, 0), null);
 });
 
+// --- Tempo de lecture ------------------------------------------------------
+// Fixture réelle à tempo explicite non-120 : testAndanteExcerpts.mscx
+// (37 noires/minute, voir le README des fixtures).
+test('fileTempoInfo : tempo initial explicite 37 de la fixture Andante', () => {
+  const tl = fixture('andante-expanded');
+  const info = timeline.fileTempoInfo(tl, '');
+  assert.deepStrictEqual(info, { bpm: 37, explicit: true });
+  assert.strictEqual(timeline.defaultPlaybackTempo(info), 37);
+});
+
+// testPausesTempoTimesigChange.mscx : 120 explicite au début, puis 87, 100…
+// La carte commence toujours par 500 000 µs (120) ; seul le MusicXML converti
+// de la même partition distingue l'indication réelle du défaut implicite.
+test('fileTempoInfo : 120 explicite reconnu au MusicXML converti réel', () => {
+  const tl = fixture('pauses-tempo-expanded');
+  assert.deepStrictEqual(timeline.fileTempoInfo(tl, ''), { bpm: 120, explicit: false });
+  const xml = fs.readFileSync(path.join(FIXTURES, 'pauses-tempo.xml'), 'utf8');
+  const info = timeline.fileTempoInfo(tl, xml);
+  assert.deepStrictEqual(info, { bpm: 120, explicit: true });
+  assert.strictEqual(timeline.defaultPlaybackTempo(info), 120);
+});
+
+// Fixture sans carte de tempo (pause_basic, normalisée avant la prise en charge
+// du tempo) et MusicXML réel sans indication : tempo effectif de la chaîne 120,
+// défaut du réglage 80.
+test('fileTempoInfo : fichier sans tempo -> effectif 120, défaut 80', () => {
+  const tl = fixture('pause_basic-expanded');
+  assert.strictEqual(tl.tempo, undefined);
+  const xml = fs.readFileSync(path.join(FIXTURES, '..', 'movements.xml'), 'utf8');
+  const info = timeline.fileTempoInfo(tl, xml);
+  assert.deepStrictEqual(info, { bpm: 120, explicit: false });
+  assert.strictEqual(timeline.defaultPlaybackTempo(info), 80);
+});
+
+test('clampPlaybackTempo : bornes 20–300 et défaut 80', () => {
+  assert.strictEqual(timeline.TEMPO_MIN_BPM, 20);
+  assert.strictEqual(timeline.TEMPO_MAX_BPM, 300);
+  assert.strictEqual(timeline.clampPlaybackTempo(1000), 300);
+  assert.strictEqual(timeline.clampPlaybackTempo(1), 20);
+  assert.strictEqual(timeline.clampPlaybackTempo(72.4), 72);
+  assert.strictEqual(timeline.clampPlaybackTempo('n/a'), 80);
+  assert.strictEqual(timeline.clampPlaybackTempo(null), 80);
+});
+
 let failed = 0;
 for (const { name, fn } of tests) {
   try {
