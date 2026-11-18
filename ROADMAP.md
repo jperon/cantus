@@ -46,7 +46,7 @@ fichiers PWA à partir des sources Pug/CoffeeScript.
    src/
      index.pug          # template principal
      worker.coffee      # Web Worker
-     app.coffee         # logique principale
+     app/               # logique principale, en fichiers thématiques (BUILD.md)
      styles.css         # styles (inlinés dans le build)
    pwa/
      manifest.json
@@ -59,7 +59,7 @@ fichiers PWA à partir des sources Pug/CoffeeScript.
 2. Le script `build.js` doit :
    - Compiler `worker.coffee` → `worker.js`, puis l'encoder en base64 pour l'injecter
      comme Blob URL dans `index.html` (permet au Worker de fonctionner sans serveur).
-   - Compiler `app.coffee` → `app.js`.
+   - Compiler `src/app/*.coffee` (concaténés dans l'ordre de `APP_SOURCES`) → `app.js`.
    - Télécharger le WASM Verovio et le JS wrapper depuis le CDN officiel (ou npm
      `verovio`), les encoder en base64, les injecter inline dans le HTML.
    - Compiler `index.pug` en passant les assets base64 comme variables locales Pug.
@@ -159,7 +159,7 @@ de mesures.
    #overlay-error            // message d'erreur
    ```
 
-2. Dans `app.coffee`, implémenter le gestionnaire de navigation :
+2. Dans `src/app/*.coffee`, implémenter le gestionnaire de navigation :
    - `currentPage` démarre à 1.
    - Tap zone droite → `currentPage += 1` (si `< pageCount`).
    - Tap zone gauche → `currentPage -= 1` (si `> 1`).
@@ -171,7 +171,7 @@ de mesures.
 3. Implémenter le préchargement :
    - Après chaque changement de page, demander immédiatement au Worker de rendre
      `currentPage + 1` et `currentPage + 2` si elles n'ont pas encore été mises en cache.
-   - Conserver un cache mémoire `Map<pageNumber, svgString>` dans `app.coffee`.
+   - Conserver un cache mémoire `Map<pageNumber, svgString>` dans `src/app/*.coffee`.
    - Quand un SVG est reçu du Worker, l'insérer dans le slot approprié si c'est la page
      courante, sinon le stocker dans le cache.
 

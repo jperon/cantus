@@ -2,7 +2,7 @@
 #
 # Aucun DOM, aucun audio : l'entrée est l'objet `timeline` produit par
 # l'adaptateur scoretk, la sortie est un objet JS pur. Il est branché dans
-# worker.coffee (slices, segments, marqueurs) et dans app.coffee (gel du suivi
+# worker.coffee (slices, segments, marqueurs) et dans `src/app/transport-suivi.coffee` (gel du suivi
 # pendant une pause).
 #
 # Champs RÉELLEMENT produits par scoretk (scoretk-wasm 0.1.0), et seuls

@@ -3,7 +3,7 @@
 # Aucun DOM, aucun audio : l'entrée est la liste des marqueurs de
 # synchronisation produite par le worker (syncMarks : {t, page, id}, triés par
 # t croissant), la sortie est un objet JS pur. La page et le système cibles
-# sont ensuite appliqués par app.coffee.
+# sont ensuite appliqués par `src/app/transport-suivi.coffee`.
 #
 # API exposée (window.__musicaPlayback dans le navigateur, module.exports en
 # CommonJS pour les tests Node) :

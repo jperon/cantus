@@ -36,6 +36,39 @@ script de construction (`cantus-site-build`) qui opère dans le dépôt courant,
 et **non** une dérivation hermétique du site. C'est volontaire : un build
 sandboxé exigerait de figer Verovio et scoretk comme dépendances.
 
+## Découpage de l'application principale (`src/app/`)
+
+L'application de la page est répartie dans `src/app/*.coffee`. `build.js`
+concatène ces fichiers dans l'ordre de la liste `APP_SOURCES` (déclarée en dur
+dans `build.js`) puis compile le résultat en un seul programme CoffeeScript
+(`bare: true`), comme avant le découpage (un seul fichier). Il n'y a ni
+module, ni export, ni frontière de fichier : la portée globale unique et les
+instructions exécutées au chargement sont conservées.
+
+| Fichier | Contenu |
+| --- | --- |
+| `demarrage.coffee` | Date de build, installation PWA, service worker. |
+| `etat.coffee` | État global partagé et répartiteur des messages du worker. |
+| `pages-lecture.coffee` | Pages SVG et données de lecture (midi, marqueurs, pauses). |
+| `transport-suivi.coffee` | Transport audio et suivi du défilement pendant la lecture. |
+| `reglages-voix.coffee` | Réglages persistants, voix masquées, tailles, variantes de cache. |
+| `affichage-navigation.coffee` | Affichage des pages, préchargement, défilement, navigation. |
+| `decoupage-xml.coffee` | Découpage MusicXML en mouvements, masquage et tailles des voix. |
+| `sources.coffee` | Conversion scoretk et chargement séquentiel des sources/mouvements. |
+| `bibliotheque-import.coffee` | Bibliothèque, navigation tactile, import de fichiers/dossiers. |
+| `reglages-ui.coffee` | Panneau de réglages (liste des voix, contrôles). |
+| `integration.coffee` | Stockage et quota, protocole, URL, partage, messages d'erreur. |
+| `init.coffee` | Câblage des modules au `DOMContentLoaded`. |
+
+**Règle d'ordre** : l'ordre de `APP_SOURCES` est significatif. Il suit celui du
+monolithe d'origine — état global et écouteurs posés au chargement d'abord,
+puis les définitions, et `init.coffee` en dernier. Une nouvelle définition va
+dans le fichier thématique correspondant ; un nouveau fichier s'insère dans
+`APP_SOURCES` à sa place dans l'ordre du chargement. Ne jamais déplacer une
+instruction exécutée au chargement (`addEventListener`, appels,
+initialisations d'état) par rapport aux autres : seule la découpe en fichiers
+change, pas l'ordre d'exécution.
+
 ## Aperçu audio et synchronisation (scoretk)
 
 Verovio ne fournit **plus** le MIDI ni les temps de lecture : il ne sert qu'au
@@ -50,8 +83,8 @@ du mapping (elles redeviendraient audibles sur le master).
 normal et SPA) et dans la page (`timelineJs`). Il fournit les manipulations
 pures de la timeline (slices de mouvement, segments de lecture, pauses,
 marqueurs de synchronisation) utilisées telles quelles par le worker et par
-`app.coffee`. Le remappage des notes sur les segments reste dans `audio.coffee`
-(`remapNotesToSegments`), désormais seul chemin.
+`src/app/*.coffee`. Le remappage des notes sur les segments reste dans
+`audio.coffee` (`remapNotesToSegments`), désormais seul chemin.
 
 `timeline.ticks` est le dernier tick, **pauses comprises** ; la durée vient de
 `measures[dernier].endTimeUs`. `measures[]` ne contient que les mesures jouées,

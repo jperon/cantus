@@ -30,7 +30,7 @@ SOUNDFONT_ASSETS = [
 ]
 
 # Installation - cache static assets
-# Le nouveau SW reste en attente : app.coffee propose la mise à jour,
+# Le nouveau SW reste en attente : `src/app/demarrage.coffee` propose la mise à jour,
 # puis envoie SKIP_WAITING quand l'utilisateur l'accepte.
 self.addEventListener 'install', (event) ->
   console.log 'SW: Installation started'
@@ -213,7 +213,7 @@ handleShare = (request) ->
     id = await writeShareEntry entryName, files
     console.log "SW: partage stocké '#{entryName}' (#{files.length} fichier(s), id: #{id})"
     # 303 : le navigateur repasse en GET sur l'application ; le jeton est
-    # consommé puis retiré de l'URL par app.coffee.
+    # consommé puis retiré de l'URL par `src/app/integration.coffee`.
     new Response null, { status: 303, headers: { Location: "./?shared=#{encodeURIComponent id}" } }
   catch err
     console.error 'SW: échec du partage', err

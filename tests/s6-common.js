@@ -107,7 +107,7 @@ async function positionGrowing(page, ms = 1000, minimum = 100) {
 
 // Position de défilement horizontale en demi-pages : page du premier
 // .scroll-page et décalage de 50vw du wrapper (0 = début de page, 1 = milieu).
-// Même convention que scrollPos dans src/app.coffee.
+// Même convention que scrollPos dans src/app/affichage-navigation.coffee.
 async function horizontalScrollPos(page) {
   return page.evaluate(() => {
     const first = document.querySelector('#page-current .scroll-page');

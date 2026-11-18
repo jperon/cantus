@@ -23,7 +23,7 @@ Reste à faire uniquement. Pour l'architecture et les décisions déjà prises, 
 
 ### Listes d'extensions scoretk dispersées
 
-- `SCORETK_EXTENSIONS` (app.coffee) est la source côté application, mais
+- `SCORETK_EXTENSIONS` (`src/app/sources.coffee`) est la source côté application, mais
   `SCORETK_FROM` (worker.coffee), `IMPORT_EXTENSIONS_SCORETK` (build.js), le
   manifeste et `pwa/sw.coffee` gardent chacun leur liste : à tenir ensemble.
 
@@ -45,11 +45,6 @@ Reste à faire uniquement. Pour l'architecture et les décisions déjà prises, 
 - Fermatas et respirations non modélisées.
 - Trémolo à deux accords : seule la première note pilote les deux attaques
   (parité MuseScore).
-
-### `src/app.coffee` monolithique
-
-- ~3200 lignes : extraire progressivement import/fichiers, lecture/suivi,
-  bibliothèque, comme l'ont déjà fait `timeline` et `playbackCache`.
 
 ### Résidus à examiner
 

@@ -121,7 +121,7 @@ async function installProbe(page) {
     }, true);
 
     // L'état du transport est rendu dans cet attribut : « Pause » signifie
-    // playing (cf. renderTransport dans src/app.coffee).
+    // playing (cf. renderTransport dans src/app/transport-suivi.coffee).
     const observer = new MutationObserver(() => {
       if (!bench.clickAt || bench.playingAt) return;
       if (btn.getAttribute('aria-label') === 'Pause') bench.playingAt = performance.now();
