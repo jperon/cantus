@@ -2207,10 +2207,12 @@ loadSources = (sources, startPage = 1) ->
 # convertis et les découpages restent en cache
 reloadScore = (startPage) ->
   return unless currentSources?.length
-  startLoad startPage
+  startLoad startPage, true
 
-# Reset the render state and start converting the first source
-startLoad = (startPage = 1) ->
+# Reset the render state and start converting the first source. `keepSources`
+# (rechargement à XML inchangé) laisse au worker ses sources, son MIDI et sa
+# timeline scoretk, qui ne dépendent ni de la mise en page ni des voix masquées.
+startLoad = (startPage = 1, keepSources = false) ->
   token = ++loadToken
   # Nouveau chargement (fichier, rechargement, zoom, voix) : le transport
   # repart de zéro et le moteur audio libère son contexte.
@@ -2240,7 +2242,7 @@ startLoad = (startPage = 1) ->
   pendingPlayback.forEach (pending) -> pending.reject new Error "Chargement remplacé"
   pendingPlayback.clear()
   playbackCache.clear()
-  workerSources.clear()
+  workerSources.clear() unless keepSources
   pushedPages = {}
   movements = []
   awaitingLoad = true
@@ -2265,8 +2267,11 @@ startLoad = (startPage = 1) ->
     svgStore.pruneVariants(currentFileId, partsVariant()).catch (err) ->
       console.warn "Purge du cache SVG impossible : #{err?.message or err}"
 
-  # Clear previous movements before loading new file
-  worker.postMessage { type: "clearMovements" }
+  # Clear previous movements before loading new file. Les marques de synchro
+  # dépendent de la mise en page : elles repartent toujours de zéro.
+  clearMsg = { type: "clearMovements" }
+  clearMsg.keepSources = true if keepSources
+  worker.postMessage clearMsg
 
   loadFirstSource token
 

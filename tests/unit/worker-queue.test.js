@@ -79,6 +79,37 @@ test('registerSource avant ready puis flush : source disponible, sans clearMovem
   assert.ok(hooks.getSources()[1], 'la source 1 doit être enregistrée après le flush');
 });
 
+test('clearMovements keepSources : source et lecture conservées', () => {
+  const { worker, self } = loadWorker();
+  const hooks = worker.__test;
+
+  hooks.setToolkit({});
+  self.onmessage({ data: { type: 'registerSource', sourceId: 0, xml: XML } });
+  hooks.setSourcePlayback('0:expanded', { midi: 'AAA', timeline: { measures: [] } });
+
+  self.onmessage({ data: { type: 'clearMovements', keepSources: true } });
+
+  assert.ok(hooks.getSources()[0], 'la source doit survivre à un rechargement');
+  assert.strictEqual(hooks.getSources()[0].xml, XML);
+  assert.ok(hooks.getSourcePlayback()['0:expanded'],
+    'le MIDI et la timeline scoretk doivent survivre à un rechargement');
+});
+
+test('clearMovements sans keepSources : tout est vidé', () => {
+  const { worker, self } = loadWorker();
+  const hooks = worker.__test;
+
+  hooks.setToolkit({});
+  self.onmessage({ data: { type: 'registerSource', sourceId: 0, xml: XML } });
+  hooks.setSourcePlayback('0:expanded', { midi: 'AAA', timeline: { measures: [] } });
+
+  self.onmessage({ data: { type: 'clearMovements' } });
+
+  assert.strictEqual(Object.keys(hooks.getSources()).length, 0, 'les sources doivent être vidées');
+  assert.strictEqual(Object.keys(hooks.getSourcePlayback()).length, 0,
+    'les données de lecture doivent être vidées');
+});
+
 let passed = 0;
 const failures = [];
 for (const { name, fn } of tests) {
