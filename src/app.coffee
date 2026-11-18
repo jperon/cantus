@@ -685,6 +685,7 @@ window.__musicaPlaybackProbe = ->
       hasData: false
       syncMarksCount: 0
       firstMarks: []
+      marks: []
       duration: 0
       segmentsCount: 0
       linearRepeats: false
@@ -700,6 +701,7 @@ window.__musicaPlaybackProbe = ->
         movementId: result.movement.id
         syncMarksCount: data.syncMarks?.length ? 0
         firstMarks: (data.syncMarks ? []).slice 0, 5
+        marks: data.syncMarks ? []
         duration: data.duration ? 0
         segmentsCount: data.segments?.length ? 0
         linearRepeats: !!data.linearRepeats
@@ -713,6 +715,7 @@ window.__musicaPlaybackProbe = ->
         movementId: result.movement.id
         syncMarksCount: 0
         firstMarks: []
+        marks: []
         duration: 0
         segmentsCount: 0
         linearRepeats: false
@@ -1849,6 +1852,21 @@ captureSplitAttrs = (parts, splitPoints) ->
         state.transpose = transpose if transpose
   splitAttrs
 
+# Aligne les identifiants de mesure sur ceux de la timeline scoretk : scoretk
+# nomme la mesure m d'une partie p « p{p}-m{m} » dans sa timeline, mais son
+# export MusicXML simple n'écrit pas d'id. On les pose donc ici, une fois, pour
+# que Verovio conserve ces ids (son measureOn) et que la jointure page↔temps
+# puisse se faire par identifiant et non par position, y compris quand Verovio
+# replie les mesures d'un multi-repos.
+ensureMeasureIds = (doc) ->
+  for part, p in Array.from doc.querySelectorAll "part"
+    for measure, m in Array.from part.querySelectorAll "measure"
+      continue if measure.getAttribute "id"
+      id = "p#{p}-m#{m}"
+      measure.setAttribute "id", id
+      measure.setAttributeNS "http://www.w3.org/XML/1998/namespace", "xml:id", id
+  doc
+
 # Detect split points and capture attributes at each point (lazy approach)
 # Returns {doc, splitPoints, splitAttrs, totalMeasures}
 detectSplitPoints = (xmlString) ->
@@ -1857,6 +1875,7 @@ detectSplitPoints = (xmlString) ->
   # Insert system breaks once, in place: preprocessMusicXML only adds <print>
   # elements, which neither detection below nor the measure list observe.
   preprocessMusicXML doc
+  ensureMeasureIds doc
 
   parts = doc.querySelectorAll("part")
   unless parts.length > 0

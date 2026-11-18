@@ -38,7 +38,7 @@
 #   buildSegments(slice, pauses)
 #       -> [{measure, fromMs, toMs, offsetMs}]
 #   buildSyncMarks(slice, pageByWrittenIndex, measureStart)
-#       -> {marks: [{t, page, id}], unresolved}
+#       -> {marks: [{t, page, id, xmlId?}], unresolved}
 #   pauseAt(pauses, tMs) -> pause active ou null
 #
 # Le remappage des notes sur les segments reste dans audio.coffee
@@ -305,7 +305,12 @@ buildSyncMarks = (slice, pageByWrittenIndex, measureStart) ->
       continue
     t = toNum entry.timeMs, roundMs(toNum(entry.timeUs, 0))
     id = entry.xmlId ? entry.id ? "m#{measure}"
-    marks.push {t, page, id: String(id)}
+    mark = {t, page, id: String(id)}
+    # xmlId brut conservé pour que le worker (et les tests) puissent joindre
+    # les mesures par identifiant et non par position. Absent des timelines
+    # synthétiques : le champ n'est alors pas ajouté.
+    mark.xmlId = String(entry.xmlId) if entry.xmlId?
+    marks.push mark
 
   marks.sort (a, b) -> a.t - b.t
   deduped = []

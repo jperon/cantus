@@ -425,12 +425,14 @@ registerSource = (sourceId, xml) ->
 countWrittenMeasures = (xml) ->
   match = String(xml ? "").match /<part(?:\s[^>]*)?>([\s\S]*?)<\/part>/i
   return 0 unless match
-  (match[1].match(/<measure\b/g) ? []).length
+  (match[1].match(/<measure(?=[\s>])/g) ? []).length
 
 # Liste [index écrit local -> page] pour un mouvement. `measureOn` donne
 # l'ordre d'exécution ; les copies « -rendN » sont ramenées à leur première
-# occurrence, ce qui laisse exactement une entrée par mesure écrite. En cas
-# d'écart avec le XML du mouvement, on journalise au lieu de deviner.
+# occurrence. Verovio ne rend PAS les mesures repliées dans un multi-repos :
+# `ids` contient donc leurs xmlId dans l'ordre du XML, mais pas une entrée par
+# mesure écrite. La correspondance avec la timeline se fait par xmlId, jamais
+# par position. En cas d'écart avec le XML du mouvement, on journalise.
 buildPageIndex = (movementId, mv) ->
   timemap = tk.renderToTimemap({includeMeasures: true})
   unless Array.isArray timemap
@@ -523,21 +525,76 @@ buildPlaybackData = (movementId, linearRepeats = false, measureStart, measureEnd
   loadSourcePlayback(mv.sourceId, linearRepeats).then (source) ->
     slice = timelineApi.movementSlice source.timeline, start, stop
     segments = timelineApi.buildSegments slice
-    {marks, unresolved} = timelineApi.buildSyncMarks slice, (mv.pageByWrittenIndex ? []), start
+    # Pont mesure écrite -> page par xmlId (et non par position) : Verovio
+    # n'émet pas de measureOn pour les mesures repliées d'un multi-repos, donc
+    # l'index Verovio et l'ordinal scoretk divergent dès la première mesure
+    # repliée. On associe les ids de measureOn aux xmlId de la timeline, puis
+    # on remplit les mesures absentes (repliées) avec la page précédente.
+    verovioIds = mv.verovioIdByWrittenIndex ? []
+    verovioPages = mv.pageByWrittenIndex ? []
+    pageByVerovioId = {}
+    for id, i in verovioIds
+      vid = String id
+      pageByVerovioId[vid] = verovioPages[i]
+    writtenIds = {}
+    for entry in (slice.measures ? [])
+      writtenIds[String entry.xmlId] = true if entry.xmlId?
+    idMode = false
+    for vid of pageByVerovioId
+      if writtenIds[vid]
+        idMode = true
+        break
+    pageByWrittenIndex = verovioPages
+    idUnresolved = 0
+    if idMode
+      resolved = {}
+      entryLocals = {}
+      maxLocal = 0
+      for entry in (slice.measures ? [])
+        local = Number(entry.measure) - start
+        continue unless local >= 0
+        entryLocals[local] = true
+        maxLocal = local if local > maxLocal
+        page = if entry.xmlId? then pageByVerovioId[String entry.xmlId] else null
+        page = Number page
+        resolved[local] = page if isFinite(page) and page > 0
+      pageByWrittenIndex = []
+      previous = null
+      # Mesures repliées (multi-repos) : page de la mesure résolue précédente.
+      # Les entrées sans page sont comptées ; celles d'avant toute page
+      # résolue restent non résolues dans buildSyncMarks (comptées là aussi).
+      for i in [0..maxLocal]
+        if resolved[i]?
+          previous = resolved[i]
+        else if previous? and entryLocals[i]
+          idUnresolved += 1
+        pageByWrittenIndex[i] = previous
+    {marks, unresolved} = timelineApi.buildSyncMarks slice, pageByWrittenIndex, start
+    unresolved += idUnresolved
     if unresolved > 0
       console.warn "Marqueurs non résolus en page (mouvement #{movementId}) : #{unresolved}"
-    # Les xmlId de scoretk n'existent pas dans le SVG : Verovio renumérote tout.
-    # On les ramène vers l'id Verovio de la mesure écrite (mesureOn), seul id
-    # utilisable par le suivi vertical et getElementById.
-    verovioByXmlId = new Map()
-    for entry in (source.timeline.measures ? [])
-      xmlId = String entry.xmlId ? "m#{entry.measure}"
-      continue if verovioByXmlId.has xmlId
-      bridged = mv.verovioIdByWrittenIndex?[entry.measure - start]
-      verovioByXmlId.set xmlId, bridged if bridged?
-    for mark in marks
-      bridged = verovioByXmlId.get String(mark.id)
-      mark.id = bridged if bridged?
+    # Le suivi vertical et getElementById utilisent les ids de Verovio. En mode
+    # xmlId ils sont égaux (Verovio conserve xml:id) ; sinon on retombe sur
+    # l'ancien pont positionnel, qui n'est valable que sans multi-repos.
+    if idMode
+      previousVid = null
+      for mark in marks
+        key = String mark.id
+        if pageByVerovioId[key]?
+          previousVid = key
+          mark.id = key
+        else if previousVid?
+          mark.id = previousVid
+    else
+      verovioByXmlId = new Map()
+      for entry in (source.timeline.measures ? [])
+        xmlId = String entry.xmlId ? "m#{entry.measure}"
+        continue if verovioByXmlId.has xmlId
+        bridged = mv.verovioIdByWrittenIndex?[entry.measure - start]
+        verovioByXmlId.set xmlId, bridged if bridged?
+      for mark in marks
+        bridged = verovioByXmlId.get String(mark.id)
+        mark.id = bridged if bridged?
     data = {
       midi: source.midi
       syncMarks: marks
