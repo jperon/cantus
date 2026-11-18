@@ -126,7 +126,8 @@ la section d'attribution de l'interface) avec un lien vers la licence.
 
 scoretk est un portage du code de MuseScore Studio, Copyright © MuseScore
 Limited and others, distribué sous GNU GPL v3 seulement (GPL-3.0-only). Il
-n'est chargé que lors de l'import d'un fichier `.mscz` ou `.mscx`.
+n'est chargé que lors de l'import d'un fichier `.mscz`, `.mscx`, `.ly`,
+`.lilypond` ou `.abc`.
 
 ---
 

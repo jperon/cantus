@@ -7,14 +7,14 @@ Reste à faire uniquement. Pour l'architecture et les décisions déjà prises, 
 
 ### Import de tous les formats gérés par scoretk
 
-- **Objectif** : accepter `.ly`, `.lilypond`, `.abc`, `.mid`/`.midi` en plus de
-  `.musicxml`, `.mxl`, `.mscz`, `.mscx`. scoretk gère `ly`, `lilypond`, `abc`,
-  `mid`, `midi`.
-- **Piste** : ajouter les extensions à `IMPORT_EXTENSIONS` (`src/app.coffee`) et
-  à `IMPORT_EXTENSIONS_SCORETK` (`build.js`), puis mettre à jour le
-  `share_target` de `pwa/manifest.json` et `apk/twa-manifest.json`.
-- **Attention** : un `.mid` ne porte pas de notation ; la conversion produit une
-  transcription. Le dire dans l'interface.
+- **Fait** : `.ly`, `.lilypond` et `.abc` sont acceptés, comme `.mscz`/`.mscx`,
+  par la conversion scoretk du worker (`convertScoretk`, `from` déduit de
+  l'extension) ; fixtures `.ly`/`.abc` et assertions dans `s1-import.js`.
+  Manifeste PWA : types `text/x-lilypond`, `text/vnd.abc` et `text/plain`.
+- **Reste** : `.mid`/`.midi`. Un `.mid` ne porte pas de notation ; la conversion
+  produit une transcription. Le dire dans l'interface.
+- **Attention** : le manifeste APK (`apk/twa-manifest.json`, non versionné) doit
+  être régénéré pour reprendre les nouveaux types MIME.
 - **Dette** : la liste des extensions reste en double dans `app.coffee` et
   `build.js`.
 

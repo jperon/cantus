@@ -177,7 +177,9 @@ Les fichiers sont acceptés quelle que soit leur extension ; l'application
 applique ensuite `isCompatibleFile` et signale proprement un refus. Les
 formats `.mscz`/`.mscx` n'ont pas de type MIME standard : selon le fournisseur
 Android, ils arrivent en `application/octet-stream`, `application/zip` ou
-`application/x-musescore`, d'où leur présence dans `accept`.
+`application/x-musescore`, d'où leur présence dans `accept`. LilyPond
+(`.ly`, `.lilypond`) et ABC (`.abc`) arrivent en `text/x-lilypond`,
+`text/vnd.abc` ou `text/plain` selon la source du partage.
 
 ## Cas d'usage spécifiques
 
