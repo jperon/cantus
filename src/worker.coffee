@@ -14,14 +14,17 @@ sources = {}  # sourceId -> {bytes, xml} : source complète, pour scoretk
 sourcePlayback = {}  # "sourceId:mode" -> {midi, timeline, staffLabels, trackMap}
 sourcePlaybackPending = {}  # même clé -> promesse en cours
 
-# Clear all movements (call before loading new file)
-clearMovements = ->
+# Clear all movements (call before loading new file). Les sources, leur MIDI et
+# leur timeline scoretk ne dépendent ni de la mise en page ni des voix masquées :
+# un rechargement à XML inchangé (keepSources) les conserve.
+clearMovements = (keepSources = false) ->
   movements = {}
   currentMovement = null
   playbackCache = {}
-  sources = {}
-  sourcePlayback = {}
-  sourcePlaybackPending = {}
+  unless keepSources
+    sources = {}
+    sourcePlayback = {}
+    sourcePlaybackPending = {}
 
 # Les données de lecture sont mises en cache par mouvement ET par mode
 # (déroulé / linéaire) : invalider un mouvement doit oublier ses deux entrées.
@@ -679,7 +682,7 @@ handleMessage = (e) ->
             }
 
       when "clearMovements"
-        clearMovements()
+        clearMovements e.data.keepSources
 
       when "loadMovement"
         {
@@ -758,6 +761,8 @@ if typeof module isnt 'undefined' and module?.exports?
       setToolkit: (value) -> tk = value
       notifyReady
       getSources: -> sources
+      getSourcePlayback: -> sourcePlayback
+      setSourcePlayback: (key, value) -> sourcePlayback[key] = value
       getPending: -> pending
     }
   }
