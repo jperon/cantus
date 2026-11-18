@@ -369,6 +369,19 @@ html, body {
   margin-bottom: 10px;
 }
 
+/* Volume général et tempo de lecture : sur une même ligne quand la largeur le
+   permet, l'un sous l'autre sinon. Le retour à la ligne est automatique. */
+.settings-pair {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+}
+
+.settings-pair > .settings-group {
+  flex: 1 1 300px;
+  min-width: 0;
+}
+
 .settings-row {
   display: flex;
   align-items: center;
@@ -444,6 +457,13 @@ html, body {
   flex: 1;
   height: 4px;
   accent-color: #333;
+}
+
+/* Le curseur de volume occupe sa colonne, comme celui du zoom sur toute la
+   largeur : sinon la moitié de la ligne resterait vide à côté du tempo. */
+#master-volume-range {
+  flex: 1;
+  min-width: 0;
 }
 
 #zoom-value {

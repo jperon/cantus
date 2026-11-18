@@ -48,19 +48,20 @@ html(lang="fr")
         .settings-row
           span#zoom-value 40
           input#zoom-range(type="range" min="30" max="80" step="5" value="40")
-      .settings-group
-        label.settings-label(for="master-volume-range") Volume général
-        .settings-row
-          span#master-volume-value 80
-          input#master-volume-range(type="range" min="0" max="100" step="5" value="80" aria-label="Volume général")
-      .settings-group
-        label.settings-label(for="tempo-input") Tempo de lecture
-        .settings-row
-          input#tempo-input.settings-number(type="number" min="20" max="300" step="1" value="80" inputmode="numeric" aria-label="Tempo de lecture en noires par minute")
-          span#tempo-unit.tempo-unit(title="noire") ♩
-          span /min
-          button#tempo-reset.settings-btn.tempo-reset(type="button" title="Revenir au tempo du fichier" disabled) Tempo du fichier
-        p#tempo-hint.settings-hint Tempo du fichier en cours de détermination…
+      .settings-pair
+        .settings-group
+          label.settings-label(for="master-volume-range") Volume général
+          .settings-row
+            span#master-volume-value 80
+            input#master-volume-range(type="range" min="0" max="100" step="5" value="80" aria-label="Volume général")
+        .settings-group
+          label.settings-label(for="tempo-input") Tempo de lecture
+          .settings-row
+            input#tempo-input.settings-number(type="number" min="20" max="300" step="1" value="80" inputmode="numeric" aria-label="Tempo de lecture en noires par minute")
+            span#tempo-unit.tempo-unit(title="noire") ♩
+            span /min
+            button#tempo-reset.settings-btn.tempo-reset(type="button" title="Revenir au tempo du fichier" disabled) Tempo du fichier
+          p#tempo-hint.settings-hint Tempo du fichier en cours de détermination…
       #parts-group.settings-group.hidden
         label.settings-label Voix
         #parts-list
