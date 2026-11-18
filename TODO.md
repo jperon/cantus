@@ -5,19 +5,6 @@ Reste à faire uniquement. Pour l'architecture et les décisions déjà prises, 
 
 ## Chantiers
 
-### Import de tous les formats gérés par scoretk
-
-- **Fait** : `.ly`, `.lilypond` et `.abc` sont acceptés, comme `.mscz`/`.mscx`,
-  par la conversion scoretk du worker (`convertScoretk`, `from` déduit de
-  l'extension) ; fixtures `.ly`/`.abc` et assertions dans `s1-import.js`.
-  Manifeste PWA : types `text/x-lilypond`, `text/vnd.abc` et `text/plain`.
-- **Reste** : `.mid`/`.midi`. Un `.mid` ne porte pas de notation ; la conversion
-  produit une transcription. Le dire dans l'interface.
-- **Attention** : le manifeste APK (`apk/twa-manifest.json`, non versionné) doit
-  être régénéré pour reprendre les nouveaux types MIME.
-- **Dette** : la liste des extensions reste en double dans `app.coffee` et
-  `build.js`.
-
 ### Export vers tous les formats
 
 - **Objectif** : exporter au format choisi via `formats()` de scoretk, sans coder
@@ -33,6 +20,12 @@ Reste à faire uniquement. Pour l'architecture et les décisions déjà prises, 
   `~/.config/cantus/apk.env` et des variables `BUBBLEWRAP_*`/`CANTUS_*`.
 
 ## Dette technique
+
+### Listes d'extensions scoretk dispersées
+
+- `SCORETK_EXTENSIONS` (app.coffee) est la source côté application, mais
+  `SCORETK_FROM` (worker.coffee), `IMPORT_EXTENSIONS_SCORETK` (build.js), le
+  manifeste et `pwa/sw.coffee` gardent chacun leur liste : à tenir ensemble.
 
 ### Tests unitaires contre des contrats imaginaires
 

@@ -179,7 +179,10 @@ formats `.mscz`/`.mscx` n'ont pas de type MIME standard : selon le fournisseur
 Android, ils arrivent en `application/octet-stream`, `application/zip` ou
 `application/x-musescore`, d'où leur présence dans `accept`. LilyPond
 (`.ly`, `.lilypond`) et ABC (`.abc`) arrivent en `text/x-lilypond`,
-`text/vnd.abc` ou `text/plain` selon la source du partage.
+`text/vnd.abc` ou `text/plain` selon la source du partage ; les fichiers MIDI
+(`.mid`, `.midi`) en `audio/midi` ou `audio/x-midi`. Un MIDI ne portant pas de
+notation, l'application affiche à l'ouverture une indication discrète de
+transcription.
 
 ## Cas d'usage spécifiques
 

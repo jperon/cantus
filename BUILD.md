@@ -26,8 +26,8 @@ le devShell pour retrouver les variables d'environnement.
 
 Le flake positionne `SCORETK_PKG` par défaut à `$PWD/../musescore/result`.
 Le build reste utilisable si le paquet scoretk est absent (avertissement,
-imports MuseScore, LilyPond et ABC désactivés) ; en revanche le toolkit Verovio
-est obligatoire.
+imports MuseScore, LilyPond, ABC et MIDI désactivés) ; en revanche le toolkit
+Verovio est obligatoire.
 Le paquet est copié dans `dist/scoretk/` (wrapper, glue et `.wasm`) ; le SPA
 inline le glue et le `.wasm` en base64 dans `spa.html`.
 
