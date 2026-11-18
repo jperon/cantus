@@ -3,14 +3,10 @@
 // monotone croissante. Un retour en arrière signale une cale de page (seek)
 // déclenchée par le déplacement du suivi lui-même, qui ramène la lecture sur
 // la page précédente et boucle.
-const path = require('path');
 const L = require('./lib');
 
 const PAGES = ['index.html'];
-const PARTITION = path.join(
-  process.env.HOME,
-  'Musique/Partitions/Chorales/Bach_JS/Magnificat/01- Magnificat.mscz'
-);
+const PARTITION = L.FILES.magnificatBachMscz;
 const DURATION_MS = Number(process.env.S8_MS) || 30000;  // > une page, < 60 s
 const SAMPLE_MS = 500;
 const MONOTONE_TOLERANCE_MS = 2000;  // (a) à 2 s près
