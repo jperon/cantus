@@ -9,6 +9,9 @@ const L = require('./lib');
 
 const PAGES = ['index.html', 'spa.html'];
 const MOVEMENTS_FIXTURE = path.join(__dirname, 'fixtures', 'movements.xml');
+// Trois mouvements de deux mesures, tempo 120 explicite, hauteurs disjointes
+// par mouvement (ut/ré, mi/fa, sol/la).
+const ENCHAINEMENT_FIXTURE = path.join(__dirname, 'fixtures', 'enchainement.xml');
 
 // Bornes explicites des attentes de ce scénario, en millisecondes.
 //
@@ -165,6 +168,8 @@ async function playbackSample(page, movementId = 1, linearRepeats = false) {
         done(resolve, {
           syncMarks: d.syncMarks || [],
           duration: Number(d.duration) || 0,
+          offsetMs: Number(d.offsetMs) || 0,
+          sourceDurationMs: Number(d.sourceDurationMs) || 0,
           segments: d.segments || [],
           linearRepeats: !!d.linearRepeats,
         });
@@ -233,7 +238,7 @@ async function main(runPage, { budgetMs, summary = 'S6' } = {}) {
 }
 
 module.exports = {
-  L, PAGES, MOVEMENTS_FIXTURE,
+  L, PAGES, MOVEMENTS_FIXTURE, ENCHAINEMENT_FIXTURE,
   WAIT, bounded, waitReady, waitFirstSvg, waitBackgroundLoaded, reloadPage,
   state, waitState, transportHidden, positionGrowing, horizontalScrollPos,
   seekFraction, alignedOnSystem, storedParts, partVolumeValues, playbackSample,

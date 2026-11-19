@@ -8,7 +8,7 @@ const {
   WAIT, bounded, waitReady, waitFirstSvg, waitBackgroundLoaded, reloadPage,
   state, waitState, transportHidden, positionGrowing, horizontalScrollPos,
   seekFraction, alignedOnSystem, storedParts, partVolumeValues, playbackSample,
-  displayedPageNumber, waitLibraryReady,
+  displayedPageNumber, waitLibraryReady, ENCHAINEMENT_FIXTURE,
 } = C;
 
 // Attend que la page marquée par markSvg ait été remplacée par un nouveau
@@ -593,8 +593,153 @@ async function runPage(browser, url, pageName, results) {
     await ctxVoices.close();
   }
 
+  // Une partition = une lecture continue : à la fin d'un mouvement, la
+  // lecture enchaîne sans pause sur le suivant (suivi compris), et un saut
+  // vers une mesure d'un autre mouvement lit cette mesure-là. Fixture
+  // synthétique à trois mouvements, hauteurs disjointes par mouvement
+  // (ut/ré, mi/fa, sol/la) et tempo 120 explicite.
+  {
+    const { page, ctx: ctxChain, errors: errorsChain } = await L.newPage(browser, url, { pageName });
+    try {
+      await waitReady(page);
+      await L.importFile(page, ENCHAINEMENT_FIXTURE);
+      await waitFirstSvg(page);
+      await waitBackgroundLoaded(page);
+      await page.waitForTimeout(500);
+      const layout = await page.evaluate(() => ({
+        movements: movements.map((m) => ({ id: m.id, pages: m.pageCount, loaded: m.loaded })),
+        pageCount,
+      }));
+      let start = 1;
+      const starts = layout.movements.map((m) => {
+        const first = start;
+        start += m.pages || 0;
+        return first;
+      });
+      const m1 = await playbackSample(page, 1);
+      const m2 = await playbackSample(page, 2);
+      L.record(results, '6. Mouvements : segments calés sur le temps absolu de la source', pageName,
+        layout.movements.length === 3 && m2.segments.length > 0 &&
+          m2.segments[0].fromMs > 0 && m2.offsetMs > 0 &&
+          m2.sourceDurationMs > m2.offsetMs + m2.duration ? 'OK' : 'ÉCHEC',
+        `${layout.movements.length} mouvement(s), pages ${starts.join('/')} ; ` +
+        `mouvement 2 : premier segment à ${m2.segments[0]?.fromMs} ms, ` +
+        `offset ${m2.offsetMs} ms, durée ${m2.duration} ms, source ${m2.sourceDurationMs} ms`);
+
+      // (a) Enchaînement en fin de mouvement : la lecture reste active, la
+      // position continue de croître et le suivi passe au mouvement 2.
+      await page.click('#transport-play');
+      await waitState(page, 'playing');
+      await page.evaluate((ms) => window.seekPlayback(ms), m1.duration - 400);
+      let chained = null;
+      try {
+        await bounded('enchaînement vers le mouvement 2', 8000, page.waitForFunction(() => {
+          const s = window.__musicaPlaybackState ? window.__musicaPlaybackState() : null;
+          return s && s.movementId === 2 && s.state === 'playing';
+        }, null, { timeout: 8000, polling: 50 }));
+        await page.waitForTimeout(600);
+        chained = await page.evaluate(() => ({
+          state: window.__musicaPlaybackState(),
+          pitches: [...new Set(window.__musicaAudio.getNotes().map((n) => n.pitch))],
+          page: displayedPage(),
+        }));
+      } catch (e) {
+        chained = null;
+      }
+      const chainOk = chained && chained.state.state === 'playing' &&
+        chained.pitches.length > 0 && chained.pitches.every((p) => p === 64 || p === 65) &&
+        Math.abs(chained.state.offset - m1.duration) <= 20 &&
+        Math.abs(chained.state.sourceDuration - 3 * m1.duration) <= 40 &&
+        chained.state.displayPosition >= chained.state.offset &&
+        chained.page >= starts[1] && chained.page < (starts[2] ?? (layout.pageCount + 1));
+      L.record(results, '6. Enchaînement : la lecture continue sur le mouvement suivant', pageName,
+        chainOk ? 'OK' : 'ÉCHEC',
+        chained
+          ? `état ${chained.state.state}, mouvement ${chained.state.movementId}, ` +
+            `position affichée ${chained.state.displayPosition} ms / ${chained.state.sourceDuration} ms, ` +
+            `offset ${chained.state.offset} ms, page ${chained.page} (mouvement 2 à ${starts[1]}), ` +
+            `hauteurs jouées [${chained.pitches.join(',')}]`
+          : 'le passage au mouvement 2 n’a pas eu lieu');
+
+      // (b) Saut pendant la lecture vers le mouvement 2 : la lecture reprend
+      // sur la mesure visée, avec les notes de ce mouvement (pas celles du
+      // début du fichier).
+      await page.click('#transport-stop');
+      await waitState(page, 'stopped');
+      await page.evaluate(() => window.goToPage(1));
+      await page.waitForTimeout(400);
+      await page.click('#transport-play');
+      await waitState(page, 'playing');
+      await page.waitForTimeout(400);
+      await page.evaluate((p) => window.goToPage(p), starts[1]);
+      let jumped = null;
+      try {
+        await bounded('saut vers le mouvement 2 pendant la lecture', 8000, page.waitForFunction(() => {
+          const s = window.__musicaPlaybackState ? window.__musicaPlaybackState() : null;
+          return s && s.movementId === 2 && s.state === 'playing';
+        }, null, { timeout: 8000, polling: 50 }));
+        await page.waitForTimeout(400);
+        jumped = await page.evaluate(() => ({
+          state: window.__musicaPlaybackState(),
+          pitches: [...new Set(window.__musicaAudio.getNotes().map((n) => n.pitch))],
+          page: displayedPage(),
+        }));
+      } catch (e) {
+        jumped = null;
+      }
+      const jumpOk = jumped && jumped.state.state === 'playing' &&
+        jumped.pitches.length > 0 && jumped.pitches.every((p) => p === 64 || p === 65) &&
+        Math.abs(jumped.state.offset - m1.duration) <= 20 &&
+        jumped.state.displayPosition >= jumped.state.offset &&
+        jumped.page >= starts[1] && jumped.page < (starts[2] ?? (layout.pageCount + 1));
+      L.record(results, '6. Saut pendant la lecture : le mouvement visé est joué', pageName,
+        jumpOk ? 'OK' : 'ÉCHEC',
+        jumped
+          ? `état ${jumped.state.state}, mouvement ${jumped.state.movementId}, ` +
+            `position affichée ${jumped.state.displayPosition} ms (offset ${jumped.state.offset}), ` +
+            `page ${jumped.page}, hauteurs jouées [${jumped.pitches.join(',')}]`
+          : 'la lecture n’a pas suivi le saut vers le mouvement 2');
+
+      // (c) Saut à l'arrêt puis lecture : elle part de la page visée, pas du
+      // début du mouvement.
+      await page.click('#transport-stop');
+      await waitState(page, 'stopped');
+      await page.evaluate((p) => window.goToPage(p), starts[1]);
+      await page.waitForTimeout(400);
+      await page.click('#transport-play');
+      await waitState(page, 'playing');
+      await page.waitForFunction(() => {
+        const s = window.__musicaPlaybackState ? window.__musicaPlaybackState() : null;
+        return s && s.movementId === 2;
+      }, null, { timeout: 8000, polling: 50 });
+      await page.waitForTimeout(400);
+      const stoppedJump = await page.evaluate(() => ({
+        state: window.__musicaPlaybackState(),
+        pitches: [...new Set(window.__musicaAudio.getNotes().map((n) => n.pitch))],
+      }));
+      const stoppedJumpOk = stoppedJump.state.state === 'playing' &&
+        stoppedJump.pitches.length > 0 &&
+        stoppedJump.pitches.every((p) => p === 64 || p === 65) &&
+        Math.abs(stoppedJump.state.offset - m1.duration) <= 20 &&
+        stoppedJump.state.displayPosition >= stoppedJump.state.offset;
+      L.record(results, '6. Saut à l’arrêt : la lecture part de la mesure visée', pageName,
+        stoppedJumpOk ? 'OK' : 'ÉCHEC',
+        `état ${stoppedJump.state.state}, mouvement ${stoppedJump.state.movementId}, ` +
+        `position affichée ${stoppedJump.state.displayPosition} ms (offset ${stoppedJump.state.offset}), ` +
+        `hauteurs jouées [${stoppedJump.pitches.join(',')}]`);
+      await page.click('#transport-stop');
+      await waitState(page, 'stopped');
+    } catch (e) {
+      L.record(results, '6. Enchaînement des mouvements', pageName, 'ÉCHEC', 'exception du test : ' + e.message);
+    }
+    const relevantChain = L.summarize(errorsChain);
+    L.record(results, '6. Erreurs JS (enchaînement des mouvements)', pageName,
+      relevantChain.length ? 'ÉCHEC' : 'OK', relevantChain.join(' | '));
+    await ctxChain.close();
+  }
+
 }
 
 // Durées observées le 18/11/2026 (index.html + spa.html) : 83 à 113 s selon
-// la charge ; budget ~2× le maximum.
-C.main(runPage, { budgetMs: 240000, summary: 'S6A' });
+// la charge ; budget ~2× le maximum, plus la fixture d'enchaînement.
+C.main(runPage, { budgetMs: 300000, summary: 'S6A' });

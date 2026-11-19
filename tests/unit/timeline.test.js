@@ -78,6 +78,27 @@ test('D (anacrouse + reprise) : premières mesures et durées réelles', () => {
   checkSegments(segments, slice.durationMs);
 });
 
+test('segments d’un mouvement non initial : calés sur le temps absolu de la source', () => {
+  const tl = fixture('D-expanded');
+  // Mesures 2 à 3 seulement (la seconde occurrence de la mesure 1 est exclue).
+  const slice = timeline.movementSlice(tl, 2, 4);
+  assert.strictEqual(slice.offsetMs, 2500);
+  assert.strictEqual(slice.durationMs, 8000);
+
+  // Sans base, les bornes partent de 0 : c'est le temps relatif du slice.
+  const relative = timeline.buildSegments(slice);
+  assert.deepStrictEqual(relative.map((s) => s.fromMs), [0, 4000, 6000]);
+  assert.deepStrictEqual(relative.map((s) => s.offsetMs), [0, 4000, 6000]);
+
+  // Avec baseUs (offset absolu du slice), le MIDI complet est visé aux temps
+  // du flux : c'est ce que le worker transmet pour tout mouvement.
+  const absolute = timeline.buildSegments(slice, null, slice.offsetUs);
+  assert.deepStrictEqual(absolute.map((s) => s.fromMs), [2500, 6500, 8500]);
+  assert.deepStrictEqual(absolute.map((s) => s.toMs), [6500, 8500, 10500]);
+  // `offsetMs` reste l'offset cumulé dans le mouvement (axe de sortie audio).
+  assert.deepStrictEqual(absolute.map((s) => s.offsetMs), [0, 4000, 6000]);
+});
+
 test('E (D.C.) : 10 occurrences, 4 mesures écrites, 3 passes, passage ignoré', () => {
   const tl = fixture('E-expanded');
   const slice = timeline.movementSlice(tl, 0, 4);
