@@ -288,6 +288,55 @@ checkAndLoadMorePages = ->
         requestAnimationFrame -> applyVerticalAlignment()
   prefetch()
 
+# Première page de la fenêtre rendue (1 si le wrapper est vide)
+firstRenderedPage = ->
+  pages = $("page-current").querySelectorAll ".scroll-page"
+  if pages.length > 0 then parseInt(pages[0].dataset.page) else 1
+
+# Insère une page avant la fenêtre rendue sans déplacer le contenu visible :
+# la page rendue qui suit sert de repère, sa position à l'écran est conservée
+# dans scrollTop. Le placeholder réserve une hauteur d'écran ; quand le SVG
+# arrive avec une autre hauteur, le repère est réaligné de la même façon.
+prependPage = (page) ->
+  slot = $("page-current")
+  wrapper = slot.querySelector ".scroll-wrapper"
+  return Promise.resolve() unless wrapper
+  return Promise.resolve() if wrapper.querySelector ".scroll-page[data-page=\"#{page}\"]"
+  div = document.createElement "div"
+  div.className = "scroll-page"
+  div.dataset.page = page
+  div.innerHTML = "<div class=\"loading-placeholder\">#{t 'loading'}</div>"
+  # Repère : la première page déjà rendue (celle que l'insertion repousse)
+  anchor = wrapper.querySelector ".scroll-page"
+  before = anchor?.getBoundingClientRect().top
+  wrapper.insertBefore div, wrapper.firstChild
+  slot.scrollTop += anchor.getBoundingClientRect().top - before if anchor?
+  renderPageAsync(page).then (svg) ->
+    return unless svg and div.isConnected
+    before = anchor?.getBoundingClientRect().top if anchor?.isConnected
+    div.innerHTML = svg
+    if anchor?.isConnected and before?
+      slot.scrollTop += anchor.getBoundingClientRect().top - before
+    requestAnimationFrame -> applyVerticalAlignment()
+
+# Symétrique de checkAndLoadMorePages vers le haut : près du haut de la
+# fenêtre rendue, la page précédente est insérée au-dessus (repère conservé,
+# donc le contenu visible reste immobile). Seul un défilement manuel récent
+# peut le déclencher : les sauts programmés de la navigation ne doivent pas
+# ajouter une page que l'utilisateur n'a pas demandée.
+manualScrollAt = 0
+
+checkAndLoadPreviousPage = ->
+  return unless scrollMode is "vertical"
+  return unless Date.now() - manualScrollAt < 300
+  slot = $("page-current")
+  first = firstRenderedPage()
+  return if first <= 1
+  # Déjà tout en haut : rien à approcher (le recul par goPrev s'en charge).
+  return if slot.scrollTop <= 0
+  return unless slot.scrollTop < slot.clientHeight * 0.3
+  prependPage first - 1
+
 # Find the last completely visible SVG in vertical mode
 findLastCompleteSvg = ->
   return null unless scrollMode is "vertical"
@@ -407,9 +456,23 @@ goNext = ->
     captureVerticalScroll()
     setScrollPos(scrollPos + 1)
 
-goPrev = ->
-  return unless fileLoaded
-  if scrollMode is "vertical"
+# Recul vertical. Un appui peut devoir attendre le rendu de la page
+# précédente : les appuis successifs sont sérialisés pour ne pas viser une
+# cible calculée sur une fenêtre encore incomplète.
+verticalBack = null
+
+verticalStepBack = ->
+  slot = $("page-current")
+  return unless slot
+  # En haut de la fenêtre rendue alors que des pages précèdent : les rendre
+  # au-dessus (hauteur compensée), sinon scrollTop resterait à 0 et le recul
+  # serait impossible hors saut de 5 pages.
+  prepare = if slot.scrollTop <= SYSTEM_TOLERANCE and firstRenderedPage() > 1
+    prependPage firstRenderedPage() - 1
+  else
+    Promise.resolve()
+  prepare.then ->
+    return unless fileLoaded and scrollMode is "vertical"
     slot = $("page-current")
     return if slot.scrollTop <= 0
     slot.scrollTo top: verticalTarget(-1), behavior: "instant"
@@ -417,6 +480,18 @@ goPrev = ->
     showIndicator()
     savePositionDebounced()
     schedulePageSeek displayedPage()
+
+enqueueVerticalBack = ->
+  done = (verticalBack ? Promise.resolve())
+    .then -> verticalStepBack()
+    .catch (err) -> console.error "Recul vertical impossible : #{err?.message or err}"
+  verticalBack = done
+  done.then -> verticalBack = null if verticalBack is done
+
+goPrev = ->
+  return unless fileLoaded
+  if scrollMode is "vertical"
+    enqueueVerticalBack()
   else
     return if scrollPos <= 0
     captureVerticalScroll()
