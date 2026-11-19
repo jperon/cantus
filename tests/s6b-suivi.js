@@ -325,13 +325,19 @@ async function runPage(browser, url, pageName, results) {
       await L.markSvg(page);
       await L.openSettings(page);
       await page.waitForFunction(
-        () => document.querySelectorAll('#parts-list input[type=checkbox]').length >= 2,
+        () => document.querySelectorAll('#parts-list .part-row').length >= 2,
         null, { timeout: WAIT.pageChange, polling: 100 });
-      const hidden = await page.$$eval('#parts-list input[type=checkbox]', (boxes) => {
-        if (boxes.length < 2) return false;
-        if (boxes[1].checked) boxes[1].click();
-        return !boxes[1].checked;
-      });
+      await page.click('#parts-list .part-display >> nth=1');
+      let hidden = true;
+      try {
+        await page.waitForFunction(() => {
+          const row = document.querySelectorAll('#parts-list .part-row')[1];
+          const button = row && row.querySelector('.part-display');
+          return !!button && button.getAttribute('aria-pressed') === 'false';
+        }, null, { timeout: WAIT.pageChange, polling: 100 });
+      } catch {
+        hidden = false;
+      }
       await L.closeSettings(page);
       await bounded('re-rendu après masquage d’une voix groupée', WAIT.backgroundLoaded,
         page.waitForFunction(
