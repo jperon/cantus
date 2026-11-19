@@ -332,8 +332,6 @@ checkAndLoadPreviousPage = ->
   slot = $("page-current")
   first = firstRenderedPage()
   return if first <= 1
-  # Déjà tout en haut : rien à approcher (le recul par goPrev s'en charge).
-  return if slot.scrollTop <= 0
   return unless slot.scrollTop < slot.clientHeight * 0.3
   prependPage first - 1
 

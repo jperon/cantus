@@ -18,9 +18,16 @@ document.addEventListener "DOMContentLoaded", ->
   handleProtocolParameters()
 
   # Un défilement manuel (molette, tactile) est le seul à pouvoir charger la
-  # page précédente : la navigation programme elle aussi des `scroll`.
-  for type in ["wheel", "touchmove"]
-    $("page-current").addEventListener type, -> manualScrollAt = Date.now()
+  # page précédente : la navigation programme elle aussi des `scroll`. En haut
+  # du défilement, aucune place ne reste pour un `scroll` : la molette et le
+  # geste tactile appellent donc la vérification directement.
+  slot = $("page-current")
+  slot.addEventListener "wheel", (e) ->
+    manualScrollAt = Date.now()
+    checkAndLoadPreviousPage() if e.deltaY < 0
+  slot.addEventListener "touchmove", ->
+    manualScrollAt = Date.now()
+    checkAndLoadPreviousPage()
 
   # Vertical scroll listener: one alignment/indicator pass per frame
   $("page-current").addEventListener "scroll", ->

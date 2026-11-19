@@ -234,38 +234,62 @@ async function runBackNavigation(browser, url, pageName, results) {
       start.page === 1 && jump.page === start.total && final.page === 1 && falling && covers ? 'OK' : 'ÉCHEC',
       `saut 1 → ${jump.page}/${start.total}, pages vues ${seen.join(' → ')}, décroissant : ${falling}, ` +
       `toutes les pages traversées : ${covers}`);
-
-    // Fenêtre réduite à [5, 6] : en haut du défilement, plus aucune page
-    // précédente n'est rendue. Un geste de molette vers le haut doit insérer
-    // la page 4 en tête, en compensant sa hauteur.
-    await page.click('.nav-btn[data-action="next-5"]');
-    await page.waitForTimeout(1200);
-    await L.pressArrow(page, 'left');
-    await page.waitForTimeout(900);
-    await L.pressArrow(page, 'right');
-    await page.waitForTimeout(900);
-    await page.evaluate(() => { document.getElementById('page-current').scrollTop = 300; });
-    await page.waitForTimeout(300);
-    const beforeWheel = await visibleTopPage(page);
-    await page.mouse.move(250, 450);
-    await page.mouse.wheel(0, -100);
-    await page.waitForFunction(() => {
-      const first = document.querySelector('#page-current .scroll-page');
-      return !!first && parseInt(first.dataset.page, 10) === 4 && !!first.querySelector('svg');
-    }, null, { timeout: 15000, polling: 100 });
-    await page.waitForTimeout(300);
-    const afterWheel = await visibleTopPage(page);
-    const info = await L.pageInfo(page);
-    const noJump = beforeWheel.page === 5 && afterWheel.page === 5 &&
-      Math.abs(afterWheel.top - beforeWheel.top) < 200;
-    L.record(results, '3. Défilement manuel vers le haut : page précédente rendue sans saut', pageName,
-      noJump && info.page === 5 ? 'OK' : 'ÉCHEC',
-      `haut ${beforeWheel.page}@${beforeWheel.top} → ${afterWheel.page}@${afterWheel.top} ` +
-      `(page 4 rendue avant), page affichée ${info.page}`);
     const relevant = L.summarize(errors);
     L.record(results, '6. Erreurs JS (recul vertical)', pageName, relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
   } catch (e) {
     L.record(results, '3. Recul vertical', pageName, 'ÉCHEC', 'exception du test : ' + e.message);
+  }
+  await ctx.close();
+}
+
+// Molette vers le haut juste après un saut : le haut de la fenêtre rendue est
+// aussi le haut du défilement, donc aucun `scroll` ne peut signaler le geste.
+// La page précédente doit être insérée sans déplacer la page affichée, et des
+// gestes répétés doivent remonter jusqu'à la page 1.
+async function runWheelBack(browser, url, pageName, results) {
+  const { page, ctx, errors } = await L.newPage(browser, url, { pageName });
+  try {
+    await importLoaded(page, L.FILES.bachXml, 300000);
+    await page.click('.nav-btn[data-action="next-5"]');
+    await page.waitForTimeout(1200);
+    const jump = await L.pageInfo(page);
+    const before = await visibleTopPage(page);
+    await page.mouse.move(250, 450);
+    await page.mouse.wheel(0, -100);
+    await page.waitForFunction(() => {
+      const first = document.querySelector('#page-current .scroll-page');
+      return !!first && parseInt(first.dataset.page, 10) === 5 && !!first.querySelector('svg');
+    }, null, { timeout: 30000, polling: 100 });
+    await page.waitForTimeout(400);
+    const after = await visibleTopPage(page);
+    const still = before.page === 6 && before.top === 0 && after.page === 6 && Math.abs(after.top) < 2;
+    L.record(results, '3. Molette à scrollTop 0 : page précédente rendue, page 6 immobile', pageName,
+      jump.page === 6 && jump.scrollTop === 0 && still ? 'OK' : 'ÉCHEC',
+      `saut 1 → ${jump.page}/${jump.total} (scrollTop ${jump.scrollTop}), haut ${before.page}@${before.top} → ` +
+      `${after.page}@${after.top}, page 5 rendue`);
+
+    // Gestes répétés : chaque approche du haut insère la page précédente.
+    let wheels = 0;
+    while (wheels < 80) {
+      const top = await visibleTopPage(page);
+      const info = await L.pageInfo(page);
+      if (top.page === 1 && info.page === 1) break;
+      await page.mouse.wheel(0, -100);
+      await page.waitForTimeout(120);
+      wheels++;
+    }
+    await page.waitForFunction(() => {
+      const first = document.querySelector('#page-current .scroll-page');
+      return !!first && parseInt(first.dataset.page, 10) === 1 && !!first.querySelector('svg');
+    }, null, { timeout: 30000, polling: 100 });
+    const reached = await L.pageInfo(page);
+    L.record(results, '3. Molette répétée vers le haut : remontée jusqu’à la page 1', pageName,
+      reached.page === 1 ? 'OK' : 'ÉCHEC',
+      `${wheels} geste(s), page affichée ${reached.page}/${reached.total}, première page rendue 1`);
+    const relevant = L.summarize(errors);
+    L.record(results, '6. Erreurs JS (recul à la molette)', pageName, relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
+  } catch (e) {
+    L.record(results, '3. Recul à la molette', pageName, 'ÉCHEC', 'exception du test : ' + e.message);
   }
   await ctx.close();
 }
@@ -687,6 +711,7 @@ async function runFolderVoices(browser, url, pageName, results) {
       await runTelemann(browser, url, pageName, results);
       await runZoomAndScroll(browser, url, pageName, results);
       await runBackNavigation(browser, url, pageName, results);
+      await runWheelBack(browser, url, pageName, results);
       await runBach(browser, url, pageName, results);
       await runPartSizeCacheRace(browser, url, pageName, results);
       await runTempo(browser, url, pageName, results);
