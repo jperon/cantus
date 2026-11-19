@@ -537,7 +537,13 @@ buildPlaybackData = (movementId, linearRepeats = false, measureStart, measureEnd
   return Promise.resolve cached if cached
   loadSourcePlayback(mv.sourceId, linearRepeats).then (source) ->
     slice = timelineApi.movementSlice source.timeline, start, stop
-    segments = timelineApi.buildSegments slice
+    # Le MIDI scoretk est global à la source : les segments visent ses notes
+    # aux temps absolus du flux (`baseUs`), tout en gardant `offsetMs` cumulé
+    # depuis le début du mouvement pour la sortie audio.
+    segments = timelineApi.buildSegments slice, null, slice.offsetUs
+    # Durée totale du fichier : la position affichée peut ainsi être cumulée
+    # sur toute la partition, pas seulement sur le mouvement courant.
+    fileSlice = timelineApi.movementSlice source.timeline, 0, null
     # Pont mesure écrite -> page par xmlId (et non par position) : Verovio
     # n'émet pas de measureOn pour les mesures repliées d'un multi-repos, donc
     # l'index Verovio et l'ordinal scoretk divergent dès la première mesure
@@ -614,6 +620,10 @@ buildPlaybackData = (movementId, linearRepeats = false, measureStart, measureEnd
       staffLabels: source.staffLabels
       trackMap: source.trackMap
       duration: slice.durationMs
+      # Position absolue du mouvement dans la source et durée de la source :
+      # le transport affiche et cumule sur toute la partition.
+      offsetMs: slice.offsetMs
+      sourceDurationMs: fileSlice.durationMs
       segments
       pauses: slice.pauses
       linearRepeats: !!linearRepeats
@@ -730,6 +740,8 @@ handleMessage = (e) ->
               staffLabels: data.staffLabels
               trackMap: data.trackMap
               duration: data.duration
+              offsetMs: data.offsetMs
+              sourceDurationMs: data.sourceDurationMs
               segments: data.segments ? []
               pauses: data.pauses ? []
               linearRepeats: !!data.linearRepeats

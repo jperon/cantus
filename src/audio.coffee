@@ -211,6 +211,10 @@ scalePlaybackData = (data, factor) ->
   scaled[key] = value for own key, value of data
   scaled.tempoFactor = f
   scaled.duration = scaleTimeValue data.duration, f if data.duration?
+  # Position du mouvement dans sa source et durée totale de la source : même
+  # axe de sortie que la durée, donc même facteur.
+  scaled.offsetMs = scaleTimeValue data.offsetMs, f if data.offsetMs?
+  scaled.sourceDurationMs = scaleTimeValue data.sourceDurationMs, f if data.sourceDurationMs?
   if Array.isArray data.syncMarks
     scaled.syncMarks = for mark in data.syncMarks
       copy = {}

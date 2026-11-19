@@ -105,6 +105,8 @@ playback =
   state: "stopped"  # "stopped" | "playing" | "paused" | "loading"
   position: 0
   duration: 0
+  offset: 0  # position du mouvement dans la source (temps de lecture, ms)
+  sourceDuration: 0  # durée totale de la source (temps de lecture, ms)
   loading: false
   loadToken: 0
   rafId: null
@@ -219,9 +221,9 @@ worker.onmessage = (e) ->
         pending.reject new Error message
 
     when "playbackData"
-      {movementId, midi, syncMarks, staffLabels, trackMap, duration, segments, pauses, linearRepeats, fileTempoBpm, fileTempoExplicit, fileTempoUnit} = e.data
+      {movementId, midi, syncMarks, staffLabels, trackMap, duration, offsetMs, sourceDurationMs, segments, pauses, linearRepeats, fileTempoBpm, fileTempoExplicit, fileTempoUnit} = e.data
       key = playbackKey movementId, !!linearRepeats
-      data = {midi, syncMarks, staffLabels, trackMap, duration, segments: segments ? [], pauses: pauses ? [], linearRepeats: !!linearRepeats, fileTempoBpm, fileTempoExplicit, fileTempoUnit}
+      data = {midi, syncMarks, staffLabels, trackMap, duration, offsetMs, sourceDurationMs, segments: segments ? [], pauses: pauses ? [], linearRepeats: !!linearRepeats, fileTempoBpm, fileTempoExplicit, fileTempoUnit}
       playbackCache.set key, data
       pending = pendingPlayback.get key
       if pending

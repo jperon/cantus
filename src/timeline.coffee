@@ -35,8 +35,9 @@
 #   movementSlice(timeline, measureStart, measureEnd)
 #       -> { measures, pauses, measureStart, measureEnd,
 #            offsetUs, offsetMs, offsetTick, durationUs, durationMs, endTick }
-#   buildSegments(slice, pauses)
+#   buildSegments(slice, pauses, baseUs)
 #       -> [{measure, fromMs, toMs, offsetMs}]
+#       (baseUs décale fromMs/toMs dans le temps absolu de la source)
 #   buildSyncMarks(slice, pageByWrittenIndex, measureStart)
 #       -> {marks: [{t, page, id, xmlId?}], unresolved}
 #   pauseAt(pauses, tMs) -> pause active ou null
@@ -400,10 +401,17 @@ movementSlice = (timeline, measureStart = 0, measureEnd = null) ->
 # toutes les notes suivantes sans aucun signal. `offsetMs` est l'offset cumulé
 # du segment dans la timeline du mouvement (somme des durées des segments
 # précédents).
-buildSegments = (slice, pauses) ->
+#
+# `baseUs` décale les bornes dans le temps ABSOLU de la source (µs), sans
+# toucher à `offsetMs` : le MIDI scoretk n'est jamais découpé par mouvement,
+# donc un mouvement autre que le premier doit viser ses notes aux temps du
+# flux complet. Les bornes sont calculées depuis les µs absolus (une seule
+# conversion en ms) pour ne pas dériver d'un milliseconde aux frontières.
+buildSegments = (slice, pauses, baseUs = 0) ->
   meta = if Array.isArray(slice) then {} else (slice ? {})
   entries = if Array.isArray(slice) then slice else (meta.measures ? [])
   pauseList = pauses ? meta.pauses ? []
+  base = toNum baseUs, 0
   out = []
   return out unless entries.length
 
@@ -411,13 +419,13 @@ buildSegments = (slice, pauses) ->
   endUs = toNum last.endTimeUs
   unless isFinite endUs
     endUs = tickToUs meta, (toNum last.endTick, toNum(last.tick, 0))
-  endMs = if isFinite endUs then roundMs(endUs) else roundMs(toNum(last.timeUs, 0))
+  endMs = if isFinite endUs then roundMs(endUs + base) else roundMs(toNum(last.timeUs, 0) + base)
 
   offset = 0
   for entry, index in entries
-    fromMs = toNum entry.timeMs, roundMs(toNum(entry.timeUs, 0))
+    fromMs = roundMs toNum(entry.timeUs, 0) + base
     next = entries[index + 1]
-    boundary = if next? then toNum(next.timeMs, roundMs(toNum(next.timeUs, 0))) else endMs
+    boundary = if next? then roundMs(toNum(next.timeUs, 0) + base) else endMs
     boundary = Math.max boundary, fromMs
 
     entryTick = toNum entry.tick, 0
@@ -433,7 +441,7 @@ buildSegments = (slice, pauses) ->
       leadingPause = index is 0 and tick is entryTick
       continue unless afterMeasure or leadingPause
       pauseEnd = pauseEndMs pause
-      boundary = Math.max boundary, pauseEnd if isFinite pauseEnd
+      boundary = Math.max boundary, pauseEnd + base if isFinite pauseEnd
 
     toMs = Math.max boundary, fromMs
     out.push
