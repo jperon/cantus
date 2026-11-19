@@ -121,6 +121,43 @@ test('clé absente d’une langue : repli sur l’anglais', () => {
   assert.strictEqual(i18n.t('settings.title'), 'Settings');
 });
 
+// L'application est concaténée en une seule portée CoffeeScript (build.js,
+// APP_SOURCES) : une affectation dans une fonction à un nom déjà défini au
+// niveau supérieur réécrit cette variable globale. C'est le bogue « TypeError:
+// t is not a function » (une locale `t = Number mark.t` écrasait la fonction
+// de traduction). On interdit donc toute affectation interne à un nom
+// top-level qui porte une fonction (t, $, ...).
+test('aucune affectation n’écrase une fonction globale de l’application', () => {
+  const appDir = path.join(__dirname, '..', '..', 'src', 'app');
+  const sources = new Map(
+    fs.readdirSync(appDir)
+      .filter((file) => file.endsWith('.coffee'))
+      .sort()
+      .map((file) => [file, fs.readFileSync(path.join(appDir, file), 'utf8')])
+  );
+  const functions = new Map();
+  for (const [file, src] of sources) {
+    for (const line of src.split('\n')) {
+      const top = line.match(/^([A-Za-z_$][\w$]*)\s*=\s*(\(.*?\)\s*)?(->|=>)/);
+      if (top) functions.set(top[1], file);
+    }
+  }
+  const offenders = [];
+  for (const [file, src] of sources) {
+    src.split('\n').forEach((line, index) => {
+      if (/^[ \t]*#/.test(line)) return;
+      // Indentation > 0 : l'affectation est dans une fonction.
+      const inner = line.match(/^[ \t]+([A-Za-z_$][\w$]*)\s*=(?!=)/);
+      if (inner && functions.has(inner[1])) {
+        offenders.push(
+          `${file}:${index + 1} affecte « ${inner[1]} » (défini dans ${functions.get(inner[1])})`
+        );
+      }
+    });
+  }
+  assert.deepStrictEqual(offenders, []);
+});
+
 test('clé absente de l’anglais : erreur en console et clé affichée', () => {
   const i18n = loadI18n();
   const errors = [];

@@ -142,16 +142,16 @@ seekToDisplayedPage = (page) ->
   return unless api?.firstMarkOfPage?
   mark = api.firstMarkOfPage marks, result.localPage
   return unless mark
-  t = Number mark.t
-  return unless isFinite t
+  markMs = Number mark.t
+  return unless isFinite markMs
   # Jamais de recul pendant la lecture : viser > 300 ms avant la position
   # courante relancerait la page précédente et la ferait boucler.
-  if playback.state is "playing" and t < currentPlaybackPosition() - 300
+  if playback.state is "playing" and markMs < currentPlaybackPosition() - 300
     lastDisplayedPage = page
     return
   # Même en pause ou à l'arrêt : la position est mémorisée, un appui sur
   # lecture repartira du début de la page.
-  seekPlayback t
+  seekPlayback markMs
 
 # Suivi de partition : amène à l'écran le marqueur courant. Appelé depuis la
 # boucle de lecture ; ne fait rien quand le réglage est désactivé. Une page
