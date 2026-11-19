@@ -1,6 +1,7 @@
 // Scénario 3 — réglages : tailles de voix (Telemann, Bach), voix masquées,
 // bouton « Toutes les voix à 100 % », régénération à la fermeture,
-// défilement par page / par système avec recouvrement, zoom, dossier Magnificat.
+// défilement par page / par système avec recouvrement, recul vertical après un
+// saut, zoom, dossier Magnificat.
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -191,6 +192,82 @@ async function runZoomAndScroll(browser, url, pageName, results) {
     }
     await ctx.close();
   }
+}
+
+// Page qui occupe le haut de la zone de défilement et sa position à l'écran.
+async function visibleTopPage(page) {
+  return page.evaluate(() => {
+    const slot = document.getElementById('page-current');
+    const base = slot.getBoundingClientRect().top;
+    const at = [...slot.querySelectorAll('.scroll-page')]
+      .find((d) => d.getBoundingClientRect().bottom > base + 1);
+    return {
+      page: at ? parseInt(at.dataset.page, 10) : null,
+      top: at ? Math.round(at.getBoundingClientRect().top - base) : 0,
+    };
+  });
+}
+
+// Recul en mode vertical après un saut : la fenêtre rendue ne commence plus à
+// la page 1. goPrev doit rendre les pages précédentes au fur et à mesure au
+// lieu de s'arrêter au haut de la fenêtre, et un défilement manuel vers le
+// haut doit insérer la page précédente sans déplacer le contenu visible.
+async function runBackNavigation(browser, url, pageName, results) {
+  const { page, ctx, errors } = await L.newPage(browser, url, { pageName });
+  try {
+    await importLoaded(page, L.FILES.telemannXml);
+    const start = await L.pageInfo(page);
+    await page.click('.nav-btn[data-action="next-5"]');
+    await page.waitForTimeout(1200);
+    const jump = await L.pageInfo(page);
+    const seen = [jump.page];
+    for (let i = 0; i < 20 && (await L.pageInfo(page)).page > 1; i++) {
+      await L.pressArrow(page, 'left');
+      await page.waitForTimeout(700);
+      seen.push((await L.pageInfo(page)).page);
+    }
+    const final = await L.pageInfo(page);
+    const falling = seen.every((p, i) => i === 0 || p <= seen[i - 1]);
+    const covers = Array.from({ length: jump.page - 1 }, (_, i) => jump.page - 1 - i)
+      .every((p) => seen.includes(p));
+    L.record(results, '3. Recul vertical après un saut : goPrev traverse les pages jusqu’à 1', pageName,
+      start.page === 1 && jump.page === start.total && final.page === 1 && falling && covers ? 'OK' : 'ÉCHEC',
+      `saut 1 → ${jump.page}/${start.total}, pages vues ${seen.join(' → ')}, décroissant : ${falling}, ` +
+      `toutes les pages traversées : ${covers}`);
+
+    // Fenêtre réduite à [5, 6] : en haut du défilement, plus aucune page
+    // précédente n'est rendue. Un geste de molette vers le haut doit insérer
+    // la page 4 en tête, en compensant sa hauteur.
+    await page.click('.nav-btn[data-action="next-5"]');
+    await page.waitForTimeout(1200);
+    await L.pressArrow(page, 'left');
+    await page.waitForTimeout(900);
+    await L.pressArrow(page, 'right');
+    await page.waitForTimeout(900);
+    await page.evaluate(() => { document.getElementById('page-current').scrollTop = 300; });
+    await page.waitForTimeout(300);
+    const beforeWheel = await visibleTopPage(page);
+    await page.mouse.move(250, 450);
+    await page.mouse.wheel(0, -100);
+    await page.waitForFunction(() => {
+      const first = document.querySelector('#page-current .scroll-page');
+      return !!first && parseInt(first.dataset.page, 10) === 4 && !!first.querySelector('svg');
+    }, null, { timeout: 15000, polling: 100 });
+    await page.waitForTimeout(300);
+    const afterWheel = await visibleTopPage(page);
+    const info = await L.pageInfo(page);
+    const noJump = beforeWheel.page === 5 && afterWheel.page === 5 &&
+      Math.abs(afterWheel.top - beforeWheel.top) < 200;
+    L.record(results, '3. Défilement manuel vers le haut : page précédente rendue sans saut', pageName,
+      noJump && info.page === 5 ? 'OK' : 'ÉCHEC',
+      `haut ${beforeWheel.page}@${beforeWheel.top} → ${afterWheel.page}@${afterWheel.top} ` +
+      `(page 4 rendue avant), page affichée ${info.page}`);
+    const relevant = L.summarize(errors);
+    L.record(results, '6. Erreurs JS (recul vertical)', pageName, relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
+  } catch (e) {
+    L.record(results, '3. Recul vertical', pageName, 'ÉCHEC', 'exception du test : ' + e.message);
+  }
+  await ctx.close();
 }
 
 async function runBach(browser, url, pageName, results) {
@@ -609,6 +686,7 @@ async function runFolderVoices(browser, url, pageName, results) {
     for (const pageName of PAGES) {
       await runTelemann(browser, url, pageName, results);
       await runZoomAndScroll(browser, url, pageName, results);
+      await runBackNavigation(browser, url, pageName, results);
       await runBach(browser, url, pageName, results);
       await runPartSizeCacheRace(browser, url, pageName, results);
       await runTempo(browser, url, pageName, results);
