@@ -45,13 +45,9 @@ setLanguage = (code) ->
     document.documentElement.lang = code
   true
 
-# Forme du pluriel pour `count` dans la langue courante ; sans Intl.PluralRules
-# (environnement ancien), repli sur la règle anglais une/autre.
+# Forme du pluriel pour `count` dans la langue courante.
 pluralForm = (count) ->
-  try
-    return new Intl.PluralRules(currentLanguage).select count
-  catch
-    return if count is 1 then 'one' else 'other'
+  new Intl.PluralRules(currentLanguage).select count
 
 # Valeur d'une clé dans un dictionnaire : formes plurielles d'abord quand un
 # compte est fourni, puis la clé simple. `undefined` si absente.

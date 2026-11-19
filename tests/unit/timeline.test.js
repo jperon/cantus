@@ -290,8 +290,6 @@ test('tempoUnitFromXml : 2/2 avec indication à la blanche -> half, 2', () => {
   const xml = xmlFixture('tempo-2-2');
   assert.deepStrictEqual(timeline.tempoUnitFromXml(xml), { unit: 'half', quarterRatio: 2 });
   assert.strictEqual(timeline.tempoUnitSymbol('half'), '\u{1D15E}');
-  assert.strictEqual(timeline.tempoUnitLabel('half'), 'blanche');
-  assert.strictEqual(timeline.tempoUnitLabel('half', true), 'blanches');
 });
 
 test('fileTempoInfo : 2/2 explicite 120 noires -> 60 blanches/min, défaut 60', () => {
@@ -305,8 +303,6 @@ test('tempoUnitFromXml : 6/8 avec indication à la noire pointée -> 1,5 noire',
   const xml = xmlFixture('tempo-6-8');
   assert.deepStrictEqual(timeline.tempoUnitFromXml(xml), { unit: 'dotted-quarter', quarterRatio: 1.5 });
   assert.strictEqual(timeline.tempoUnitSymbol('dotted-quarter'), '♩.');
-  assert.strictEqual(timeline.tempoUnitLabel('dotted-quarter'), 'noire pointée');
-  assert.strictEqual(timeline.tempoUnitLabel('dotted-quarter', true), 'noires pointées');
 });
 
 test('fileTempoInfo : 6/8 explicite 120 noires -> 80 noires pointées/min', () => {

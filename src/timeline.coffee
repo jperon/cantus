@@ -44,7 +44,7 @@
 #   fileTempoInfo(timeline, xml) -> {bpm, explicit, unit, quarterRatio}
 #   defaultPlaybackTempo(info) -> entier (tempo de lecture par défaut)
 #   clampPlaybackTempo(value) -> entier borné
-#   tempoUnitSymbol(unit), tempoUnitLabel(unit, plural)
+#   tempoUnitSymbol(unit)
 #
 # Le remappage des notes sur les segments reste dans audio.coffee
 # (`remapNotesToSegments`) : aucun doublon n'est créé ici.
@@ -119,23 +119,24 @@ xmlInitialTempoMark = (xml) ->
   head = firstMeasureXml xml
   /<sound\b[^>]*\btempo\s*=/i.test(head) or /<metronome\b/i.test(head)
 
-# Unités de battue : identifiant stable -> valeur en noires, libellé français
-# et symbole affiché. Une unité pointée vaut 1,5 fois sa valeur simple.
+# Unités de battue : identifiant stable -> valeur en noires et symbole affiché.
+# Une unité pointée vaut 1,5 fois sa valeur simple. Les libellés traduits sont
+# dans les dictionnaires (clés tempo.unit.*).
 TEMPO_UNITS =
-  whole: {quarterRatio: 4, singular: 'ronde', plural: 'rondes', symbol: '\u{1D15D}'}
-  'dotted-whole': {quarterRatio: 6, singular: 'ronde pointée', plural: 'rondes pointées', symbol: '\u{1D15D}.'}
-  half: {quarterRatio: 2, singular: 'blanche', plural: 'blanches', symbol: '\u{1D15E}'}
-  'dotted-half': {quarterRatio: 3, singular: 'blanche pointée', plural: 'blanches pointées', symbol: '\u{1D15E}.'}
-  quarter: {quarterRatio: 1, singular: 'noire', plural: 'noires', symbol: '♩'}
-  'dotted-quarter': {quarterRatio: 1.5, singular: 'noire pointée', plural: 'noires pointées', symbol: '♩.'}
-  eighth: {quarterRatio: 0.5, singular: 'croche', plural: 'croches', symbol: '♪'}
-  'dotted-eighth': {quarterRatio: 0.75, singular: 'croche pointée', plural: 'croches pointées', symbol: '♪.'}
-  '16th': {quarterRatio: 0.25, singular: 'double-croche', plural: 'doubles-croches', symbol: '\u{1D161}'}
-  'dotted-16th': {quarterRatio: 0.375, singular: 'double-croche pointée', plural: 'doubles-croches pointées', symbol: '\u{1D161}.'}
-  '32nd': {quarterRatio: 0.125, singular: 'triple-croche', plural: 'triples-croches', symbol: '\u{1D162}'}
-  'dotted-32nd': {quarterRatio: 0.1875, singular: 'triple-croche pointée', plural: 'triples-croches pointées', symbol: '\u{1D162}.'}
-  '64th': {quarterRatio: 0.0625, singular: 'quadruple-croche', plural: 'quadruples-croches', symbol: '\u{1D163}'}
-  'dotted-64th': {quarterRatio: 0.09375, singular: 'quadruple-croche pointée', plural: 'quadruples-croches pointées', symbol: '\u{1D163}.'}
+  whole: {quarterRatio: 4, symbol: '\u{1D15D}'}
+  'dotted-whole': {quarterRatio: 6, symbol: '\u{1D15D}.'}
+  half: {quarterRatio: 2, symbol: '\u{1D15E}'}
+  'dotted-half': {quarterRatio: 3, symbol: '\u{1D15E}.'}
+  quarter: {quarterRatio: 1, symbol: '♩'}
+  'dotted-quarter': {quarterRatio: 1.5, symbol: '♩.'}
+  eighth: {quarterRatio: 0.5, symbol: '♪'}
+  'dotted-eighth': {quarterRatio: 0.75, symbol: '♪.'}
+  '16th': {quarterRatio: 0.25, symbol: '\u{1D161}'}
+  'dotted-16th': {quarterRatio: 0.375, symbol: '\u{1D161}.'}
+  '32nd': {quarterRatio: 0.125, symbol: '\u{1D162}'}
+  'dotted-32nd': {quarterRatio: 0.1875, symbol: '\u{1D162}.'}
+  '64th': {quarterRatio: 0.0625, symbol: '\u{1D163}'}
+  'dotted-64th': {quarterRatio: 0.09375, symbol: '\u{1D163}.'}
 
 # Ratio (en noires) -> identifiant d'unité. Sert à nommer le résultat d'une
 # indication MusicXML sans dupliquer la table ci-dessus.
@@ -175,10 +176,6 @@ tempoUnitInfo = (unit) ->
 
 tempoUnitSymbol = (unit) ->
   tempoUnitInfo(unit).symbol
-
-tempoUnitLabel = (unit, plural = false) ->
-  info = tempoUnitInfo unit
-  if plural then info.plural else info.singular
 
 # Unité de battue du fichier, tirée de la première mesure du MusicXML :
 #   1. l'indication métronomique (`<metronome><beat-unit>` + `<beat-unit-dot/>`)
@@ -510,7 +507,7 @@ pauseAt = (pauses, tMs) ->
 
 api = {
   movementSlice, buildSegments, buildSyncMarks, pauseAt
-  tempoUnitFromXml, tempoUnitSymbol, tempoUnitLabel
+  tempoUnitFromXml, tempoUnitSymbol
   fileTempoInfo, defaultPlaybackTempo, clampPlaybackTempo
   DEFAULT_FILE_TEMPO_BPM, DEFAULT_PLAYBACK_TEMPO_BPM, TEMPO_MIN_BPM, TEMPO_MAX_BPM
 }
