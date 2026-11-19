@@ -121,8 +121,11 @@ detectScrollMode = (svgString) ->
   scrollMode
 
 displayView = ->
-  # Un autre mouvement est affiché : la lecture en cours ne le concerne plus
-  if fileLoaded and playback.movementId?
+  # Un autre mouvement est affiché alors que rien ne joue : les données de
+  # lecture en cours ne concernent plus l'écran. Pendant la lecture, ne pas
+  # libérer le moteur : le saut de page change de mouvement sans interrompre
+  # la lecture (voir seekToDisplayedPage).
+  if fileLoaded and playback.movementId? and playback.state isnt "playing"
     current = getMovementForPage displayedPage()
     resetPlayback() if current? and current.movement.id isnt playback.movementId
   slot = $("page-current")

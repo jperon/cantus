@@ -27,14 +27,28 @@ currentPlaybackPosition = ->
   return playback.position unless engine
   Math.max 0, engine.position() * 1000
 
+# Durée affichée : celle de la source entière quand elle est connue (tous les
+# mouvements s'enchaînent), sinon celle du mouvement chargé.
+displayDuration = ->
+  total = Number playback.sourceDuration
+  total = Number playback.duration unless isFinite(total) and total > 0
+  Math.max 0, total or 0
+
+# Position affichée : cumulée sur la source (début du mouvement + temps local).
+displayPosition = ->
+  Math.max 0, (Number(playback.offset) or 0) + currentPlaybackPosition()
+
 renderTransport = ->
   time = $("transport-time")
   playBtn = $("transport-play")
-  duration = Math.max 0, playback.duration or 0
-  rawPosition = currentPlaybackPosition()
+  duration = displayDuration()
+  rawPosition = displayPosition()
   position = Math.max 0, rawPosition
   position = Math.min position, duration if duration > 0
-  playback.position = position
+  # `playback.position` reste locale au mouvement (domaine du moteur).
+  local = currentPlaybackPosition()
+  local = Math.min local, playback.duration if playback.duration > 0
+  playback.position = Math.max 0, local
   playing = playback.state is "playing"
   loading = playback.state is "loading"
   time.textContent = "#{formatTime position} / #{formatTime duration}" if time
@@ -124,9 +138,10 @@ noteDisplayedPage = (fromScroll = false) ->
   schedulePageSeek page, fromScroll
 
 # Place la tête de lecture au temps du premier marqueur de la page affichée.
-# Les données de lecture ne sont jamais demandées ici : sans données déjà
-# chargées pour le mouvement affiché, on ne fait rien (un chargement implicite
-# serait coûteux et surprenant ; le prochain appui sur lecture s'en charge).
+# Pendant la lecture, un saut vers une page d'un autre mouvement charge ce
+# mouvement et reprend sur sa mesure : la lecture reste continue d'un mouvement
+# à l'autre. À l'arrêt ou en pause, on ne charge rien ici (le prochain appui sur
+# lecture partira de la page affichée).
 seekToDisplayedPage = (page) ->
   pageSeekTimer = null
   pageSeekPending = false
@@ -135,7 +150,10 @@ seekToDisplayedPage = (page) ->
   return unless result
   # La page des marqueurs est locale au mouvement : on réutilise la conversion
   # déjà faite par getMovementForPage au lieu d'en écrire une seconde.
-  return unless playback.hasData and playback.movementId is result.movement.id
+  unless playback.hasData and playback.movementId is result.movement.id
+    if playback.state is "playing"
+      switchPlaybackToMovement result.movement.id, result.localPage
+    return
   marks = playback.marks
   return unless Array.isArray(marks) and marks.length
   api = window.__musicaPlayback
@@ -289,6 +307,8 @@ resetPlayback = ->
   playback.state = "stopped"
   playback.position = 0
   playback.duration = 0
+  playback.offset = 0
+  playback.sourceDuration = 0
   playback.loading = false
   playback.marks = []
   playback.pauses = []
@@ -374,6 +394,95 @@ scaledPlaybackFor = (data, movementId) ->
   plan = playbackTempoPlan data, movementId
   {data: window.__musicaAudio.scalePlaybackData(data, plan.factor), plan: plan}
 
+# Applique des données de lecture brutes (worker) au moteur et à l'état, sans
+# lancer la lecture. `position` est locale au mouvement ; `offset` est sa
+# position absolue dans la source, pour l'affichage cumulé.
+applyPlaybackData = (engine, movementId, data, position = 0) ->
+  scaled = scaledPlaybackFor data, movementId
+  playback.movementId = movementId
+  playback.hasData = true
+  playback.rawData = data
+  playback.tempoFactor = scaled.plan.factor
+  playback.tempoBpm = scaled.plan.chosen
+  playback.tempoUnit = scaled.plan.info.unit
+  playback.duration = Math.max 0, Number(scaled.data.duration) or 0
+  playback.offset = Math.max 0, Number(scaled.data.offsetMs) or 0
+  local = Math.max 0, Number(position) or 0
+  local = Math.min local, playback.duration if playback.duration > 0
+  playback.position = local
+  playback.marks = scaled.data.syncMarks ? []
+  playback.pauses = scaled.data.pauses ? []
+  total = Number scaled.data.sourceDurationMs
+  total = playback.offset + playback.duration unless isFinite(total) and total > 0
+  playback.sourceDuration = Math.max playback.offset + playback.duration, total
+  playback.followKey = null
+  engine.load scaled.data
+  applyVoiceAudio scaled.data.staffLabels
+  scaled
+
+# Position locale du premier marqueur de la page du mouvement chargé. Un saut
+# vers une mesure d'un autre mouvement (ou une première lecture après un saut)
+# démarre donc sur cette mesure, pas au début du mouvement.
+startPositionForPage = (localPage) ->
+  api = window.__musicaPlayback
+  return 0 unless api?.firstMarkOfPage?
+  mark = api.firstMarkOfPage playback.marks, localPage
+  markMs = Number mark?.t
+  if isFinite(markMs) and markMs > 0 then markMs else 0
+
+# Charge un autre mouvement pendant la lecture et repart au premier marqueur de
+# la page visée. Utilisé quand un saut de page/une navigation atteint un
+# mouvement différent : la lecture continue sur cette mesure-là.
+switchPlaybackToMovement = (movementId, localPage) ->
+  engine = audioEngine()
+  return unless engine
+  token = ++playback.loadToken
+  requestPlaybackData movementId
+    .then (data) ->
+      return unless playback.loadToken is token and playback.state is "playing"
+      unless data?.midi and (Number(data.duration) or 0) > 0
+        stopPlayback()
+        return
+      try
+        applyPlaybackData engine, movementId, data
+      catch err
+        console.warn "Changement de mouvement impossible : #{err?.message or err}"
+        stopPlayback()
+        return
+      beginPlayback engine, startPositionForPage localPage
+    .catch (err) ->
+      return unless playback.loadToken is token
+      console.warn "Données de lecture du mouvement #{movementId} indisponibles : #{err?.message or err}"
+      stopPlayback()
+
+# Fin naturelle d'un mouvement : enchaîne sans pause sur le suivant de la
+# partition. Au dernier mouvement, la lecture s'arrête comme avant.
+finishPlaybackMovement = ->
+  return unless playback.state is "playing"
+  next = movements.find (m) -> m.id > (playback.movementId ? 0)
+  engine = audioEngine()
+  unless engine and next?.loaded
+    stopPlayback()
+    return
+  token = ++playback.loadToken
+  requestPlaybackData next.id
+    .then (data) ->
+      return unless playback.loadToken is token and playback.state is "playing"
+      unless data?.midi and (Number(data.duration) or 0) > 0
+        stopPlayback()
+        return
+      try
+        applyPlaybackData engine, next.id, data
+      catch err
+        console.warn "Enchaînement impossible vers le mouvement #{next.id} : #{err?.message or err}"
+        stopPlayback()
+        return
+      beginPlayback engine, 0
+    .catch (err) ->
+      return unless playback.loadToken is token
+      console.warn "Enchaînement impossible vers le mouvement #{next.id} : #{err?.message or err}"
+      stopPlayback()
+
 # Applique le tempo courant à la lecture chargée : reprend à la même position
 # musicale (position de lecture × ancien facteur / nouveau facteur). Un
 # changement pendant la lecture relance le moteur à cette position ; en pause
@@ -396,6 +505,10 @@ applyTempoToPlayback = ->
   playback.tempoBpm = scaled.plan.chosen
   playback.tempoUnit = scaled.plan.info.unit
   playback.duration = duration
+  playback.offset = Math.max 0, Number(scaled.data.offsetMs) or 0
+  total = Number scaled.data.sourceDurationMs
+  total = playback.offset + duration unless isFinite(total) and total > 0
+  playback.sourceDuration = Math.max playback.offset + duration, total
   playback.marks = scaled.data.syncMarks ? []
   playback.pauses = scaled.data.pauses ? []
   playback.position = position
@@ -451,24 +564,10 @@ startPlayback = ->
         renderTransport()
         return
       playback.loading = false
-      playback.movementId = movementId
-      playback.hasData = true
       # Le facteur de tempo s'applique aux données avant le moteur et le suivi ;
       # les données brutes restent en cache pour un changement de tempo.
-      scaled = scaledPlaybackFor data, movementId
-      fileTempo = scaled.plan.info
-      playback.rawData = data
-      playback.tempoFactor = scaled.plan.factor
-      playback.tempoBpm = scaled.plan.chosen
-      playback.tempoUnit = scaled.plan.info.unit
-      playback.duration = Math.max 0, Number(scaled.data.duration) or 0
-      playback.position = 0
-      playback.marks = scaled.data.syncMarks ? []
-      playback.pauses = scaled.data.pauses ? []
-      playback.followKey = null
       try
-        engine.load scaled.data
-        applyVoiceAudio scaled.data.staffLabels
+        applyPlaybackData engine, movementId, data
       catch err
         playback.hasData = false
         playback.state = "stopped"
@@ -476,7 +575,9 @@ startPlayback = ->
         renderTransport()
         console.warn "Chargement audio impossible : #{err?.message or err}"
         return
-      beginPlayback engine, 0
+      # Une lecture lancée après un saut dans un mouvement repart du premier
+      # marqueur de la page affichée, pas du début du mouvement.
+      beginPlayback engine, startPositionForPage(current.localPage)
     .catch (err) ->
       return unless playback.loadToken is token
       playback.loading = false
@@ -497,8 +598,14 @@ window.__musicaPlaybackState = ->
   engine = audioEngine()
   {
     state: playback.state
+    movementId: playback.movementId
+    # Position et durée locales au mouvement (domaine du moteur) ; la position
+    # et la durée affichées sont cumulées sur la source.
     position: Math.round currentPlaybackPosition()
     duration: Math.round playback.duration or 0
+    offset: Math.round playback.offset or 0
+    displayPosition: Math.round displayPosition()
+    sourceDuration: Math.round displayDuration()
     engine: if engine?.getEngineMode? then engine.getEngineMode() else null
     hasData: playback.hasData
     tempo: playback.tempoBpm
@@ -518,8 +625,9 @@ setupTransport = ->
   $("transport-play")?.addEventListener "click", togglePlayPause
   $("transport-stop")?.addEventListener "click", stopPlayback
 
-  # Clic sur le libellé de temps : seek proportionnel à la position du clic
+  # Clic sur le libellé de temps : seek proportionnel dans le mouvement chargé
   # (seul moyen de déplacement fin ; la barre de progression a été retirée).
+  # Un saut vers un autre mouvement se fait par la navigation de pages.
   time = $("transport-time")
   time?.addEventListener "click", (e) ->
     duration = Math.max 0, playback.duration or 0
@@ -530,10 +638,9 @@ setupTransport = ->
 
   engine = audioEngine()
   engine?.onEnd ->
-    playback.state = "stopped"
-    playback.position = 0
-    cancelPlaybackFrame()
-    renderTransport()
+    # Un mouvement se termine : enchaîner sur le suivant sans arrêter la
+    # lecture (le suivi continue sur ses marqueurs).
+    finishPlaybackMovement()
 
   document.addEventListener "keydown", (e) ->
     return unless fileLoaded
