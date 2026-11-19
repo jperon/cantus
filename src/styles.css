@@ -402,32 +402,80 @@ html, body {
   gap: 8px;
 }
 
-#parts-list label {
+#parts-list .part-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+#parts-list .part-main {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 14px;
-  color: #333;
-  cursor: pointer;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
-#parts-list label span {
+#parts-list .part-name {
   flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: 14px;
+  color: #333;
+}
+
+#parts-list .part-toggles {
+  display: flex;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+/* Interrupteurs tactiles : cible de 44 px, état actif plein, état éteint
+   estompé. Un tap à côté de la ligne ne bascule rien (pas de <label>). */
+#parts-list .part-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  padding: 0;
+  font-size: 20px;
+  line-height: 1;
+  border: 1px solid #bbb;
+  border-radius: 8px;
+  background: #fff;
+  color: #333;
+  cursor: pointer;
+}
+
+#parts-list .part-toggle[aria-pressed="false"] {
+  opacity: 0.45;
+  background: #eee;
+}
+
+#parts-list .part-toggle:disabled {
+  opacity: 0.25;
+  cursor: default;
+}
+
+#parts-list .part-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
 }
 
 #parts-list select {
-  margin-left: auto;
   font-size: 13px;
-  padding: 2px;
+  padding: 6px 4px;
   color: #333;
 }
 
 #parts-list select.part-volume {
-  margin-left: 0;
   min-width: 88px;
 }
 
@@ -964,24 +1012,24 @@ body.theme-dark #transport-time {
 /* Écrans étroits : la barre reste sur une seule ligne ; les boutons MIDI et
    les icônes se resserrent, le libellé de temps devient plus petit. Rien ne
    change au-delà. */
-@media (max-width: 700px) {
-  /* Voix : deux lignes (case + nom, puis taille + volume) plutôt qu'une
-     rangée illisible sur mobile. */
-  #parts-list label {
-    flex-wrap: wrap;
-    row-gap: 6px;
+@media (max-width: 419px) {
+  /* Voix : deux lignes explicites — nom et interrupteurs, puis taille et
+     volume. Chaque sélecteur partage la largeur restante. */
+  #parts-list .part-main {
+    flex-basis: 100%;
   }
 
-  #parts-list label span {
-    flex: 1 1 calc(100% - 32px);
+  #parts-list .part-controls {
+    flex: 1 1 100%;
   }
 
-  #parts-list select {
+  #parts-list .part-controls select {
     flex: 1 1 0;
     min-width: 0;
-    margin-left: 0;
   }
+}
 
+@media (max-width: 700px) {
   #command-bar {
     column-gap: 2px;
     padding: 3px 4px calc(3px + env(safe-area-inset-bottom, 0px));

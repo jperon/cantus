@@ -96,7 +96,7 @@ startLoad = (startPage = 1, keepSources = false) ->
   hideTransport()
   resetPlayback()
   partsChanged = false
-  loadHiddenParts()
+  loadPartSettings()
   loadPlaybackTempo()
   fileTempoRequest = null
   fileTempoError = false

@@ -27,7 +27,8 @@ currentScale = 40
 verticalScrollRatio = 0
 currentPageWidth = 0
 currentPageHeight = 0
-hiddenParts = new Set()  # Libellés des voix masquées pour le fichier courant
+hiddenParts = new Set()  # Libellés des voix masquées au rendu, pour le fichier courant
+mutedParts = new Set()  # Libellés des voix coupées à la lecture (audio seul)
 partSizes = {}  # Libellé de voix -> taille en % (100 = taille normale)
 partVolumes = {}  # Libellé de voix -> volume en % (100 = volume normal)
 partsChanged = false  # Réglages de voix modifiés, à appliquer à la fermeture

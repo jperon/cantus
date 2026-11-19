@@ -116,6 +116,10 @@ registerLanguage 'de', 'Deutsch',
   'tempo.pending': 'Tempo der Datei wird ermittelt…'
   'tempo.aria': 'Wiedergabetempo in {unit} pro Minute'
 
+  'parts.displayTitle': 'Stimme in der Partitur anzeigen oder ausblenden'
+  'parts.displayAria': 'Anzeige von {part}'
+  'parts.soundTitle': 'Stimme abspielen oder stummschalten'
+  'parts.soundAria': 'Wiedergabe von {part}'
   'parts.volumeTitle': 'Lautstärke der Stimme'
   'parts.volumeAria': 'Lautstärke von {part}'
   'parts.volumeOption': 'Lautst. {pct} %'

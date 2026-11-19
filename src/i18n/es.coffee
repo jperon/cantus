@@ -116,6 +116,10 @@ registerLanguage 'es', 'Español',
   'tempo.pending': 'Determinando el tempo del archivo…'
   'tempo.aria': 'Tempo de reproducción en {unit} por minuto'
 
+  'parts.displayTitle': 'Mostrar u ocultar la voz en la partitura'
+  'parts.displayAria': 'Visualización de {part}'
+  'parts.soundTitle': 'Reproducir o silenciar la voz'
+  'parts.soundAria': 'Reproducción de {part}'
   'parts.volumeTitle': 'Volumen de la voz'
   'parts.volumeAria': 'Volumen de {part}'
   'parts.volumeOption': 'Vol. {pct} %'

@@ -116,6 +116,10 @@ registerLanguage 'it', 'Italiano',
   'tempo.pending': 'Determinazione del tempo del file in corso…'
   'tempo.aria': 'Tempo di riproduzione in {unit} al minuto'
 
+  'parts.displayTitle': 'Mostra o nascondi la parte sullo spartito'
+  'parts.displayAria': 'Visualizzazione di {part}'
+  'parts.soundTitle': 'Riproduci o silenzia la parte'
+  'parts.soundAria': 'Riproduzione di {part}'
   'parts.volumeTitle': 'Volume della parte'
   'parts.volumeAria': 'Volume di {part}'
   'parts.volumeOption': 'Vol. {pct}%'

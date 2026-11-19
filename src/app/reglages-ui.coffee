@@ -39,6 +39,11 @@ setupResize = ->
 # de toutes les sources déjà converties de l'entrée (pas de re-parse). Chaque
 # fichier renumérote ses parties à partir de P1 : les voix sont identifiées par
 # leur libellé (partLabels), pas par leur id.
+#
+# Deux interrupteurs indépendants par voix : « affichage » (👁, rendu) et
+# « lecture » (🔊, audio). Aucun <label> englobant : taper à côté ne bascule
+# rien. Les sélecteurs de taille et de volume sont séparés des interrupteurs ;
+# la ligne se replie sur deux lignes quand la place manque.
 renderPartsList = ->
   group = $("parts-group")
   list = $("parts-list")
@@ -58,12 +63,37 @@ renderPartsList = ->
   list.innerHTML = ""
   for partLabel in labels
     do (partLabel) ->
-      row = document.createElement "label"
-      box = document.createElement "input"
-      box.type = "checkbox"
-      box.checked = not hiddenParts.has partLabel
+      displayed = not hiddenParts.has partLabel
+      played = not mutedParts.has partLabel
+      row = document.createElement "div"
+      row.className = "part-row"
+      main = document.createElement "div"
+      main.className = "part-main"
       nameEl = document.createElement "span"
+      nameEl.className = "part-name"
       nameEl.textContent = partLabel
+      toggles = document.createElement "div"
+      toggles.className = "part-toggles"
+      displayBtn = document.createElement "button"
+      displayBtn.type = "button"
+      displayBtn.className = "part-toggle part-display"
+      displayBtn.textContent = "👁"
+      displayBtn.title = t "parts.displayTitle"
+      displayBtn.setAttribute "aria-label", t("parts.displayAria", {part: partLabel})
+      displayBtn.setAttribute "aria-pressed", String displayed
+      soundBtn = document.createElement "button"
+      soundBtn.type = "button"
+      soundBtn.className = "part-toggle part-sound"
+      soundBtn.textContent = "🔊"
+      soundBtn.title = t "parts.soundTitle"
+      soundBtn.setAttribute "aria-label", t("parts.soundAria", {part: partLabel})
+      soundBtn.setAttribute "aria-pressed", String played
+      toggles.appendChild displayBtn
+      toggles.appendChild soundBtn
+      main.appendChild nameEl
+      main.appendChild toggles
+      controls = document.createElement "div"
+      controls.className = "part-controls"
       sizeSel = document.createElement "select"
       sizeSel.className = "part-size"
       for pct in [50..150] by 10
@@ -72,7 +102,7 @@ renderPartsList = ->
         opt.textContent = "#{pct} %"
         sizeSel.appendChild opt
       sizeSel.value = partSizes[partLabel] or 100
-      sizeSel.disabled = hiddenParts.has partLabel
+      sizeSel.disabled = not displayed
       volumeSel = document.createElement "select"
       volumeSel.className = "part-volume"
       volumeSel.title = t "parts.volumeTitle"
@@ -83,31 +113,39 @@ renderPartsList = ->
         opt.textContent = t "parts.volumeOption", {pct}
         volumeSel.appendChild opt
       volumeSel.value = partVolumes[partLabel] or 100
-      volumeSel.disabled = hiddenParts.has partLabel
-      row.appendChild box
-      row.appendChild nameEl
-      row.appendChild sizeSel
-      row.appendChild volumeSel
-      box.addEventListener "change", ->
-        if box.checked then hiddenParts.delete partLabel else hiddenParts.add partLabel
-        sizeSel.disabled = not box.checked
-        volumeSel.disabled = not box.checked
-        saveHiddenParts()
+      volumeSel.disabled = not played
+      controls.appendChild sizeSel
+      controls.appendChild volumeSel
+      row.appendChild main
+      row.appendChild controls
+      # Affichage : rendu seul, appliqué à la fermeture. La voix reste jouée.
+      displayBtn.addEventListener "click", ->
+        now = displayBtn.getAttribute("aria-pressed") isnt "true"
+        displayBtn.setAttribute "aria-pressed", String now
+        if now then hiddenParts.delete partLabel else hiddenParts.add partLabel
+        sizeSel.disabled = not now
+        savePartSettings()
         updatePartsDisabled()
-        # Masquage audible immédiat ; le rendu reste différé à la fermeture
-        applyVoiceAudio [partLabel]
         partsChanged = true
+      # Lecture : audio seul, appliqué à chaud. La voix reste affichée.
+      soundBtn.addEventListener "click", ->
+        now = soundBtn.getAttribute("aria-pressed") isnt "true"
+        soundBtn.setAttribute "aria-pressed", String now
+        if now then mutedParts.delete partLabel else mutedParts.add partLabel
+        volumeSel.disabled = not now
+        savePartSettings()
+        applyVoiceAudio [partLabel]
       sizeSel.addEventListener "change", ->
         pct = parseInt sizeSel.value
         if pct is 100 then delete partSizes[partLabel] else partSizes[partLabel] = pct
-        saveHiddenParts()
+        savePartSettings()
         updatePartsSizesReset()
         partsChanged = true
       volumeSel.addEventListener "change", ->
         pct = parseInt volumeSel.value
         pct = 100 unless isFinite pct
         if pct is 100 then delete partVolumes[partLabel] else partVolumes[partLabel] = pct
-        saveHiddenParts()
+        savePartSettings()
         updatePartsVolumesReset()
         # Application immédiate au moteur : jamais de partsChanged ni de rendu
         engine = audioEngine()
@@ -117,14 +155,15 @@ renderPartsList = ->
   updatePartsSizesReset()
   updatePartsVolumesReset()
 
-# Au moins une partie reste affichée : on désactive la dernière cochée
+# Au moins une voix reste affichée : on désactive l'interrupteur d'affichage
+# de la dernière voix affichée. Rien n'impose de voix jouée.
 updatePartsDisabled = ->
   list = $("parts-list")
   return unless list
-  boxes = Array.from list.querySelectorAll "input"
-  checked = boxes.filter (box) -> box.checked
-  for box in boxes
-    box.disabled = checked.length is 1 and box.checked
+  buttons = Array.from list.querySelectorAll ".part-display"
+  active = buttons.filter (btn) -> btn.getAttribute("aria-pressed") is "true"
+  for btn in buttons
+    btn.disabled = active.length is 1 and btn.getAttribute("aria-pressed") is "true"
 
 # Bouton « Tailles à 100 % » : actif dès qu'une taille diffère de 100
 updatePartsSizesReset = ->
@@ -263,16 +302,17 @@ setupSettings = ->
   $("parts-sizes-reset").addEventListener "click", ->
     changed = Object.keys(partSizes).some (id) -> partSizes[id] isnt 100
     partSizes = {}
-    saveHiddenParts()
+    savePartSettings()
     renderPartsList()
     partsChanged = true if changed
 
   # Remet tous les volumes de voix à 100 % : aucun re-rendu, seulement le moteur
   $("parts-volumes-reset").addEventListener "click", ->
+    labels = Object.keys partVolumes
     partVolumes = {}
-    saveHiddenParts()
+    savePartSettings()
     renderPartsList()
-    applyVoiceAudio()
+    applyVoiceAudio labels
 
   # Zoom slider: live label, apply on release
   $("zoom-range").addEventListener "input", (e) ->

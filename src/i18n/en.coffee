@@ -118,6 +118,10 @@ registerLanguage 'en', 'English',
   'tempo.pending': 'Determining the file tempo…'
   'tempo.aria': 'Playback tempo in {unit} per minute'
 
+  'parts.displayTitle': 'Show or hide the part in the score'
+  'parts.displayAria': 'Score display of {part}'
+  'parts.soundTitle': 'Play or mute the part'
+  'parts.soundAria': 'Playback of {part}'
   'parts.volumeTitle': 'Part volume'
   'parts.volumeAria': 'Volume of {part}'
   'parts.volumeOption': 'Vol. {pct}%'

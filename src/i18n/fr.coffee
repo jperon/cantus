@@ -116,6 +116,10 @@ registerLanguage 'fr', 'Français',
   'tempo.pending': 'Tempo du fichier en cours de détermination…'
   'tempo.aria': 'Tempo de lecture en {unit} par minute'
 
+  'parts.displayTitle': 'Afficher ou masquer la voix sur la partition'
+  'parts.displayAria': 'Affichage de {part}'
+  'parts.soundTitle': 'Jouer ou couper la voix'
+  'parts.soundAria': 'Lecture de {part}'
   'parts.volumeTitle': 'Volume de la voix'
   'parts.volumeAria': 'Volume de {part}'
   'parts.volumeOption': 'Vol. {pct} %'

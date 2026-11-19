@@ -590,6 +590,7 @@ createEngine = (initialOptions = {}) ->
           start: note.start
           dur: note.dur
           pitch: note.pitch
+          track: note.track
           offset: at - state.startCtxTime
         }
       scheduleNote note, at

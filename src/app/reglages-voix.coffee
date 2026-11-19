@@ -1,5 +1,6 @@
-# Réglages persistants (zoom, thème, défilement…), voix masquées, tailles et
-# volumes, tempo de lecture par fichier, et variantes de cache qui en dérivent.
+# Réglages persistants (zoom, thème, défilement…), voix masquées ou coupées,
+# tailles et volumes, tempo de lecture par fichier, et variantes de cache qui en
+# dérivent. « Masquée » ne concerne que le rendu ; « coupée » que la lecture.
 # Only returns loaded movements, falls back to movement 1 if not loaded
 getMovementForPage = (globalPage) ->
   offset = 0
@@ -87,10 +88,11 @@ applyAllSettings = ->
   applyFollowPlayback settings.followPlayback
   applyExpandRepeats settings.expandRepeats
 
-# Applique les volumes et masquages enregistrés au moteur audio, par libellé.
+# Applique les volumes et les voix coupées au moteur audio, par libellé.
+# C'est le seul réglage de voix audible : le masquage ne touche que le rendu.
 # Les libellés inconnus du mouvement chargé sont acceptés sans erreur : une
-# voix masquée peut avoir disparu du MIDI, et le volume reste mémorisé pour
-# son retour. Aucun re-rendu n'est déclenché ici.
+# voix coupée peut avoir disparu du MIDI, et le volume reste mémorisé pour son
+# retour. Aucun re-rendu n'est déclenché ici.
 applyVoiceAudio = (labels) ->
   engine = audioEngine()
   return unless engine?.setVoiceVolume?
@@ -102,18 +104,19 @@ applyVoiceAudio = (labels) ->
     list.push label
   add label for label in (labels ? [])
   add label for label in Object.keys partVolumes
-  add label for label in Array.from hiddenParts
+  add label for label in Array.from mutedParts
   for label in list
     volume = parseInt partVolumes[label] ? 100
     volume = 100 unless isFinite volume
     engine.setVoiceVolume label, volume
-    engine.setVoiceMuted label, hiddenParts.has(label) if engine.setVoiceMuted?
+    engine.setVoiceMuted label, mutedParts.has(label) if engine.setVoiceMuted?
 
-# Parties masquées, leurs tailles et leurs volumes, propres à chaque fichier.
-# Le format historique (tableau d'ids) reste lu ; le champ `volumes` est
-# absent des anciens réglages et vaut alors 100 % partout.
-loadHiddenParts = ->
+# Réglages de voix propres à chaque fichier : voix masquées (rendu), voix
+# coupées (lecture), tailles et volumes. Le champ `muted` absent vaut aucune
+# voix coupée ; `volumes` absent vaut 100 % partout.
+loadPartSettings = ->
   hiddenParts = new Set()
+  mutedParts = new Set()
   partSizes = {}
   partVolumes = {}
   return unless currentFileId
@@ -126,15 +129,20 @@ loadHiddenParts = ->
       hiddenParts = new Set data
     else
       hiddenParts = new Set data.hidden or []
+      mutedParts = new Set data.muted or []
       partSizes = data.sizes or {}
       partVolumes = data.volumes or {}
   catch
     # localStorage unavailable (file:// on some browsers)
 
-saveHiddenParts = ->
+savePartSettings = ->
   return unless currentFileId
   try
-    data = {hidden: Array.from(hiddenParts), sizes: partSizes, volumes: partVolumes}
+    data =
+      hidden: Array.from hiddenParts
+      muted: Array.from mutedParts
+      sizes: partSizes
+      volumes: partVolumes
     localStorage.setItem "musica-hidden-parts-#{currentFileId}", JSON.stringify(data)
   catch
     # localStorage unavailable (file:// on some browsers)
@@ -168,7 +176,9 @@ currentFileTempo = ->
   return null unless fileTempo? and fileTempo.fileId is currentFileId
   fileTempo
 
-# Suffixe de clé du cache SVG : une page rendue avec une autre sélection diffère
+# Suffixe de clé du cache SVG : une page rendue avec une autre sélection diffère.
+# Seuls le masquage et les tailles changent le rendu ; les voix coupées sont
+# purement audio et n'entrent donc jamais dans une clé de cache.
 partsVariant = ->
   hidden = Array.from(hiddenParts).sort().join ","
   sizes = (for id in Object.keys(partSizes).sort() when partSizes[id] isnt 100
