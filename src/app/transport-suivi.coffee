@@ -27,12 +27,9 @@ currentPlaybackPosition = ->
   return playback.position unless engine
   Math.max 0, engine.position() * 1000
 
-# Durée affichée : celle de la source entière quand elle est connue (tous les
-# mouvements s'enchaînent), sinon celle du mouvement chargé.
-displayDuration = ->
-  total = Number playback.sourceDuration
-  total = Number playback.duration unless isFinite(total) and total > 0
-  Math.max 0, total or 0
+# Durée affichée : celle de la source entière (tous les mouvements
+# s'enchaînent), fournie par le worker.
+displayDuration = -> playback.sourceDuration
 
 # Position affichée : cumulée sur la source (début du mouvement + temps local).
 displayPosition = ->
@@ -406,15 +403,13 @@ applyPlaybackData = (engine, movementId, data, position = 0) ->
   playback.tempoBpm = scaled.plan.chosen
   playback.tempoUnit = scaled.plan.info.unit
   playback.duration = Math.max 0, Number(scaled.data.duration) or 0
-  playback.offset = Math.max 0, Number(scaled.data.offsetMs) or 0
+  playback.offset = scaled.data.offsetMs
+  playback.sourceDuration = scaled.data.sourceDurationMs
   local = Math.max 0, Number(position) or 0
   local = Math.min local, playback.duration if playback.duration > 0
   playback.position = local
   playback.marks = scaled.data.syncMarks ? []
   playback.pauses = scaled.data.pauses ? []
-  total = Number scaled.data.sourceDurationMs
-  total = playback.offset + playback.duration unless isFinite(total) and total > 0
-  playback.sourceDuration = Math.max playback.offset + playback.duration, total
   playback.followKey = null
   engine.load scaled.data
   applyVoiceAudio scaled.data.staffLabels
@@ -456,32 +451,11 @@ switchPlaybackToMovement = (movementId, localPage) ->
       stopPlayback()
 
 # Fin naturelle d'un mouvement : enchaîne sans pause sur le suivant de la
-# partition. Au dernier mouvement, la lecture s'arrête comme avant.
+# partition, depuis son début. Au dernier mouvement, la lecture s'arrête.
 finishPlaybackMovement = ->
   return unless playback.state is "playing"
   next = movements.find (m) -> m.id > (playback.movementId ? 0)
-  engine = audioEngine()
-  unless engine and next?.loaded
-    stopPlayback()
-    return
-  token = ++playback.loadToken
-  requestPlaybackData next.id
-    .then (data) ->
-      return unless playback.loadToken is token and playback.state is "playing"
-      unless data?.midi and (Number(data.duration) or 0) > 0
-        stopPlayback()
-        return
-      try
-        applyPlaybackData engine, next.id, data
-      catch err
-        console.warn "Enchaînement impossible vers le mouvement #{next.id} : #{err?.message or err}"
-        stopPlayback()
-        return
-      beginPlayback engine, 0
-    .catch (err) ->
-      return unless playback.loadToken is token
-      console.warn "Enchaînement impossible vers le mouvement #{next.id} : #{err?.message or err}"
-      stopPlayback()
+  if next?.loaded then switchPlaybackToMovement next.id, 0 else stopPlayback()
 
 # Applique le tempo courant à la lecture chargée : reprend à la même position
 # musicale (position de lecture × ancien facteur / nouveau facteur). Un
@@ -494,27 +468,13 @@ applyTempoToPlayback = ->
   oldFactor = playback.tempoFactor ? 1
   scorePosition = Math.max(0, currentPlaybackPosition()) * oldFactor
   state = playback.state
-  scaled = scaledPlaybackFor playback.rawData, playback.movementId
-  factor = scaled.plan.factor
-  duration = Math.max 0, Number(scaled.data.duration) or 0
+  # Le facteur sert d'abord à retrouver la position ; applyPlaybackData applique
+  # ensuite au moteur et à l'état toutes les données remises à l'échelle.
+  factor = (playbackTempoPlan playback.rawData, playback.movementId).factor
   position = if factor > 0 then scorePosition / factor else 0
   position = Math.max 0, position
-  position = Math.min position, duration if duration > 0
-  fileTempo = scaled.plan.info
-  playback.tempoFactor = factor
-  playback.tempoBpm = scaled.plan.chosen
-  playback.tempoUnit = scaled.plan.info.unit
-  playback.duration = duration
-  playback.offset = Math.max 0, Number(scaled.data.offsetMs) or 0
-  total = Number scaled.data.sourceDurationMs
-  total = playback.offset + duration unless isFinite(total) and total > 0
-  playback.sourceDuration = Math.max playback.offset + duration, total
-  playback.marks = scaled.data.syncMarks ? []
-  playback.pauses = scaled.data.pauses ? []
-  playback.position = position
   try
-    engine.load scaled.data
-    applyVoiceAudio scaled.data.staffLabels
+    applyPlaybackData engine, playback.movementId, playback.rawData, position
   catch err
     console.warn "Changement de tempo impossible : #{err?.message or err}"
     playback.state = "stopped"
@@ -522,7 +482,7 @@ applyTempoToPlayback = ->
     renderTransport()
     return
   if state is "playing"
-    beginPlayback engine, position
+    beginPlayback engine, playback.position
     return
   playback.state = if state is "paused" then "paused" else "stopped"
   renderTransport()

@@ -213,8 +213,8 @@ scalePlaybackData = (data, factor) ->
   scaled.duration = scaleTimeValue data.duration, f if data.duration?
   # Position du mouvement dans sa source et durée totale de la source : même
   # axe de sortie que la durée, donc même facteur.
-  scaled.offsetMs = scaleTimeValue data.offsetMs, f if data.offsetMs?
-  scaled.sourceDurationMs = scaleTimeValue data.sourceDurationMs, f if data.sourceDurationMs?
+  scaled.offsetMs = scaleTimeValue data.offsetMs, f
+  scaled.sourceDurationMs = scaleTimeValue data.sourceDurationMs, f
   if Array.isArray data.syncMarks
     scaled.syncMarks = for mark in data.syncMarks
       copy = {}
