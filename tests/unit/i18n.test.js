@@ -17,7 +17,12 @@ const CoffeeScript = require('coffeescript');
 
 function loadI18n() {
   const src = path.join(__dirname, '..', '..', 'src');
-  const files = ['i18n.coffee', 'i18n/en.coffee', 'i18n/fr.coffee'];
+  // L'anglais d'abord (référence), puis tous les autres dictionnaires présents :
+  // ajouter src/i18n/es.coffee suffit pour que la cohérence soit vérifiée.
+  const others = fs.readdirSync(path.join(src, 'i18n'))
+    .filter((file) => file.endsWith('.coffee') && file !== 'en.coffee')
+    .sort();
+  const files = ['i18n.coffee', 'i18n/en.coffee', ...others.map((file) => path.join('i18n', file))];
   const js = CoffeeScript.compile(
     files.map((file) => fs.readFileSync(path.join(src, file), 'utf8')).join(''),
     { bare: true }
@@ -39,10 +44,13 @@ const test = (name, fn) => tests.push({ name, fn });
 
 test('langues présentes : anglais de référence puis français', () => {
   const i18n = loadI18n();
-  assert.deepStrictEqual(i18n.languages(), [
-    { code: 'en', name: 'English' },
-    { code: 'fr', name: 'Français' },
-  ]);
+  const languages = i18n.languages();
+  assert.strictEqual(languages[0].code, 'en');
+  assert.strictEqual(languages[0].name, 'English');
+  assert.deepStrictEqual(
+    languages.find((lang) => lang.code === 'fr'),
+    { code: 'fr', name: 'Français' }
+  );
   assert.strictEqual(i18n.language(), 'en');
   assert.strictEqual(i18n.setLanguage('fr'), true);
   assert.strictEqual(i18n.language(), 'fr');
@@ -50,22 +58,28 @@ test('langues présentes : anglais de référence puis français', () => {
   assert.strictEqual(i18n.language(), 'fr');
 });
 
-test('mêmes clés en français et en anglais', () => {
+test('mêmes clés dans chaque dictionnaire et en anglais', () => {
   const i18n = loadI18n();
   const en = Object.keys(i18n.messages('en')).sort();
-  const fr = Object.keys(i18n.messages('fr')).sort();
-  assert.deepStrictEqual(fr, en);
+  for (const { code } of i18n.languages()) {
+    if (code === 'en') continue;
+    assert.deepStrictEqual(Object.keys(i18n.messages(code)).sort(), en,
+      `clés divergentes pour « ${code} »`);
+  }
 });
 
 test('mêmes {paramètres} pour chaque clé', () => {
   const i18n = loadI18n();
   const en = i18n.messages('en');
-  const fr = i18n.messages('fr');
-  for (const key of Object.keys(en)) {
-    assert.deepStrictEqual(
-      placeholders(fr[key]), placeholders(en[key]),
-      `paramètres divergents pour « ${key} »`
-    );
+  for (const { code } of i18n.languages()) {
+    if (code === 'en') continue;
+    const dict = i18n.messages(code);
+    for (const key of Object.keys(en)) {
+      assert.deepStrictEqual(
+        placeholders(dict[key]), placeholders(en[key]),
+        `paramètres divergents pour « ${key} » en « ${code} »`
+      );
+    }
   }
 });
 
