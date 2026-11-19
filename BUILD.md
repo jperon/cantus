@@ -52,7 +52,7 @@ instructions exécutées au chargement sont conservées.
 | `langue.coffee` | Langue de l'interface : préférence, textes `data-i18n` et régénération des textes dynamiques. |
 | `pages-lecture.coffee` | Pages SVG et données de lecture (midi, marqueurs, pauses). |
 | `transport-suivi.coffee` | Transport audio et suivi du défilement pendant la lecture. |
-| `reglages-voix.coffee` | Réglages persistants, voix masquées, tailles, variantes de cache. |
+| `reglages-voix.coffee` | Réglages persistants, voix masquées (rendu) ou coupées (lecture), tailles, variantes de cache. |
 | `affichage-navigation.coffee` | Affichage des pages, préchargement, défilement, navigation. |
 | `decoupage-xml.coffee` | Découpage MusicXML en mouvements, masquage et tailles des voix. |
 | `sources.coffee` | Conversion scoretk et chargement séquentiel des sources/mouvements. |

@@ -153,10 +153,11 @@ Si `pwa/soundfonts/piano-fluidr3-13notes.js` est absent, le build passe
   suppression pendant le chargement de fond.
 - `s3-settings.js` — tailles de voix (Telemann, Bach), régénération seulement
   à la fermeture, bouton « Toutes les voix à 100 % », voix masquée (fichier
-  seul et dossier), zoom, défilement par page / système et recouvrement,
-  tempo de lecture (défaut du fichier, unité et symbole affichés, réglage par
-  fichier, retour au défaut, sans re-rendu SVG), et langue (anglais par
-  défaut, bascule au français, préférence conservée).
+  seul et dossier), ergonomie tactile des interrupteurs de voix à 360 px,
+  zoom, défilement par page / système et recouvrement, tempo de lecture
+  (défaut du fichier, unité et symbole affichés, réglage par fichier, retour au
+  défaut, sans re-rendu SVG), et langue (anglais par défaut, bascule au
+  français, préférence conservée).
 - `s4-offline.js` — installation du service worker, mise en cache des trois
   fichiers mscz2xml, rechargement et import `.mscz` avec `setOffline(true)`,
   puis lecture audio hors ligne (position qui progresse, soundfont précaché ou
@@ -172,8 +173,9 @@ Si `pwa/soundfonts/piano-fluidr3-13notes.js` est absent, le build passe
 - `s6a-transport.js` — structure de la barre, lecture/pause/arrêt, raccourcis
   `p`/`s`, tempo de lecture (défaut affiché, 80 → 160 : durée divisée par
   deux et reprise à la position courante), suivi vertical par système et par
-  page, volume général, volume par voix et voix masquée. `index.html` et
-  `spa.html`.
+  page, volume général, volume par voix, et dissociation affichage / lecture
+  d'une voix (masquée mais jouée, affichée mais coupée, persistance).
+  `index.html` et `spa.html`.
 - `s6b-suivi.js` — suivi horizontal (Fauré) : sauts avant/arrière sans page
   blanche, granularité en demi-pages, puis cale de la tête sur le premier
   marqueur de la page affichée. `index.html` et `spa.html`.
@@ -205,8 +207,13 @@ Le panneau Réglages expose :
 - **Volume général** (0–100) : appliqué immédiatement et conservé dans
   `localStorage` (`musica-settings`).
 - **Volume par voix** (10–100) : propre à chaque fichier, appliqué au
-  `GainNode` de la voix sans re-rendu ; conservé avec les voix masquées dans
-  `musica-hidden-parts-<fileId>`.
+  `GainNode` de la voix sans re-rendu ; conservé avec les voix masquées ou
+  coupées dans `musica-hidden-parts-<fileId>`.
+- **Affichage et lecture d'une voix** (deux interrupteurs de 44 px par voix) :
+  « affichée » ne concerne que le rendu (masquage, appliqué à la fermeture),
+  « jouée » que l'audio (coupure, appliquée à chaud au `GainNode`). Les deux
+  états sont indépendants et persistés séparément (`hidden` et `muted`) ; au
+  moins une voix reste affichée, aucune contrainte sur les voix jouées.
 - **Tempo de lecture** (20–300 dans l'unité de battue) : propre à chaque
   fichier, conservé dans `musica-tempo-<fileId>`. L'unité (blanche, noire,
   noire pointée…) vient de l'indication métronomique du fichier, sinon de sa
@@ -240,6 +247,10 @@ node tools/build-soundfont-subset.js /tmp/piano-mp3.js \
   n'a pas le tempo, la seconde l'exprime en noires/minute). Le cache est
   préservé par le service worker aux mises à jour et purgé par « Vider le
   cache ».
+- Les voix coupées (`muted`) n'entrent dans aucune clé de cache, ni SVG ni
+  lecture : elles ne changent que le gain du moteur. Le masquage (`hidden`)
+  reste dans la variante du rendu et, via le XML élagué du worker, dans celle
+  de la lecture (la pagination déplace les marqueurs de synchronisation).
 - `s4` enregistre le service worker manuellement lorsque l'application ne le
   fait pas, afin de distinguer un défaut d'enregistrement d'un défaut de
   cache. Le détail du diagnostic est dans le résumé JSON.
