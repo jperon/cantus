@@ -159,7 +159,7 @@ displayView = ->
     div = document.createElement "div"
     div.className = "scroll-page"
     div.dataset.page = page  # Identify page by number
-    div.innerHTML = '<div class="loading-placeholder">Chargement...</div>'
+    div.innerHTML = "<div class=\"loading-placeholder\">#{t 'loading'}</div>"
     renderPageAsync(page).then (svg) ->
       return unless svg and div.isConnected  # Page was removed meanwhile
       div.innerHTML = svg
@@ -280,7 +280,7 @@ checkAndLoadMorePages = ->
     div = document.createElement "div"
     div.className = "scroll-page"
     div.dataset.page = nextPage  # Identify page by number
-    div.innerHTML = '<div class="loading-placeholder">Chargement...</div>'
+    div.innerHTML = "<div class=\"loading-placeholder\">#{t 'loading'}</div>"
     wrapper.appendChild div
     renderPageAsync(nextPage).then (svg) ->
       if svg and div.isConnected

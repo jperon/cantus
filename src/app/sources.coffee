@@ -188,7 +188,7 @@ loadFirstSource = (token) ->
 reportSourceError = (index, err) ->
   console.log "Conversion impossible pour la source #{index + 1}:", err
   name = currentSources?[index]?.name or "source #{index + 1}"
-  showError "Fichier ignoré (#{name}) : #{err?.message or err}"
+  showError t("errors.sourceSkipped", {name, error: err?.message or err})
 
 # Load remaining movements (and sources) sequentially after the first page is
 # displayed. A source is converted only when the previous one is fully loaded.

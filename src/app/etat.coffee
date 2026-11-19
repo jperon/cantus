@@ -203,7 +203,7 @@ worker.onmessage = (e) ->
       {message, movementId} = e.data
       console.error "Worker error:", message
       if movementId
-        showError "Erreur mouvement #{movementId}: #{message}"
+        showError t("errors.movement", {id: movementId, message})
       else
         showError message
 

@@ -3,13 +3,14 @@
 # Library overlay
 formatDate = (ts) ->
   d = new Date ts
-  d.toLocaleDateString "fr-FR", { day: "numeric", month: "short", year: "numeric" }
+  locale = window.__musicaI18n?.language() ? "en"
+  d.toLocaleDateString locale, { day: "numeric", month: "short", year: "numeric" }
 
 renderLibrary = ->
   list = $("library-list")
   storage.listFiles().then (files) ->
     if files.length is 0
-      list.innerHTML = '<div class="library-empty">Aucun fichier enregistré</div>'
+      list.innerHTML = "<div class=\"library-empty\">#{t 'library.empty'}</div>"
       return
     list.innerHTML = ""
     for file in files
@@ -18,13 +19,13 @@ renderLibrary = ->
         item.className = "library-item"
         count = file.files?.length or 0
         meta = formatDate file.addedAt
-        meta += " · #{count} fichiers" if count > 1
+        meta += " · #{t 'library.fileCount', {count}}" if count > 1
         item.innerHTML = """
           <div class="library-item-info">
             <div class="library-item-name">#{file.name}</div>
             <div class="library-item-date">#{meta}</div>
           </div>
-          <button class="library-item-delete" title="Supprimer">✕</button>
+          <button class="library-item-delete" title="#{t 'library.delete'}">✕</button>
         """
         item.querySelector(".library-item-info").addEventListener "click", ->
           openFromLibrary file.id
@@ -48,7 +49,7 @@ openFromLibrary = (id) ->
   hideLibrary()
   showLoading()
   storage.getFile(id).then (file) ->
-    return showError("Fichier introuvable") unless file
+    return showError(t "library.notFound") unless file
     currentFileId = id
     # ancienne entrée {xml} : une seule source texte
     sources = if file.files?.length
@@ -176,7 +177,7 @@ entryNameFor = (files) ->
 handleFolderImport = (fileList) ->
   files = Array.from(fileList or []).filter (file) -> isCompatibleFile file.name
   unless files.length > 0
-    return showError "Aucun fichier compatible (#{IMPORT_EXTENSIONS_TEXT})"
+    return showError t("errors.noCompatibleFile", {extensions: IMPORT_EXTENSIONS_TEXT})
   showLoading()
   hideImport()
   hideLibrary()
@@ -198,7 +199,7 @@ handleFolderImport = (fileList) ->
         loadSources sources, 1
     .catch (err) ->
       hideLoading()
-      showError "Impossible de lire le dossier : #{err.message or err}"
+      showError t("errors.folderRead", {error: err.message or err})
       showImport()
       showLibraryBtn()
 
@@ -218,7 +219,7 @@ handleFileImport = (file) ->
         loadSources sources, 1
     .catch (err) ->
       hideLoading()
-      showError "Impossible de lire le fichier : #{err.message or err}"
+      showError t("errors.fileRead", {error: err.message or err})
       showImport()
       showLibraryBtn()
 
@@ -230,7 +231,7 @@ handleImportFiles = (fileList) ->
   # une extension inconnue est refusée proprement au lieu d'échouer au rendu.
   files = files.filter (file) -> isCompatibleFile file.name
   unless files.length > 0
-    showError "Aucun fichier compatible (#{IMPORT_EXTENSIONS_TEXT})"
+    showError t("errors.noCompatibleFile", {extensions: IMPORT_EXTENSIONS_TEXT})
     showImport()
     return
   if files.length is 1

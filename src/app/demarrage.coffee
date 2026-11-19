@@ -1,6 +1,6 @@
 # Démarrage : date de build, installation PWA et service worker.
 # Les écouteurs sont posés dès le chargement, avant tout le reste.
-buildDate = window.__musicaBuildDate ? "(non défini)"
+buildDate = window.__musicaBuildDate ? "(not set)"
 
 # App — logique principale (worker-based with movement support)
 
@@ -59,10 +59,10 @@ installPWA = ->
 
         if outcome is 'accepted'
           console.log "PWA: User accepted installation"
-          showInstallMessage "Installation en cours...", "success"
+          showInstallMessage t("install.inProgress"), "success"
         else
           console.log "PWA: User dismissed installation"
-          showInstallMessage "Installation annulée", "info"
+          showInstallMessage t("install.cancelled"), "info"
 
         # Hide install button regardless of outcome
         hideInstallButton()
@@ -70,7 +70,7 @@ installPWA = ->
 
       .catch (error) ->
         console.error "PWA: Install prompt error:", error
-        showInstallMessage "Erreur lors de l'installation", "error"
+        showInstallMessage t("install.error"), "error"
   else
     # No prompt available yet, show detailed instructions
     console.log "PWA: No install prompt available yet"
@@ -80,27 +80,27 @@ installPWA = ->
 
     if userAgent.includes('chrome') and not userAgent.includes('edg')
       # Chrome/Chromium
-      showInstallMessage "Chrome: Revenez après quelques visites pour installer", "info"
+      showInstallMessage t("install.chrome"), "info"
       console.log "PWA: Chrome detected - prompt needs multiple visits"
 
     else if userAgent.includes('firefox')
       # Firefox
-      showInstallMessage "Firefox: Appuyez sur l'icône d'installation dans la barre d'adresse", "info"
+      showInstallMessage t("install.firefox"), "info"
       console.log "PWA: Firefox detected - manual installation required"
 
     else if userAgent.includes('safari') and not userAgent.includes('chrome')
       # Safari
-      showInstallMessage "Safari: Appuyez sur Partager > Ajouter à l'écran d'accueil", "info"
+      showInstallMessage t("install.safari"), "info"
       console.log "PWA: Safari detected - manual installation required"
 
     else if userAgent.includes('edg')
       # Edge
-      showInstallMessage "Edge: Revenez après quelques visites pour installer", "info"
+      showInstallMessage t("install.edge"), "info"
       console.log "PWA: Edge detected - prompt needs multiple visits"
 
     else
       # Other browsers
-      showInstallMessage "Utilisez le menu du navigateur pour installer", "info"
+      showInstallMessage t("install.generic"), "info"
       console.log "PWA: Unknown browser - generic instructions"
 
 # Hide install button
@@ -222,13 +222,13 @@ handleServiceWorkerMessage = (event) ->
 showUpdateNotification = ->
   notification = document.createElement 'div'
   notification.className = 'update-notification'
-  notification.innerHTML = '''
+  notification.innerHTML = """
     <div class="update-content">
-      <span>🔄 Une nouvelle version est disponible</span>
-      <button id="update-btn">Mettre à jour</button>
-      <button id="dismiss-btn">Plus tard</button>
+      <span>#{t "update.available"}</span>
+      <button id="update-btn">#{t "update.reload"}</button>
+      <button id="dismiss-btn">#{t "update.later"}</button>
     </div>
-  '''
+  """
 
   # Style de la notification
   notification.style.cssText = '''

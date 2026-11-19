@@ -1,7 +1,7 @@
 {
   "name": "Cantus",
   "short_name": "Cantus",
-  "description": "Liseuse de partitions MusicXML hors-ligne",
+  "description": "Offline MusicXML sheet music reader",
   "id": "cantus",
   "start_url": "./",
   "display": "standalone",
@@ -9,7 +9,7 @@
   "theme_color": "#2196f3",
   "orientation": "portrait",
   "scope": "./",
-  "lang": "fr",
+  "lang": "en",
   "categories": ["music", "education", "productivity"],
   "protocol_handlers": [
     {
@@ -54,21 +54,21 @@
       "sizes": "390x844",
       "type": "image/png",
       "form_factor": "narrow",
-      "label": "Vue principale de la liseuse avec une partition MusicXML"
+      "label": "Main reader view with a MusicXML score"
     },
     {
       "src": "screenshots/mobile-2.png",
       "sizes": "390x844",
       "type": "image/png",
       "form_factor": "narrow",
-      "label": "Menu de navigation et sélection de fichiers"
+      "label": "Navigation menu and file selection"
     },
     {
       "src": "screenshots/desktop-1.png",
       "sizes": "1280x720",
       "type": "image/png",
       "form_factor": "wide",
-      "label": "Interface desktop avec affichage multi-pages"
+      "label": "Desktop interface with multi-page display"
     }
   ]
 }

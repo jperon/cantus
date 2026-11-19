@@ -75,12 +75,12 @@ renderPartsList = ->
       sizeSel.disabled = hiddenParts.has partLabel
       volumeSel = document.createElement "select"
       volumeSel.className = "part-volume"
-      volumeSel.title = "Volume de la voix"
-      volumeSel.setAttribute "aria-label", "Volume de #{partLabel}"
+      volumeSel.title = t "parts.volumeTitle"
+      volumeSel.setAttribute "aria-label", t("parts.volumeAria", {part: partLabel})
       for pct in [10..100] by 10
         opt = document.createElement "option"
         opt.value = pct
-        opt.textContent = "Vol. #{pct} %"
+        opt.textContent = t "parts.volumeOption", {pct}
         volumeSel.appendChild opt
       volumeSel.value = partVolumes[partLabel] or 100
       volumeSel.disabled = hiddenParts.has partLabel
@@ -156,8 +156,8 @@ renderTempoUi = ->
     input.value = ""
   input.placeholder = if info? then "" else "…"
   unit = info?.unit ? "quarter"
-  label = window.__musicaTimeline.tempoUnitLabel unit
-  input.setAttribute "aria-label", "Tempo de lecture en #{label} par minute"
+  label = t "tempo.unit.#{unit}", {count: 1}
+  input.setAttribute "aria-label", t("tempo.aria", {unit: label})
   unitEl = $("tempo-unit")
   if unitEl
     unitEl.textContent = window.__musicaTimeline.tempoUnitSymbol unit
@@ -166,17 +166,17 @@ renderTempoUi = ->
   reset.disabled = playbackTempoOverride is null if reset
   hint = $("tempo-hint")
   return unless hint
-  plural = window.__musicaTimeline.tempoUnitLabel unit, true
+  plural = t "tempo.unit.#{unit}", {count: 2}
   if info?
     if info.explicit
-      hint.textContent = "Tempo initial du fichier : #{info.bpm} #{plural}/min."
+      hint.textContent = t "tempo.fileExplicit", {bpm: info.bpm, unit: plural}
     else
-      hint.textContent = "Aucun tempo dans le fichier : défaut #{DEFAULT_PLAYBACK_TEMPO_BPM} #{plural}/min " +
-        "(lecture de référence : #{DEFAULT_FILE_TEMPO_BPM} noires/min)."
+      hint.textContent = t "tempo.fileDefault",
+        {bpm: DEFAULT_PLAYBACK_TEMPO_BPM, unit: plural, ref: DEFAULT_FILE_TEMPO_BPM}
   else if fileTempoError
-    hint.textContent = "Tempo du fichier indisponible ; défaut #{DEFAULT_PLAYBACK_TEMPO_BPM} #{plural}/min."
+    hint.textContent = t "tempo.unavailable", {bpm: DEFAULT_PLAYBACK_TEMPO_BPM, unit: plural}
   else
-    hint.textContent = "Tempo du fichier en cours de détermination…"
+    hint.textContent = t "tempo.pending"
 
 # Demande les données de lecture du mouvement affiché pour connaître le tempo
 # initial du fichier. Une seule demande par fichier/mouvement ; le cache de
@@ -388,8 +388,8 @@ setupSettings = ->
         playbackCache.clear()
         pendingRequests.clear()
         updateStorageInfo()
-        showStorageMessage "Caches de rendu vidés", "success"
+        showStorageMessage t("storage.cacheCleared"), "success"
       .catch (err) ->
         console.warn "Vidage des caches impossible : #{err?.message or err}"
-        showStorageMessage "Vidage impossible", "error"
+        showStorageMessage t("storage.clearFailed"), "error"
 

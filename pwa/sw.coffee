@@ -184,8 +184,8 @@ shareEntryName = (files, title) ->
 
 htmlResponse = (status, message) ->
   escaped = String(message).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  body = "<!doctype html><meta charset=\"utf-8\"><title>Partage impossible</title>" +
-    "<h1>Partage impossible</h1><p>#{escaped}</p><p>Revenez à Cantus et utilisez « Importer ».</p>"
+  body = "<!doctype html><meta charset=\"utf-8\"><title>Sharing failed</title>" +
+    "<h1>Sharing failed</h1><p>#{escaped}</p><p>Go back to Cantus and use “Open a file”.</p>"
   new Response body, { status, headers: { 'Content-Type': 'text/html; charset=utf-8' } }
 
 # Réception d'un partage : accepte tous les fichiers (l'application décide
@@ -196,7 +196,7 @@ handleShare = (request) ->
     candidates = form.getAll('file').concat form.getAll('files')
     blobs = (item for item in candidates when item and item.arrayBuffer and item.size > 0)
     unless blobs.length
-      return htmlResponse 400, "Aucun fichier n'a été reçu."
+      return htmlResponse 400, "No file was received."
 
     title = String(form.get('title') or form.get('text') or '').trim()
     files = []
@@ -213,7 +213,7 @@ handleShare = (request) ->
     new Response null, { status: 303, headers: { Location: "./?shared=#{encodeURIComponent id}" } }
   catch err
     console.error 'SW: échec du partage', err
-    htmlResponse 500, "Le fichier partagé n'a pas pu être enregistré : #{err?.message or err}"
+    htmlResponse 500, "The shared file could not be saved: #{err?.message or err}"
 
 # Check if it's a static asset (pathname only)
 isStaticAsset = (urlOrPath) ->

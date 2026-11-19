@@ -40,7 +40,7 @@ renderTransport = ->
   time.textContent = "#{formatTime position} / #{formatTime duration}" if time
   if playBtn
     playBtn.textContent = if playing then "❚❚" else "▶"
-    playBtn.setAttribute "aria-label", if playing then "Pause" else "Lecture"
+    playBtn.setAttribute "aria-label", t(if playing then "transport.pauseAria" else "transport.playAria")
     playBtn.disabled = loading
 
 cancelPlaybackFrame = ->

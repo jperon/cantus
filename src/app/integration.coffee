@@ -13,11 +13,11 @@ requestStorageQuota = ->
           navigator.storage.persist().then (persistent) ->
             if persistent
               console.log "✅ Storage persistence granted - extended quota available"
-              showStorageMessage "Stockage étendu à 200MB activé", "success"
+              showStorageMessage t("storage.extended"), "success"
             else
               console.log "⚠️ Storage persistence denied"
               currentQuotaMB = (estimate.quota / 1024 / 1024).toFixed(0)
-              showStorageMessage "Stockage limité à #{currentQuotaMB}MB", "warning"
+              showStorageMessage t("storage.limited", {mb: currentQuotaMB}), "warning"
         else
           console.log "Storage persistence not supported"
       else
@@ -100,7 +100,7 @@ fetchFileFromUrl = (url) ->
       loadMusicXMLContent xmlContent, url
     .catch (error) ->
       console.error "Failed to fetch remote file:", error
-      showError "Impossible de charger le fichier distant: #{error.message}"
+      showError t("errors.remoteLoad", {error: error.message})
 
 # Load file from URL parameter
 loadFileFromParameter = (fileData) ->
@@ -116,7 +116,7 @@ loadFileFromParameter = (fileData) ->
       console.warn "Unsupported file format in protocol handler"
   catch error
     console.error "Error loading file from parameter:", error
-    showError "Erreur lors du chargement du fichier: #{error.message}"
+    showError t("errors.fileLoad", {error: error.message})
 
 # Load file from Data URL
 loadFileFromDataUrl = (dataUrl) ->
@@ -130,7 +130,7 @@ loadFileFromDataUrl = (dataUrl) ->
       throw new Error "Invalid data URL format"
   catch error
     console.error "Error parsing data URL:", error
-    showError "Format de fichier invalide"
+    showError t("errors.invalidFormat")
 
 # Load MusicXML content into the app
 loadMusicXMLContent = (xmlContent, source = 'unknown') ->
@@ -159,7 +159,7 @@ loadMusicXMLContent = (xmlContent, source = 'unknown') ->
 
   catch error
     console.error "Error processing MusicXML:", error
-    showError "Fichier MusicXML invalide: #{error.message}"
+    showError t("errors.invalidMusicXml", {error: error.message})
 
 # Un MIDI ne porte pas de notation : la partition affichée est une
 # transcription. Indication discrète, non bloquante, sur le même principe que
@@ -184,8 +184,7 @@ showTranscriptionNotice = ->
       box-shadow: 0 4px 12px rgba(0,0,0,0.3);
     '''
     document.body.appendChild noticeEl
-  noticeEl.textContent =
-    "Fichier MIDI : partition transcrite automatiquement, sans notation d'origine."
+  noticeEl.textContent = t "notice.midiTranscription"
   noticeEl.style.display = 'block'
   clearTimeout transcriptionNoticeTimer if transcriptionNoticeTimer
   transcriptionNoticeTimer = setTimeout ->
@@ -235,7 +234,7 @@ importSharedEntry = (token) ->
   storage.getFile(token).then (entry) ->
     unless entry?.files?.length
       removeSharedParam()
-      showError "Fichier partagé introuvable"
+      showError t("errors.sharedNotFound")
       return
 
     files = for source in entry.files
@@ -248,5 +247,5 @@ importSharedEntry = (token) ->
     handleImportFiles files
   .catch (error) ->
     removeSharedParam()
-    showError "Impossible de lire le fichier partagé : #{error?.message or error}"
+    showError t("errors.sharedRead", {error: error?.message or error})
 
