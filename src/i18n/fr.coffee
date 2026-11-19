@@ -4,6 +4,7 @@
 # tests/unit/i18n.test.js) ; une clé absente serait lue en anglais.
 registerLanguage 'fr', 'Français',
   'app.title': 'Liseuse MusicXML'
+  'app.description': 'Cantus est une liseuse MusicXML hors-ligne. Ouvrez et visualisez vos partitions musicales au format MusicXML et MXL avec une interface intuitive et un rendu haute qualité.'
   'import.title': 'Liseuse MusicXML'
   'import.subtitle': 'Ouvrir un fichier MusicXML pour commencer'
   'import.openFile': 'Ouvrir un fichier'
@@ -14,6 +15,7 @@ registerLanguage 'fr', 'Français',
   'error.generic': 'Une erreur est survenue.'
 
   'settings.title': 'Réglages'
+  'settings.close': 'Fermer les réglages'
   'settings.zoom': 'Zoom'
   'settings.language': 'Langue'
   'settings.masterVolume': 'Volume général'
@@ -50,6 +52,7 @@ registerLanguage 'fr', 'Français',
   'settings.soundfontCredit': 'Échantillons piano FluidR3 par Frank Wen, rendu MIDI.js par Benjamin Gleitzman —'
 
   'library.title': 'Bibliothèque'
+  'library.close': 'Fermer la bibliothèque'
   'library.addFile': 'Ajouter un fichier'
   'library.addFolder': 'Ajouter un dossier'
   'library.empty': 'Aucun fichier enregistré'

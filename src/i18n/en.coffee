@@ -6,6 +6,7 @@
 # forme _other, choisies par Intl.PluralRules.
 registerLanguage 'en', 'English',
   'app.title': 'MusicXML Reader'
+  'app.description': 'Cantus is an offline MusicXML reader. Open and view your sheet music in MusicXML and MXL format with an intuitive interface and high-quality rendering.'
   'import.title': 'MusicXML Reader'
   'import.subtitle': 'Open a MusicXML file to get started'
   'import.openFile': 'Open a file'
@@ -16,6 +17,7 @@ registerLanguage 'en', 'English',
   'error.generic': 'Something went wrong.'
 
   'settings.title': 'Settings'
+  'settings.close': 'Close settings'
   'settings.zoom': 'Zoom'
   'settings.language': 'Language'
   'settings.masterVolume': 'Master volume'
@@ -52,6 +54,7 @@ registerLanguage 'en', 'English',
   'settings.soundfontCredit': 'FluidR3 piano samples by Frank Wen, MIDI.js rendering by Benjamin Gleitzman —'
 
   'library.title': 'Library'
+  'library.close': 'Close library'
   'library.addFile': 'Add a file'
   'library.addFolder': 'Add a folder'
   'library.empty': 'No saved files'

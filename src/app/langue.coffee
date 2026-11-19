@@ -40,6 +40,8 @@ applyStaticTexts = ->
     el.setAttribute "aria-label", i18n.t el.getAttribute "data-i18n-aria-label"
   for el in document.querySelectorAll "[data-i18n-placeholder]"
     el.setAttribute "placeholder", i18n.t el.getAttribute "data-i18n-placeholder"
+  for el in document.querySelectorAll "[data-i18n-content]"
+    el.setAttribute "content", i18n.t el.getAttribute "data-i18n-content"
   document.title = i18n.t "app.title"
 
 # Textes générés par le code : les régénérer dans la nouvelle langue.

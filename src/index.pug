@@ -1,20 +1,20 @@
 doctype html
-html(lang="fr")
+html(lang="en")
   head
     meta(charset="utf-8")
     meta(name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5")
-    meta(name="description" content="Cantus est une liseuse MusicXML hors-ligne. Ouvrez et visualisez vos partitions musicales au format MusicXML et MXL avec une interface intuitive et un rendu haute qualité.")
+    meta(name="description" content="Cantus is an offline MusicXML reader. Open and view your sheet music in MusicXML and MXL format with an intuitive interface and high-quality rendering." data-i18n-content="app.description")
     meta(name="mobile-web-app-capable" content="yes")
     meta(name="apple-mobile-web-app-capable" content="yes")
     meta(name="apple-mobile-web-app-status-bar-style" content="default")
-    meta(name="apple-mobile-web-app-title" content="Partitions")
+    meta(name="apple-mobile-web-app-title" content="Cantus")
     meta(name="theme-color" content="#ffffff")
-    meta(name="keywords" content="MusicXML, partitions, musique, liseuse, offline, PWA, cantus, score, sheet music")
+    meta(name="keywords" content="MusicXML, sheet music, music, reader, offline, PWA, cantus, score")
     meta(name="author" content="Cantus")
     link(rel="manifest" href="manifest.json")
     link(rel="icon" href="favicon.ico" type="image/x-icon")
     link(rel="apple-touch-icon" href="icons/icon-192.png")
-    title Liseuse MusicXML
+    title MusicXML Reader
     style !{css}
   body
     #reader
@@ -25,26 +25,26 @@ html(lang="fr")
       #tap-left
       #tap-right
       #import-section
-        h1 Liseuse MusicXML
-        p Ouvrir un fichier MusicXML pour commencer
-        button#import-btn Ouvrir un fichier
+        h1(data-i18n="import.title") MusicXML Reader
+        p(data-i18n="import.subtitle") Open a MusicXML file to get started
+        button#import-btn(data-i18n="import.openFile") Open a file
         input#file-input(type="file" multiple accept=importAccept)
-        button#folder-btn Ouvrir un dossier
+        button#folder-btn(data-i18n="import.openFolder") Open a folder
         input#folder-input(type="file" webkitdirectory accept=importAccept)
         #install-section.hidden
-          button#btn-install Installer Cantus
-          p.install-subtitle Transformez Cantus en application native
+          button#btn-install(data-i18n="import.install") Install Cantus
+          p.install-subtitle(data-i18n="import.installSubtitle") Turn Cantus into a native app
     #overlay-loading
       .spinner
-      p Chargement…
+      p(data-i18n="loading") Loading…
     #overlay-error
-      p#error-message Une erreur est survenue.
+      p#error-message(data-i18n="error.generic") Something went wrong.
     #settings-overlay.hidden
       #settings-header
-        h2 Réglages
-        button#settings-close ✕
+        h2(data-i18n="settings.title") Settings
+        button#settings-close(data-i18n-aria-label="settings.close" aria-label="Close settings") ✕
       .settings-group
-        label.settings-label Zoom
+        label.settings-label(data-i18n="settings.zoom") Zoom
         .settings-row
           span#zoom-value 40
           input#zoom-range(type="range" min="30" max="80" step="5" value="40")
@@ -54,53 +54,53 @@ html(lang="fr")
           select#language-select
       .settings-pair
         .settings-group
-          label.settings-label(for="master-volume-range") Volume général
+          label.settings-label(for="master-volume-range" data-i18n="settings.masterVolume") Master volume
           .settings-row
             span#master-volume-value 80
-            input#master-volume-range(type="range" min="0" max="100" step="5" value="80" aria-label="Volume général")
+            input#master-volume-range(type="range" min="0" max="100" step="5" value="80" aria-label="Master volume" data-i18n-aria-label="settings.masterVolume")
         .settings-group
-          label.settings-label(for="tempo-input") Tempo de lecture
+          label.settings-label(for="tempo-input" data-i18n="settings.tempo") Playback tempo
           .settings-row
-            input#tempo-input.settings-number(type="number" min="20" max="300" step="1" value="80" inputmode="numeric" aria-label="Tempo de lecture en noires par minute")
-            span#tempo-unit.tempo-unit(title="noire") ♩
+            input#tempo-input.settings-number(type="number" min="20" max="300" step="1" value="80" inputmode="numeric" aria-label="Playback tempo per minute")
+            span#tempo-unit.tempo-unit(title="quarter note") ♩
             span /min
-            button#tempo-reset.settings-btn.tempo-reset(type="button" title="Revenir au tempo du fichier" disabled) Tempo du fichier
-          p#tempo-hint.settings-hint Tempo du fichier en cours de détermination…
+            button#tempo-reset.settings-btn.tempo-reset(type="button" title="Reset to the file tempo" data-i18n-title="settings.tempoResetTitle" data-i18n="settings.tempoReset" disabled) File tempo
+          p#tempo-hint.settings-hint(data-i18n="tempo.pending") Determining the file tempo…
       #parts-group.settings-group.hidden
-        label.settings-label Voix
+        label.settings-label(data-i18n="settings.parts") Parts
         #parts-list
         .settings-row
-          button#parts-sizes-reset.settings-btn(type="button" disabled) Tailles à 100 %
-          button#parts-volumes-reset.settings-btn(type="button" disabled) Volumes à 100 %
+          button#parts-sizes-reset.settings-btn(type="button" data-i18n="settings.partsSizesReset" disabled) Sizes to 100%
+          button#parts-volumes-reset.settings-btn(type="button" data-i18n="settings.partsVolumesReset" disabled) Volumes to 100%
       .settings-group
-        label.settings-label Lecture
+        label.settings-label(data-i18n="settings.playback") Playback
         .settings-row
           label.settings-check
             input#follow-playback(type="checkbox" checked)
-            span Suivre le défilement
+            span(data-i18n="settings.followPlayback") Follow scrolling
           label.settings-check
             input#expand-repeats(type="checkbox" checked)
-            span Dérouler les reprises
-          p.settings-hint Décoché : lecture linéaire, dans l'ordre écrit (sans reprises, D.C./D.S., coda ni voltes).
+            span(data-i18n="settings.expandRepeats") Expand repeats
+          p.settings-hint(data-i18n="settings.expandRepeatsHint") Unchecked: linear playback in written order (no repeats, D.C./D.S., coda or endings).
       .settings-group
-        label.settings-label Thème
+        label.settings-label(data-i18n="settings.theme") Theme
         .settings-row
-          button.theme-btn.active(data-theme="white") Blanc
-          button.theme-btn(data-theme="sepia") Sépia
-          button.theme-btn(data-theme="dark") Sombre
+          button.theme-btn.active(data-theme="white" data-i18n="theme.white") White
+          button.theme-btn(data-theme="sepia" data-i18n="theme.sepia") Sepia
+          button.theme-btn(data-theme="dark" data-i18n="theme.dark") Dark
       .settings-group
-        label.settings-label Zone de tap
+        label.settings-label(data-i18n="settings.tapZone") Tap zone
         .settings-row
-          button.tap-btn(data-size="20") Petite
-          button.tap-btn.active(data-size="30") Normale
-          button.tap-btn(data-size="40") Grande
+          button.tap-btn(data-size="20" data-i18n="tap.small") Small
+          button.tap-btn.active(data-size="30" data-i18n="tap.normal") Normal
+          button.tap-btn(data-size="40" data-i18n="tap.large") Large
       .settings-group
-        label.settings-label Défilement
+        label.settings-label(data-i18n="settings.scroll") Scrolling
         .settings-row
-          button.scroll-unit-btn.active(data-unit="page") Par page
-          button.scroll-unit-btn(data-unit="system") Par système
+          button.scroll-unit-btn.active(data-unit="page" data-i18n="scroll.page") Per page
+          button.scroll-unit-btn(data-unit="system" data-i18n="scroll.system") Per system
         .settings-row#overlap-row
-          span Recouvrement
+          span(data-i18n="settings.overlap") Overlap
           select#overlap-select
             option(value="0") 0 %
             option(value="10") 10 %
@@ -109,57 +109,57 @@ html(lang="fr")
             option(value="40") 40 %
             option(value="50") 50 %
       .settings-group
-        label.settings-label Stockage
+        label.settings-label(data-i18n="settings.storage") Storage
         .settings-row
           span#storage-info 0MB / 16MB
-          button#btn-storage Vider le cache
+          button#btn-storage(data-i18n="settings.clearCache") Clear cache
       .settings-group
-        label.settings-label À propos
+        label.settings-label(data-i18n="settings.about") About
         .settings-row
-          span Cantus v1.0 - Liseuse MusicXML
+          span(data-i18n="settings.version") Cantus v1.0 - MusicXML Reader
         .settings-row
           span#build-date
         .settings-row
-          small Logiciel libre sous licence GNU GPL v3 ou ultérieure, sans aucune garantie.
+          small(data-i18n="settings.license") Free software under the GNU GPL v3 or later, with no warranty.
         .settings-row
           small
-            a(href="https://github.com/jperon/cantus" target="_blank" rel="noopener") Code source
+            a(href="https://github.com/jperon/cantus" target="_blank" rel="noopener" data-i18n="settings.sourceCode") Source code
           small
-            a(href="https://github.com/jperon/cantus/blob/master/THIRD-PARTY.md" target="_blank" rel="noopener") Composants tiers
+            a(href="https://github.com/jperon/cantus/blob/master/THIRD-PARTY.md" target="_blank" rel="noopener" data-i18n="settings.thirdParty") Third-party components
         .settings-row
           small
-            | Échantillons piano FluidR3 par Frank Wen, rendu MIDI.js par Benjamin Gleitzman —
+            span(data-i18n="settings.soundfontCredit") FluidR3 piano samples by Frank Wen, MIDI.js rendering by Benjamin Gleitzman —
             = ' '
             a(href="https://creativecommons.org/licenses/by/3.0/" target="_blank" rel="noopener") CC-BY 3.0
     #library-overlay.hidden
       #library-header
-        h2 Bibliothèque
-        button#library-close ✕
+        h2(data-i18n="library.title") Library
+        button#library-close(data-i18n-aria-label="library.close" aria-label="Close library") ✕
       #library-list
       #library-actions
-        button#library-import-btn Ajouter un fichier
+        button#library-import-btn(data-i18n="library.addFile") Add a file
         input#library-file-input(type="file" multiple accept=importAccept)
-        button#library-folder-btn Ajouter un dossier
+        button#library-folder-btn(data-i18n="library.addFolder") Add a folder
         input#library-folder-input(type="file" webkitdirectory accept=importAccept)
     #page-indicator
     #loading-indicator.hidden
       .spinner-small
     #command-bar
-      #transport.transport-group.hidden(role="group" aria-label="Lecture audio")
-        button#transport-play.transport-btn(type="button" title="Lecture / pause (p)" aria-label="Lecture") ▶
-        button#transport-stop.transport-btn(type="button" title="Arrêt (s)" aria-label="Arrêt") ■
-        span#transport-time(title="Cliquer pour se déplacer dans la lecture") 0:00 / 0:00
+      #transport.transport-group.hidden(role="group" aria-label="Audio playback" data-i18n-aria-label="transport.group")
+        button#transport-play.transport-btn(type="button" title="Play / pause (p)" data-i18n-title="transport.playPauseTitle" aria-label="Play" data-i18n-aria-label="transport.playAria") ▶
+        button#transport-stop.transport-btn(type="button" title="Stop (s)" data-i18n-title="transport.stopTitle" aria-label="Stop" data-i18n-aria-label="transport.stop") ■
+        span#transport-time(title="Click to seek in the playback" data-i18n-title="transport.timeTitle") 0:00 / 0:00
       #nav-buttons.nav-group
-        button.nav-btn(data-action="start" title="Début") ⏮
-        button.nav-btn(data-action="prev-mov" title="Mouvement précédent") ◀◀
-        button.nav-btn(data-action="prev-5" title="5 pages avant") −5
+        button.nav-btn(data-action="start" title="Start" data-i18n-title="nav.start") ⏮
+        button.nav-btn(data-action="prev-mov" title="Previous movement" data-i18n-title="nav.prevMovement") ◀◀
+        button.nav-btn(data-action="prev-5" title="5 pages back" data-i18n-title="nav.prev5") −5
         span#page-number
-        button.nav-btn(data-action="next-5" title="5 pages après") +5
-        button.nav-btn(data-action="next-mov" title="Mouvement suivant") ▶▶
-        button.nav-btn(data-action="end" title="Fin") ⏭
+        button.nav-btn(data-action="next-5" title="5 pages forward" data-i18n-title="nav.next5") +5
+        button.nav-btn(data-action="next-mov" title="Next movement" data-i18n-title="nav.nextMovement") ▶▶
+        button.nav-btn(data-action="end" title="End" data-i18n-title="nav.end") ⏭
       #command-actions.icons-group
-        button#btn-library.hidden(type="button" title="Bibliothèque" aria-label="Bibliothèque") ☰
-        button#btn-settings.hidden(type="button" title="Réglages" aria-label="Réglages") ⚙
+        button#btn-library.hidden(type="button" title="Library" data-i18n-title="nav.library" aria-label="Library" data-i18n-aria-label="nav.library") ☰
+        button#btn-settings.hidden(type="button" title="Settings" data-i18n-title="nav.settings" aria-label="Settings" data-i18n-aria-label="nav.settings") ⚙
     script.
       window.__musicaBuildDate = "#{buildDate}"
       window.__musicaScoretkAvailable = #{scoretkAvailable ? 'true' : 'false'}
