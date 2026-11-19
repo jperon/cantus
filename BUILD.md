@@ -49,6 +49,7 @@ instructions exécutées au chargement sont conservées.
 | --- | --- |
 | `demarrage.coffee` | Date de build, installation PWA, service worker. |
 | `etat.coffee` | État global partagé et répartiteur des messages du worker. |
+| `langue.coffee` | Langue de l'interface : préférence, textes `data-i18n` et régénération des textes dynamiques. |
 | `pages-lecture.coffee` | Pages SVG et données de lecture (midi, marqueurs, pauses). |
 | `transport-suivi.coffee` | Transport audio et suivi du défilement pendant la lecture. |
 | `reglages-voix.coffee` | Réglages persistants, voix masquées, tailles, variantes de cache. |
@@ -104,6 +105,69 @@ pages.
 Les tests unitaires (`tests/unit/scoretk-from.test.js`) vérifient `scoretkFrom`
 et la cohérence des tables (chaque extension scoretk a un `from`, chaque type
 MIME pointe vers une extension connue).
+
+## Internationalisation (`src/i18n.coffee` et `src/i18n/`)
+
+L'interface est en anglais par défaut et traduite à l'exécution. `src/i18n.coffee`
+suit le patron de `src/formats.coffee` : api exposée sur `window.__musicaI18n`
+(page) et `module.exports` (build.js et tests Node). Le build concatène le
+module puis un dictionnaire par langue (`I18N_SOURCES`) et l'injecte en
+`i18n.js` avant l'application dans les deux pages.
+
+- `t(key, params)` renvoie le texte traduit, `{nom}` remplacé par `params.nom`.
+  Un paramètre absent laisse `{nom}` tel quel.
+- Pluriel : avec `params.count`, la clé `x` est cherchée en `x_one` / `x_other`
+  selon `Intl.PluralRules` de la langue courante. Les dictionnaires ne
+  contiennent que les formes utiles (par exemple `library.fileCount_one` et
+  `library.fileCount_other`).
+- `language()`, `setLanguage(code)` (met à jour `<html lang>`), `languages()`
+  (liste dérivée des dictionnaires présents) et `registerLanguage(code, nom,
+  messages)`.
+- **L'anglais (`src/i18n/en.coffee`) est la référence** : il contient toutes les
+  clés. Une clé absente d'une autre langue est lue en anglais ; une clé absente
+  de l'anglais produit une erreur en console et la clé est affichée.
+  `tests/unit/i18n.test.js` impose les mêmes clés et les mêmes `{paramètres}`
+  dans toutes les langues.
+
+### Ajouter ou modifier un texte
+
+1. ajouter la clé dans `src/i18n/en.coffee` (référence) ;
+2. ajouter la même clé, avec les mêmes `{paramètres}`, dans chaque autre
+   dictionnaire (`src/i18n/fr.coffee` aujourd'hui) ;
+3. dans le HTML, poser `data-i18n="clé"` (texte), `data-i18n-title`,
+   `data-i18n-aria-label`, `data-i18n-placeholder` ou `data-i18n-content`
+   (attribut `content` d'une balise `meta`). Le texte source reste l'anglais ;
+4. dans le code, appeler `t "clé", {paramètres}` — jamais de texte visible en
+   dur. `src/app/langue.coffee` applique les attributs `data-i18n*` au
+   chargement et à chaque changement de langue, puis régénère les textes
+   produits par le code (date de build, transport, réglages ouverts,
+   bibliothèque ouverte).
+
+Les messages de console de développement et les erreurs internes ne sont pas
+traduits. Le manifeste et la page d'erreur du service worker (hors
+application, sans accès aux dictionnaires) restent en anglais.
+
+### Ajouter une langue
+
+Créer `src/i18n/<code>.coffee` sur le modèle de `fr.coffee` :
+
+```coffee
+registerLanguage 'es', 'Español',
+  'app.title': '…'
+  # … toutes les clés de en.coffee
+```
+
+puis ajouter le fichier à `I18N_SOURCES` dans `build.js`, après `en.coffee`.
+Le sélecteur « Langue / Language » des réglages est alimenté par
+`languages()` : aucune autre modification n'est nécessaire. Une langue sans
+dictionnaire n'apparaît pas dans la liste.
+
+### Choix de la langue
+
+`src/app/langue.coffee` applique, dans cet ordre : la préférence enregistrée
+dans `localStorage` (`musica-language`), la première langue de
+`navigator.languages` qui a un dictionnaire, puis l'anglais. Le changement est
+appliqué à chaud, sans rechargement.
 
 ## Aperçu audio et synchronisation (scoretk)
 

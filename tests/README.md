@@ -43,6 +43,16 @@ d'attente sont tous bornés. Chaque bilan de scénario affiche sa durée en
 secondes, et le script termine par la durée des scénarios et la durée totale
 de la campagne.
 
+### Langue des scénarios
+
+Les assertions portent sur les textes français. `tests/lib.js` force donc la
+préférence de l'application (`localStorage`, clé `musica-language`) à `fr`
+dans chaque contexte, via `forceLanguage(ctx)` appelé par `newPage`. Un
+scénario n'a rien à faire ; un contexte créé à la main doit appeler
+`L.forceLanguage(ctx)`. Pour vérifier la détection par le navigateur, passer
+`language: null` à `L.newPage` et fournir un contexte à la locale voulue
+(`s3-settings.js`, section langue).
+
 ### Parallélisme
 
 Les scénarios navigateur sont indépendants : chacun ouvre son propre serveur
@@ -113,6 +123,8 @@ un contrat imaginé (`pauseBefore`, `from`/`to`/`offset`) ne prouve rien.
 - `tests/unit/timeline.test.js` — slices de mouvement, segments de lecture,
   pauses et marqueurs de synchronisation de la timeline pure
   (`src/timeline.coffee`, non encore branchée).
+- `tests/unit/i18n.test.js` — interpolation, pluriel, replis et cohérence
+  stricte des clés et des `{paramètres}` entre les dictionnaires.
 
 ## Sonde audio (aperçu soundfont)
 
@@ -143,7 +155,8 @@ Si `pwa/soundfonts/piano-fluidr3-13notes.js` est absent, le build passe
   à la fermeture, bouton « Toutes les voix à 100 % », voix masquée (fichier
   seul et dossier), zoom, défilement par page / système et recouvrement,
   tempo de lecture (défaut du fichier, unité et symbole affichés, réglage par
-  fichier, retour au défaut, sans re-rendu SVG).
+  fichier, retour au défaut, sans re-rendu SVG), et langue (anglais par
+  défaut, bascule au français, préférence conservée).
 - `s4-offline.js` — installation du service worker, mise en cache des trois
   fichiers mscz2xml, rechargement et import `.mscz` avec `setOffline(true)`,
   puis lecture audio hors ligne (position qui progresse, soundfont précaché ou
