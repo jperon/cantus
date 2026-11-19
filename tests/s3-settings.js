@@ -1,6 +1,9 @@
 // Scénario 3 — réglages : tailles de voix (Telemann, Bach), voix masquées,
 // bouton « Toutes les voix à 100 % », régénération à la fermeture,
 // défilement par page / par système avec recouvrement, zoom, dossier Magnificat.
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 const L = require('./lib');
 
 const PAGES = ['index.html', 'spa.html'];
@@ -263,6 +266,7 @@ async function waitVariantCached(page, variant, timeout = 180000) {
 // (elle se produit sur un appareil lent, pendant qu'on manipule les réglages).
 async function newDelayedWorkerPage(browser, url, pageName) {
   const ctx = await browser.newContext({ viewport: { width: 500, height: 900 } });
+  await L.forceLanguage(ctx);
   await ctx.addInitScript(() => {
     const Native = window.Worker;
     window.__workerDelay = 0;
@@ -451,6 +455,111 @@ async function runTempo(browser, url, pageName, results) {
   await ctx.close();
 }
 
+// Langue : anglais par défaut sans préférence (navigateur anglais), bascule
+// vers le français par le réglage (textes statiques et dynamiques), préférence
+// conservée au rechargement. Le contexte n'est pas forcé en français par le
+// harnais : la détection par navigator.languages doit jouer.
+async function runLanguage(browser, url, pageName, results) {
+  const ctx = await browser.newContext({ viewport: { width: 500, height: 900 }, locale: 'en-US' });
+  const { page, errors } = await L.newPage(browser, url, { pageName, context: ctx, language: null });
+  try {
+    await L.waitReady(page);
+    const en = await page.evaluate(() => ({
+      lang: document.documentElement.lang,
+      title: document.title,
+      heading: document.querySelector('#import-section h1')?.textContent,
+      subtitle: document.querySelector('#import-section p')?.textContent,
+      settingsTitle: document.getElementById('btn-settings')?.title,
+      description: document.querySelector('meta[name="description"]')?.content || '',
+      navigatorLanguage: navigator.language,
+      stored: localStorage.getItem('musica-language'),
+    }));
+    L.record(results, '3. Langue : anglais par défaut sans préférence (navigateur anglais)', pageName,
+      en.lang === 'en' && en.title === 'MusicXML Reader' && en.heading === 'MusicXML Reader' &&
+        en.subtitle === 'Open a MusicXML file to get started' && en.settingsTitle === 'Settings' &&
+        en.stored === null && /offline MusicXML reader/.test(en.description) ? 'OK' : 'ÉCHEC',
+      `navigator ${en.navigatorLanguage}, <html lang> « ${en.lang} », titre « ${en.title} », ` +
+      `sous-titre « ${en.subtitle} », réglages « ${en.settingsTitle} », préférence ${en.stored}`);
+
+    // Un fichier est nécessaire pour que le bouton Réglages soit visible.
+    await L.importFile(page, L.FILES.telemannXml);
+    await L.waitFirstSvg(page, 120000);
+    await L.openSettings(page);
+    const enSettings = await page.evaluate(() => ({
+      title: document.querySelector('#settings-header h2')?.textContent,
+      language: document.getElementById('language-select')?.value,
+      options: Array.from(document.querySelectorAll('#language-select option')).map((o) => o.value),
+      buildDate: document.getElementById('build-date')?.textContent || '',
+      playAria: document.getElementById('transport-play')?.getAttribute('aria-label'),
+    }));
+    L.record(results, '3. Langue : réglages et textes dynamiques en anglais', pageName,
+      enSettings.title === 'Settings' && enSettings.language === 'en' &&
+        enSettings.options.includes('fr') && /^Version of /.test(enSettings.buildDate) &&
+        enSettings.playAria === 'Play' ? 'OK' : 'ÉCHEC',
+      `titre « ${enSettings.title} », langue « ${enSettings.language} » (${enSettings.options.join('/')}), ` +
+      `date « ${enSettings.buildDate} », lecture « ${enSettings.playAria} »`);
+
+    await page.selectOption('#language-select', 'fr');
+    await page.waitForTimeout(200);
+    const fr = await page.evaluate(() => ({
+      lang: document.documentElement.lang,
+      title: document.title,
+      heading: document.querySelector('#import-section h1')?.textContent,
+      subtitle: document.querySelector('#import-section p')?.textContent,
+      settingsTitle: document.querySelector('#settings-header h2')?.textContent,
+      buildDate: document.getElementById('build-date')?.textContent || '',
+      playAria: document.getElementById('transport-play')?.getAttribute('aria-label'),
+      language: document.getElementById('language-select')?.value,
+      stored: localStorage.getItem('musica-language'),
+    }));
+    L.record(results, '3. Langue : passage au français à chaud (statique, dynamique, <html lang>)', pageName,
+      fr.lang === 'fr' && fr.title === 'Liseuse MusicXML' &&
+        fr.heading === 'Liseuse MusicXML' && fr.subtitle === 'Ouvrir un fichier MusicXML pour commencer' &&
+        fr.settingsTitle === 'Réglages' && /^Version du /.test(fr.buildDate) &&
+        fr.playAria === 'Lecture' && fr.language === 'fr' && fr.stored === 'fr' ? 'OK' : 'ÉCHEC',
+      `<html lang> « ${fr.lang} », titre « ${fr.title} », réglages « ${fr.settingsTitle} », ` +
+      `date « ${fr.buildDate} », lecture « ${fr.playAria} », préférence « ${fr.stored} »`);
+
+    await L.closeSettings(page);
+    const tmp = path.join(os.tmpdir(), 'cantus-langue-invalide.txt');
+    fs.writeFileSync(tmp, 'pas une partition');
+    await page.setInputFiles('#file-input', tmp);
+    fs.rmSync(tmp, { force: true });
+    await page.waitForFunction(() => {
+      const el = document.getElementById('protocol-error');
+      return el && el.style.display === 'block' && el.textContent.includes('Aucun fichier compatible');
+    }, null, { timeout: 10000, polling: 200 });
+    const frError = await page.evaluate(() => ({
+      message: document.getElementById('protocol-error')?.textContent,
+      importTitle: document.querySelector('#import-section h1')?.textContent,
+    }));
+    L.record(results, '3. Langue : message d’erreur dynamique en français', pageName,
+      /^Aucun fichier compatible/.test(frError.message) && frError.importTitle === 'Liseuse MusicXML' ? 'OK' : 'ÉCHEC',
+      `message « ${frError.message} », titre d’import « ${frError.importTitle} »`);
+
+    await page.reload({ waitUntil: 'domcontentloaded', timeout: 60000 });
+    await L.waitReady(page, 60000);
+    await page.waitForTimeout(300);
+    const reloaded = await page.evaluate(() => ({
+      lang: document.documentElement.lang,
+      heading: document.querySelector('#import-section h1')?.textContent,
+      stored: localStorage.getItem('musica-language'),
+      language: document.getElementById('language-select')?.value,
+    }));
+    L.record(results, '3. Langue : préférence française conservée au rechargement', pageName,
+      reloaded.lang === 'fr' && reloaded.heading === 'Liseuse MusicXML' &&
+        reloaded.stored === 'fr' && reloaded.language === 'fr' ? 'OK' : 'ÉCHEC',
+      `<html lang> « ${reloaded.lang} », titre « ${reloaded.heading} », ` +
+      `préférence « ${reloaded.stored} », sélecteur « ${reloaded.language} »`);
+
+    const relevant = L.summarize(errors);
+    L.record(results, '6. Erreurs JS (langue)', pageName, relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
+  } catch (e) {
+    L.record(results, '3. Langue', pageName, 'ÉCHEC', 'exception du test : ' + e.message);
+  }
+  await ctx.close();
+}
+
 async function runFolderVoices(browser, url, pageName, results) {
   const { page, ctx, errors } = await L.newPage(browser, url, { pageName });
   try {
@@ -503,6 +612,7 @@ async function runFolderVoices(browser, url, pageName, results) {
       await runBach(browser, url, pageName, results);
       await runPartSizeCacheRace(browser, url, pageName, results);
       await runTempo(browser, url, pageName, results);
+      await runLanguage(browser, url, pageName, results);
       await runFolderVoices(browser, url, pageName, results);
     }
   } catch (e) {

@@ -70,10 +70,34 @@ async function launch() {
   return chromium.launch({ executablePath: process.env.CHROMIUM });
 }
 
+// Langue des scénarios : leurs assertions portent sur les textes français.
+// Elle est forcée par la préférence de l'application (localStorage), dans
+// chaque contexte, pour ne dépendre ni de navigator.languages ni d'un
+// rechargement. Un test qui vérifie la détection par le navigateur passe
+// `language: null` à newPage et fournit un contexte à la locale voulue.
+const TEST_LANGUAGE = 'fr';
+
+async function forceLanguage(ctx, language = TEST_LANGUAGE) {
+  await ctx.addInitScript((code) => {
+    try {
+      localStorage.setItem('musica-language', code);
+    } catch (e) {
+      // page sans localStorage (about:blank) : sans effet
+    }
+  }, language);
+  return ctx;
+}
+
 // Ouvre une page et collecte les erreurs JS (pageerror + console.error)
-async function newPage(browser, url, { pageName = 'index.html', viewport = { width: 500, height: 900 }, context } = {}) {
+async function newPage(browser, url, {
+  pageName = 'index.html',
+  viewport = { width: 500, height: 900 },
+  context,
+  language = TEST_LANGUAGE,
+} = {}) {
   const ctx = context || await browser.newContext({ viewport });
-  if (context) await context.setDefaultTimeout?.(0).catch?.(() => {});
+  if (language) await forceLanguage(ctx, language);
+  if (context) context.setDefaultTimeout?.(0);
   const page = await ctx.newPage();
   await page.setViewportSize(viewport);
   const errors = [];
@@ -341,7 +365,7 @@ process.on('exit', (code) => {
 });
 
 module.exports = {
-  ROOT, DIST, DATA, FILES, startServer, launch, newPage,
+  ROOT, DIST, DATA, FILES, TEST_LANGUAGE, startServer, launch, newPage, forceLanguage,
   waitReady, waitFirstSvg, pageInfo, waitPage, waitTotalAtLeast,
   waitBackgroundLoaded, importFile, importFiles, importFolder,
   openLibrary, libraryEntries, openLibraryEntry, deleteLibraryEntry,
