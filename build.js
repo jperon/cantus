@@ -133,6 +133,7 @@ const I18N_SOURCES = [
   path.join('i18n', 'fr.coffee'),
   path.join('i18n', 'es.coffee'),
   path.join('i18n', 'it.coffee'),
+  path.join('i18n', 'de.coffee'),
 ];
 
 function readI18nSource() {
