@@ -122,6 +122,24 @@ function compileApp() {
   return CoffeeScript.compile(readAppSource(), { bare: true });
 }
 
+// Internationalisation : le module puis un dictionnaire par langue. Les
+// dictionnaires s'enregistrent au chargement dans l'api du module, dans cet
+// ordre (anglais d'abord, langue de référence). Pour ajouter une langue, créer
+// src/i18n/<code>.coffee et l'ajouter ici.
+const I18N_SOURCES = [
+  'i18n.coffee',
+  path.join('i18n', 'en.coffee'),
+  path.join('i18n', 'fr.coffee'),
+];
+
+function readI18nSource() {
+  return I18N_SOURCES.map(readSrc).join('');
+}
+
+function compileI18n() {
+  return CoffeeScript.compile(readI18nSource(), { bare: true });
+}
+
 function prepareDist() {
   ensureDir(DIST);
   ensureDir(path.join(DIST, 'icons'));
@@ -241,6 +259,7 @@ function compileScripts() {
     midiJs: minify(compileCoffee('midi.coffee')),
     formatsJs: minify(compileCoffee('formats.coffee')),
     timelineJs: minify(compileCoffee('timeline.coffee')),
+    i18nJs: minify(compileI18n()),
     audioJs: minify(compileCoffee('audio.coffee')),
     playbackJs: minify(compileCoffee('playback.coffee')),
     workerJs: minify(compileCoffee('worker.coffee')),
@@ -347,7 +366,7 @@ async function build() {
   const fflateSetup = readFflate();
   const soundfontPlayerJs = readSoundfontPlayer();
   const formats = loadFormats();
-  const { mxlJs, storageJs, svgCacheJs, playbackCacheJs, midiJs, formatsJs, timelineJs, audioJs, playbackJs, workerJs, appJs } = compileScripts();
+  const { mxlJs, storageJs, svgCacheJs, playbackCacheJs, midiJs, formatsJs, timelineJs, i18nJs, audioJs, playbackJs, workerJs, appJs } = compileScripts();
 
   // 10. Read CSS
   const css = readCss();
@@ -385,6 +404,7 @@ async function build() {
     midiJs,
     formatsJs,
     timelineJs,
+    i18nJs,
     audioJs,
     playbackJs,
     appJs,
@@ -428,7 +448,7 @@ async function buildSpa() {
   const soundfontPlayerJs = readSoundfontPlayer();
   const soundfontSamples = readSoundfontSamples();
   const formats = loadFormats();
-  const { mxlJs, storageJs, svgCacheJs, playbackCacheJs, midiJs, formatsJs, timelineJs, audioJs, playbackJs, workerJs, appJs } = compileScripts();
+  const { mxlJs, storageJs, svgCacheJs, playbackCacheJs, midiJs, formatsJs, timelineJs, i18nJs, audioJs, playbackJs, workerJs, appJs } = compileScripts();
   const scoretkInline = readScoretk();
   const scoretkAvailable = !!scoretkInline;
 
@@ -491,6 +511,7 @@ ${workerJs}
     midiJs,
     formatsJs,
     timelineJs,
+    i18nJs,
     audioJs,
     playbackJs,
     appJs,
