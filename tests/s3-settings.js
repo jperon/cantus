@@ -33,7 +33,7 @@ async function runTelemann(browser, url, pageName, results) {
     const rows0 = await L.partRows(page);
     const partsHidden = await page.evaluate(() => document.getElementById('parts-group').classList.contains('hidden'));
     await L.markSvg(page);
-    await page.selectOption('#parts-list select >> nth=0', '120');
+    await page.selectOption('#parts-list select.part-size >> nth=0', '120');
     await page.waitForTimeout(2000);
     const marker = await L.markerPresent(page);
     const hDuring = await L.staffHeights(page);
@@ -63,7 +63,7 @@ async function runTelemann(browser, url, pageName, results) {
       `tailles affichées ${rows120.map((r) => r.size).join('/')} → ${rowsReset.map((r) => r.size).join('/')}, hauteur restaurée : ${restored}`);
     // Voix masquée (P1 des deux voix de Telemann)
     await L.openSettings(page);
-    await page.click('#parts-list input >> nth=0');
+    await page.click('#parts-list .part-display >> nth=0');
     await page.waitForTimeout(300);
     const rowsHidden = await L.partRows(page);
     await L.closeSettings(page);
@@ -73,7 +73,8 @@ async function runTelemann(browser, url, pageName, results) {
     const hiddenOk = h3 && h0 && Math.abs(h3[0] - h0[1]) < 1;
     L.record(results, '3. Voix masquée : la première voix disparaît du rendu', pageName,
       hiddenOk ? 'OK' : 'ÉCHEC',
-      `cases ${rowsHidden.map((r) => (r.checked ? 'x' : '-') + (r.disabled ? '(D)' : '')).join(' ')}, ` +
+      `affichage ${rowsHidden.map((r) => (r.displayed ? 'x' : '-') + (r.displayDisabled ? '(D)' : '')).join(' ')}, ` +
+      `lecture ${rowsHidden.map((r) => (r.played ? 'x' : '-')).join(' ')}, ` +
       `1re portée ${h3[0]} (2e portée d'origine ${h0[1]}), staves ${st0} → ${st3}`);
     // persistance de la voix masquée après rechargement
     await page.reload({ waitUntil: 'domcontentloaded', timeout: 60000 });
@@ -89,8 +90,8 @@ async function runTelemann(browser, url, pageName, results) {
     await page.waitForTimeout(500);
     const st4 = await L.staffCount(page);
     L.record(results, '3. Voix masquée conservée après réouverture', pageName,
-      rowsPersist[0] && !rowsPersist[0].checked && st4 === st3 ? 'OK' : 'ÉCHEC',
-      `case 1 ${rowsPersist[0] ? (rowsPersist[0].checked ? 'cochée' : 'décochée') : 'absente'}, staves ${st4} (avant ${st3})`);
+      rowsPersist[0] && !rowsPersist[0].displayed && st4 === st3 ? 'OK' : 'ÉCHEC',
+      `affichage voix 1 ${rowsPersist[0] ? (rowsPersist[0].displayed ? 'actif' : 'masqué') : 'absent'}, staves ${st4} (avant ${st3})`);
     const relevant = L.summarize(errors);
     L.record(results, '6. Erreurs JS (réglages Telemann)', pageName, relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
   } catch (e) {
@@ -302,7 +303,7 @@ async function runBach(browser, url, pageName, results) {
     await L.markSvg(page);
     await L.openSettings(page);
     const rows = await L.partRows(page);
-    await page.selectOption('#parts-list select >> nth=0', '120');
+    await page.selectOption('#parts-list select.part-size >> nth=0', '120');
     await L.closeSettings(page);
     await waitNewSvg(page, 300000);
     await page.waitForTimeout(1500);
@@ -677,7 +678,7 @@ async function runFolderVoices(browser, url, pageName, results) {
     await page.click('.nav-btn[data-action="start"]'); await page.waitForTimeout(1500);
     await L.openSettings(page);
     const rows = await L.partRows(page);
-    await page.click('#parts-list input >> nth=0');
+    await page.click('#parts-list .part-display >> nth=0');
     await page.waitForTimeout(300);
     const rowsAfter = await L.partRows(page);
     await L.closeSettings(page);
@@ -702,6 +703,55 @@ async function runFolderVoices(browser, url, pageName, results) {
   await ctx.close();
 }
 
+// Ergonomie tactile : à 360 px de large, les deux interrupteurs de chaque voix
+// ont une cible d'au moins 44 px et la ligne se replie en deux lignes (nom et
+// interrupteurs, puis taille et volume).
+async function runVoiceTouchTargets(browser, url, pageName, results) {
+  const { page, ctx, errors } = await L.newPage(browser, url, {
+    pageName, viewport: { width: 360, height: 800 },
+  });
+  try {
+    await importLoaded(page, L.FILES.telemannXml);
+    await L.openSettings(page);
+    const metrics = await page.evaluate(() => [...document.querySelectorAll('#parts-list .part-row')].map((row) => {
+      const toggles = [...row.querySelectorAll('.part-toggle')].map((b) => {
+        const r = b.getBoundingClientRect();
+        return { w: Math.round(r.width), h: Math.round(r.height), pressed: b.getAttribute('aria-pressed') };
+      });
+      const main = row.querySelector('.part-main').getBoundingClientRect();
+      const controls = row.querySelector('.part-controls').getBoundingClientRect();
+      return {
+        name: row.querySelector('.part-name')?.textContent?.trim(),
+        toggles,
+        mainBottom: Math.round(main.bottom),
+        controlsTop: Math.round(controls.top),
+      };
+    }));
+    const targetsOk = metrics.length >= 2 && metrics.every((m) => m.toggles.length === 2 &&
+      m.toggles.every((t) => t.w >= 44 && t.h >= 44 && t.pressed !== null));
+    const twoLines = metrics.length >= 2 && metrics.every((m) => m.controlsTop >= m.mainBottom - 1);
+    L.record(results, '3. Interrupteurs de voix : cibles ≥ 44 px et deux lignes à 360 px', pageName,
+      targetsOk && twoLines ? 'OK' : 'ÉCHEC',
+      `${metrics.length} voix : ${metrics.map((m) => m.toggles.map((t) => `${t.w}×${t.h}`).join(' ')).join(' | ')} ; ` +
+      `nom/interrupteurs puis sélecteurs : ${metrics.map((m) => `${m.mainBottom}→${m.controlsTop}`).join(' ')}`);
+    // La ligne n'est plus un <label> : un tap à côté ne bascule rien.
+    const before = await L.partRows(page);
+    await page.click('#parts-list .part-row:nth-child(1) .part-name');
+    await page.waitForTimeout(150);
+    const after = await L.partRows(page);
+    const untouched = JSON.stringify(before) === JSON.stringify(after);
+    L.record(results, '3. Interrupteurs de voix : un tap à côté ne bascule rien', pageName,
+      untouched ? 'OK' : 'ÉCHEC',
+      `avant ${before.map((r) => `${r.displayed ? 'a' : 'm'}/${r.played ? 'j' : 'c'}`).join(' ')} ; ` +
+      `après ${after.map((r) => `${r.displayed ? 'a' : 'm'}/${r.played ? 'j' : 'c'}`).join(' ')}`);
+    const relevant = L.summarize(errors);
+    L.record(results, '6. Erreurs JS (cibles tactiles des voix)', pageName, relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
+  } catch (e) {
+    L.record(results, '3. Cibles tactiles des voix', pageName, 'ÉCHEC', 'exception du test : ' + e.message);
+  }
+  await ctx.close();
+}
+
 (async () => {
   const { server, url } = await L.startServer();
   const browser = await L.launch();
@@ -717,6 +767,7 @@ async function runFolderVoices(browser, url, pageName, results) {
       await runTempo(browser, url, pageName, results);
       await runLanguage(browser, url, pageName, results);
       await runFolderVoices(browser, url, pageName, results);
+      await runVoiceTouchTargets(browser, url, pageName, results);
     }
   } catch (e) {
     console.log('ERREUR GÉNÉRALE', e.stack);

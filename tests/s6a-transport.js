@@ -1,6 +1,7 @@
 // Scénario 6a — transport audio : structure de la barre, lecture/pause/arrêt,
 // raccourcis clavier, suivi vertical (système et page), volume général, volume
-// par voix et voix masquée. index.html et spa.html.
+// par voix, et dissociation affichage / lecture des voix. index.html et
+// spa.html.
 const C = require('./s6-common');
 const L = C.L;
 const {
@@ -9,6 +10,17 @@ const {
   seekFraction, alignedOnSystem, storedParts, partVolumeValues, playbackSample,
   displayedPageNumber, waitLibraryReady,
 } = C;
+
+// Attend que la page marquée par markSvg ait été remplacée par un nouveau
+// rendu (fermeture des réglages après un changement d'affichage).
+async function waitRerender(page, timeout = 120000) {
+  await page.waitForFunction(() => {
+    const slot = document.getElementById('page-current');
+    return !!slot?.querySelector('.scroll-page svg') &&
+      !slot.querySelector('.scroll-page svg[data-test-mark="1"]');
+  }, null, { timeout, polling: 200 });
+  await page.waitForTimeout(500);
+}
 
 async function runPage(browser, url, pageName, results) {
   const { page, ctx, errors } = await L.newPage(browser, url, { pageName });
@@ -336,7 +348,7 @@ async function runPage(browser, url, pageName, results) {
       const rows = await L.partRows(page);
       const label = rows[0]?.name;
       const gainBefore = await page.evaluate((l) => window.__musicaAudio.getVoiceGain(l), label);
-      await page.selectOption('#parts-list label:nth-child(1) select.part-volume', '10');
+      await page.selectOption('#parts-list .part-row:nth-child(1) select.part-volume', '10');
       await page.waitForTimeout(400);
       const after = await page.evaluate((l) => {
         const key = Object.keys(localStorage).find((k) => k.startsWith('musica-hidden-parts-'));
@@ -361,7 +373,7 @@ async function runPage(browser, url, pageName, results) {
         const key = Object.keys(localStorage).find((k) => k.startsWith('musica-hidden-parts-'));
         if (!key) return;
         const data = JSON.parse(localStorage.getItem(key));
-        data.hidden = [...new Set([...(data.hidden || []), 'Voix absente du MIDI'])];
+        data.muted = [...new Set([...(data.muted || []), 'Voix absente du MIDI'])];
         data.volumes = { ...(data.volumes || {}), 'Voix absente du MIDI': 10 };
         localStorage.setItem(key, JSON.stringify(data));
       });
@@ -428,58 +440,157 @@ async function runPage(browser, url, pageName, results) {
     await ctx4.close();
   }
 
-  // Voix masquée : le MIDI scoretk est global au fichier, donc sa piste
-  // existe encore ; elle doit rester muette (gain 0) et non retomber sur le
-  // master faute de correspondance dans trackMap.
+  // Affichage et lecture d'une voix sont deux états indépendants : masquer ne
+  // coupe plus, couper ne masque plus. Les deux persistent séparément.
   {
-    const { page, ctx: ctxHidden, errors: errorsHidden } = await L.newPage(browser, url, { pageName });
+    const { page, ctx: ctxVoices, errors: errorsVoices } = await L.newPage(browser, url, { pageName });
     try {
       await waitReady(page);
       await L.importFile(page, L.FILES.telemannXml);
       await waitFirstSvg(page);
       await waitBackgroundLoaded(page);
       await page.waitForTimeout(600);
+      const stavesBefore = await L.staffCount(page);
+      const heightsBefore = await L.staffHeights(page);
       await L.openSettings(page);
       const rows = await L.partRows(page);
-      const hiddenLabel = rows[1]?.name;
-      if (!hiddenLabel) throw new Error('moins de deux voix : masquage impossible');
-      await page.$eval('#parts-list label:nth-child(2) input', (el) => {
-        el.checked = false;
-        el.dispatchEvent(new Event('change', { bubbles: true }));
-      });
+      const voiceLabel = rows[0]?.name;
+      if (!voiceLabel || rows.length < 2) throw new Error('moins de deux voix : dissociation impossible');
+
+      // 1) Masquée mais jouée : le rendu la retire, le moteur la garde.
+      await L.markSvg(page);
+      await page.click('#parts-list .part-display >> nth=0');
+      await page.waitForTimeout(200);
+      const rowsHidden = await L.partRows(page);
       await L.closeSettings(page);
+      await waitRerender(page);
+      const stavesHidden = await L.staffCount(page);
+      const heightsHidden = await L.staffHeights(page);
+      await page.click('#transport-play');
+      await waitState(page, 'playing');
+      await page.evaluate(() => window.__musicaAudio.startNoteLog());
+      await page.waitForTimeout(700);
+      const hidden = await page.evaluate(async (label) => {
+        const probe = await window.__musicaPlaybackProbe();
+        const tracks = probe.trackMap?.[label] || [];
+        const wanted = new Set(tracks.map(String));
+        const log = window.__musicaAudio.getScheduledNotes();
+        const notes = window.__musicaAudio.getNotes();
+        return {
+          gain: window.__musicaAudio.getVoiceGain(label),
+          tracks,
+          staffLabels: probe.staffLabels || [],
+          midiBytes: probe.midiBytes,
+          preparedVoice: notes.filter((n) => wanted.has(String(n.track))).length,
+          preparedTotal: notes.length,
+          scheduledTotal: log.length,
+          state: window.__musicaPlaybackState().state,
+        };
+      }, voiceLabel);
+      const renderedGone = heightsHidden && heightsBefore &&
+        Math.abs(heightsHidden[0] - heightsBefore[1]) < 1;
+      const hiddenUi = rowsHidden[0] && !rowsHidden[0].displayed && rowsHidden[0].played;
+      const trackExists = Array.isArray(hidden.tracks) && hidden.tracks.length > 0;
+      const audible = hidden.gain != null && hidden.gain > 0;
+      L.record(results, '6. Voix masquée mais jouée : rendu sans la voix, audio avec', pageName,
+        renderedGone && hiddenUi && trackExists && audible && hidden.preparedVoice > 0 &&
+          hidden.scheduledTotal > 0 && hidden.state === 'playing' ? 'OK' : 'ÉCHEC',
+        `${voiceLabel} : staves ${stavesBefore} → ${stavesHidden}, 1re portée ${heightsHidden?.[0]} ` +
+        `(2e portée d'origine ${heightsBefore?.[1]}), affichage ${rowsHidden[0]?.displayed ? 'actif' : 'masqué'}, ` +
+        `lecture ${rowsHidden[0]?.played ? 'active' : 'coupée'}, gain ${hidden.gain}, ` +
+        `pistes [${hidden.tracks.join(',')}], notes préparées ${hidden.preparedVoice}/${hidden.preparedTotal}, ` +
+        `notes ordonnancées ${hidden.scheduledTotal}, MIDI ${hidden.midiBytes} o, état ${hidden.state}`);
+      await page.click('#transport-stop');
+      await waitState(page, 'stopped');
+
+      // 2) Affichée mais coupée : le rendu la garde, le moteur la tait.
+      await L.openSettings(page);
+      await L.markSvg(page);
+      await page.click('#parts-list .part-display >> nth=0');
+      await L.closeSettings(page);
+      await waitRerender(page);
+      const stavesRestored = await L.staffCount(page);
+      await L.openSettings(page);
+      await L.markSvg(page);
+      await page.click('#parts-list .part-sound >> nth=0');
+      await page.waitForTimeout(200);
+      const rowsMuted = await L.partRows(page);
+      await L.closeSettings(page);
+      await page.waitForTimeout(500);
+      const markerKept = await L.markerPresent(page);
+      await page.click('#transport-play');
+      await waitState(page, 'playing');
+      await page.evaluate(() => window.__musicaAudio.startNoteLog());
+      await page.waitForTimeout(700);
+      const muted = await page.evaluate(async (label) => {
+        const probe = await window.__musicaPlaybackProbe();
+        const tracks = probe.trackMap?.[label] || [];
+        const wanted = new Set(tracks.map(String));
+        const log = window.__musicaAudio.getScheduledNotes();
+        const notes = window.__musicaAudio.getNotes();
+        return {
+          gain: window.__musicaAudio.getVoiceGain(label),
+          tracks,
+          preparedVoice: notes.filter((n) => wanted.has(String(n.track))).length,
+          preparedTotal: notes.length,
+          scheduledTotal: log.length,
+          state: window.__musicaPlaybackState().state,
+        };
+      }, voiceLabel);
+      const mutedUi = rowsMuted[0] && rowsMuted[0].displayed && !rowsMuted[0].played &&
+        !rowsMuted[0].sizeDisabled && rowsMuted[0].volumeDisabled;
+      L.record(results, '6. Voix affichée mais coupée : rendu intact, audio muet', pageName,
+        stavesRestored === stavesBefore && mutedUi && markerKept &&
+          muted.gain === 0 && muted.tracks.length > 0 && muted.preparedVoice > 0 &&
+          muted.scheduledTotal > 0 && muted.state === 'playing' ? 'OK' : 'ÉCHEC',
+        `${voiceLabel} : staves ${stavesBefore} → ${stavesRestored}, affichage ${rowsMuted[0]?.displayed ? 'actif' : 'masqué'}, ` +
+        `lecture ${rowsMuted[0]?.played ? 'active' : 'coupée'}, gain ${muted.gain}, ` +
+        `notes préparées ${muted.preparedVoice}/${muted.preparedTotal}, ordonnancées ${muted.scheduledTotal}, ` +
+        `SVG marqué conservé ${markerKept}, état ${muted.state}`);
+      await page.click('#transport-stop');
+      await waitState(page, 'stopped');
+
+      // 3) Persistance : la voix reste affichée et coupée après rechargement.
+      await reloadPage(page);
+      await waitReady(page);
+      await waitLibraryReady(page);
+      await L.openLibraryEntry(page, 0);
       await waitFirstSvg(page);
       await waitBackgroundLoaded(page);
       await page.waitForTimeout(800);
-      await page.click('#transport-play');
-      await waitState(page, 'playing');
-      await page.waitForTimeout(500);
-      const hidden = await page.evaluate(async (label) => {
-        const probe = await window.__musicaPlaybackProbe();
-        return {
-          gain: window.__musicaAudio.getVoiceGain(label),
-          tracks: probe.trackMap?.[label] || [],
-          staffLabels: probe.staffLabels || [],
-          midiBytes: probe.midiBytes,
-          state: window.__musicaPlaybackState().state,
-        };
-      }, hiddenLabel);
-      const trackExists = Array.isArray(hidden.tracks) && hidden.tracks.length > 0;
-      const listed = hidden.staffLabels.includes(hiddenLabel);
-      const silent = hidden.gain === 0;
-      L.record(results, '6. Voix masquée : piste présente dans le MIDI global, gain 0', pageName,
-        trackExists && listed && silent && hidden.state === 'playing' ? 'OK' : 'ÉCHEC',
-        `${hiddenLabel} : pistes [${hidden.tracks.join(',')}], libellé listé ${listed}, ` +
-        `gain ${hidden.gain}, MIDI ${hidden.midiBytes} o, état ${hidden.state}`);
-      await page.click('#transport-stop');
-      await waitState(page, 'stopped');
+      await L.openSettings(page);
+      const rowsReload = await L.partRows(page);
+      const saved = await storedParts(page);
+      const persisted = rowsReload[0] && rowsReload[0].displayed && !rowsReload[0].played &&
+        saved && Array.isArray(saved.muted) && saved.muted.includes(voiceLabel) &&
+        !(saved.hidden || []).includes(voiceLabel);
+      L.record(results, '6. Voix coupée conservée après rechargement, affichage indépendant', pageName,
+        persisted ? 'OK' : 'ÉCHEC',
+        `affichage ${rowsReload[0]?.displayed ? 'actif' : 'masqué'}, lecture ${rowsReload[0]?.played ? 'active' : 'coupée'}, ` +
+        `masquées ${JSON.stringify(saved?.hidden || [])}, coupées ${JSON.stringify(saved?.muted || [])}`);
+
+      // 4) Au moins une voix affichée : la dernière ne peut plus être masquée.
+      const rowsBefore = await L.partRows(page);
+      await page.click('#parts-list .part-display >> nth=1');
+      await page.waitForTimeout(200);
+      const rowsOne = await L.partRows(page);
+      await page.evaluate(() => document.querySelectorAll('#parts-list .part-display')[0].click());
+      await page.waitForTimeout(100);
+      const rowsAfterClick = await L.partRows(page);
+      const guardOk = rowsOne[0] && rowsOne[0].displayed && rowsOne[1] && !rowsOne[1].displayed &&
+        rowsOne[0].displayDisabled && !rowsOne[1].displayDisabled &&
+        rowsAfterClick[0]?.displayed;
+      L.record(results, '6. Au moins une voix affichée : dernier interrupteur désactivé', pageName,
+        guardOk ? 'OK' : 'ÉCHEC',
+        `avant ${rowsBefore.map((r) => (r.displayed ? 'x' : '-')).join(' ')}, ` +
+        `après masquage ${rowsOne.map((r) => (r.displayed ? 'x' : '-') + (r.displayDisabled ? '(D)' : '')).join(' ')}, ` +
+        `nouveau clic ignoré : ${rowsAfterClick[0]?.displayed}`);
     } catch (e) {
-      L.record(results, '6. Voix masquée', pageName, 'ÉCHEC', 'exception du test : ' + e.message);
+      L.record(results, '6. Dissociation affichage / lecture', pageName, 'ÉCHEC', 'exception du test : ' + e.message);
     }
-    const relevant = L.summarize(errorsHidden);
-    L.record(results, '6. Erreurs JS (voix masquée)', pageName,
-      relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
-    await ctxHidden.close();
+    const relevant = L.summarize(errorsVoices);
+    L.record(results, '6. Erreurs JS (affichage et lecture des voix)', pageName, relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
+    await ctxVoices.close();
   }
 
 }

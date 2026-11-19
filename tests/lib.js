@@ -237,13 +237,23 @@ async function staffHeights(page) {
 }
 
 async function partRows(page) {
-  return page.$$eval('#parts-list label', (labels) => labels.map((l) => ({
-    name: l.querySelector('span')?.textContent?.trim(),
-    checked: l.querySelector('input')?.checked,
-    disabled: l.querySelector('input')?.disabled,
-    size: l.querySelector('select')?.value,
-    sizeDisabled: l.querySelector('select')?.disabled,
-  })));
+  return page.$$eval('#parts-list .part-row', (rows) => rows.map((r) => {
+    const display = r.querySelector('.part-display');
+    const sound = r.querySelector('.part-sound');
+    const size = r.querySelector('select.part-size');
+    const volume = r.querySelector('select.part-volume');
+    return {
+      name: r.querySelector('.part-name')?.textContent?.trim(),
+      displayed: display?.getAttribute('aria-pressed') === 'true',
+      displayDisabled: !!display?.disabled,
+      played: sound?.getAttribute('aria-pressed') === 'true',
+      soundDisabled: !!sound?.disabled,
+      size: size?.value,
+      sizeDisabled: !!size?.disabled,
+      volume: volume?.value,
+      volumeDisabled: !!volume?.disabled,
+    };
+  }));
 }
 
 // Marque le SVG affiché pour prouver qu'il n'est pas re-rendu.
