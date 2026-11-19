@@ -1,7 +1,9 @@
 # Initialisation : câblage des modules au DOMContentLoaded et démarrage.
 # Init
 document.addEventListener "DOMContentLoaded", ->
+  applyLanguagePreference()
   applyAllSettings()
+  setupLanguage()
   setupNavigation()
   setupTransport()
   setupImport()

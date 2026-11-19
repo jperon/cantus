@@ -39,6 +39,10 @@ html(lang="fr")
         .settings-row
           span#zoom-value 40
           input#zoom-range(type="range" min="30" max="80" step="5" value="40")
+      .settings-group
+        label.settings-label(for="language-select" data-i18n="settings.language") Language
+        .settings-row
+          select#language-select
       .settings-pair
         .settings-group
           label.settings-label(for="master-volume-range") Volume général
