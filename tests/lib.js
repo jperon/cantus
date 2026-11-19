@@ -19,6 +19,8 @@ const FILES = {
   byrdMscz: path.join(DATA, 'downloads/Ave_Verum_Corpus_-_William_Byrd.mscz'),
   faureMscz: path.join(DATA, 'downloads/Cantique de Jean Racine - Fauré.mscz'),
   laFouleMxl: path.join(ROOT, 'La_foule.mxl'),
+  // Fixture synthétique : deux parties, chacune dans un part-group.
+  suiviGroupesXml: path.join(__dirname, 'fixtures', 'suivi-groupes.xml'),
   magnificatDir: path.join(DATA, 'magnificat'),
   // Fichier réel du 1er mouvement du Magnificat de Bach (bug de boucle de
   // lecture signalé sur la version publiée 821b248).

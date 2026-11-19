@@ -307,6 +307,91 @@ async function runPage(browser, url, pageName, results) {
     await ctxSeek.close();
   }
 
+  // Fixture synthétique : deux parties, chacune dans un <part-group>. Masquer
+  // la seconde vide son groupe ; Verovio rend encore les pages mais n'émet
+  // plus de timemap du tout, donc plus aucun marqueur de suivi alors que la
+  // lecture continue. La correction retire les part-group devenus caducs.
+  {
+    const { page, ctx: ctxGroups, errors: errorsGroups } = await L.newPage(browser, url, { pageName });
+    try {
+      await waitReady(page);
+      await L.importFile(page, L.FILES.suiviGroupesXml);
+      await waitFirstSvg(page);
+      await waitBackgroundLoaded(page);
+      await page.waitForTimeout(600);
+      const before = await playbackSample(page, 1);
+
+      // Masquer la seconde partie (Réduction) : son part-group devient vide.
+      await L.markSvg(page);
+      await L.openSettings(page);
+      await page.waitForFunction(
+        () => document.querySelectorAll('#parts-list input[type=checkbox]').length >= 2,
+        null, { timeout: WAIT.pageChange, polling: 100 });
+      const hidden = await page.$$eval('#parts-list input[type=checkbox]', (boxes) => {
+        if (boxes.length < 2) return false;
+        if (boxes[1].checked) boxes[1].click();
+        return !boxes[1].checked;
+      });
+      await L.closeSettings(page);
+      await bounded('re-rendu après masquage d’une voix groupée', WAIT.backgroundLoaded,
+        page.waitForFunction(
+          () => !document.querySelector('#page-current .scroll-page svg[data-test-mark="1"]'),
+          null, { timeout: WAIT.backgroundLoaded, polling: 100 }));
+      await page.waitForSelector('#page-current .scroll-page svg', { timeout: WAIT.pageRendered });
+      await waitBackgroundLoaded(page);
+      await page.waitForTimeout(800);
+
+      // Le worker fait foi : il reconstruit les marqueurs sur le XML rechargé.
+      const after = await playbackSample(page, 1);
+      L.record(results, '6. Voix groupée masquée : les marqueurs de suivi restent', pageName,
+        hidden && before.syncMarks.length > 0 && after.syncMarks.length === before.syncMarks.length
+          ? 'OK' : 'ÉCHEC',
+        `marqueurs ${before.syncMarks.length} → ${after.syncMarks.length} après masquage ` +
+        `(voix masquée : ${hidden})`);
+
+      // Lecture puis saut : la page doit suivre les marqueurs retrouvés.
+      await page.click('#transport-play');
+      await waitState(page, 'playing');
+      await page.waitForTimeout(500);
+      const appData = await page.evaluate(() => window.__musicaPlaybackProbe());
+      const pages = (await L.pageInfo(page)).total;
+      let followOk = true;
+      let detail = `${appData.syncMarksCount} marqueur(s) dans l’application, ${pages} page(s)`;
+      if (pages > 1) {
+        const from = await displayedPageNumber(page);
+        // Viser le premier marqueur de la page suivante : la fraction est la
+        // même dans le temps source et dans le temps de lecture (mise à
+        // l'échelle du tempo).
+        const next = after.syncMarks.find((mark) => Number(mark.page) > 1);
+        const fraction = next && after.duration > 0
+          ? Math.min(0.99, (Number(next.t) + 500) / after.duration)
+          : 0.9;
+        await seekFraction(page, fraction);
+        followOk = false;
+        try {
+          await bounded('suivi après masquage d’une voix groupée', WAIT.seekToPage,
+            page.waitForFunction((prev) => {
+              const m = (document.getElementById('page-number')?.textContent || '').match(/(\d+)\s*\//);
+              return m && parseInt(m[1], 10) !== prev;
+            }, from, { timeout: WAIT.seekToPage, polling: 100 }));
+          followOk = true;
+        } catch {
+          // laissé à false : la page n'a pas suivi
+        }
+        detail += `, page ${from} → ${await displayedPageNumber(page)}`;
+      }
+      L.record(results, '6. Voix groupée masquée : le défilement suit la lecture', pageName,
+        appData.syncMarksCount === before.syncMarks.length && followOk ? 'OK' : 'ÉCHEC', detail);
+      await page.click('#transport-stop');
+    } catch (e) {
+      L.record(results, '6. Voix groupée masquée', pageName, 'ÉCHEC', 'exception du test : ' + e.message);
+    }
+    const relevant = L.summarize(errorsGroups);
+    L.record(results, '6. Erreurs JS (voix groupée masquée)', pageName,
+      relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
+    await ctxGroups.close();
+  }
+
 }
 
 // Durées observées le 18/11/2026 (index.html + spa.html) : 53 à 71 s selon
