@@ -146,12 +146,41 @@ partLabels = (doc) ->
     labels[id] = label
   labels
 
+# Vrai si un des score-part retirés appartient à un <part-group>. Le groupe
+# perd alors un membre, et s'il les perd tous il ne contient plus aucune
+# partie : Verovio rend les pages mais n'émet plus de timemap du tout
+# (`renderToTimemap` renvoie `{}`), donc plus aucun marqueur de suivi. Les
+# bornes des groupes ne décrivent plus le score réduit : on les retire tous.
+partGroupAffected = (doc, removed) ->
+  list = doc.querySelector "part-list"
+  return false unless list
+  active = []
+  for child in Array.from list.children
+    if child.tagName is "part-group"
+      number = child.getAttribute "number"
+      if child.getAttribute("type") is "start"
+        active.push number
+      else
+        index = active.lastIndexOf number
+        active.splice index, 1 if index >= 0
+    else if child.tagName is "score-part" and active.length > 0 and removed.has child.getAttribute("id")
+      return true
+  false
+
 # Retire d'un document les parties masquées et leur entrée de <part-list>
 removeHiddenParts = (doc, hidden, labels = partLabels doc) ->
   return doc unless hidden.size > 0
-  for el in Array.from doc.querySelectorAll("part, score-part")
+  removed = new Set()
+  for el in Array.from doc.querySelectorAll "score-part"
     id = el.getAttribute "id"
-    el.parentNode.removeChild el if labels[id]? and hidden.has labels[id]
+    removed.add id if labels[id]? and hidden.has labels[id]
+  return doc unless removed.size > 0
+  if partGroupAffected doc, removed
+    for el in Array.from doc.querySelectorAll "part-group"
+      el.parentNode.removeChild el
+  for el in Array.from doc.querySelectorAll "part, score-part"
+    id = el.getAttribute "id"
+    el.parentNode.removeChild el if removed.has id
   doc
 
 # Taille des voix : <staff-details><staff-size>N</staff-size></staff-details>

@@ -5,8 +5,11 @@
 # page rendue avec une autre variante de voix (un SVG en vol au moment d'un
 # changement de tailles). Ces entrées ne sont pas fiables : le cache change de
 # nom et l'ancien est supprimé.
-CACHE_NAME = "musica-svg-cache-v2"
-LEGACY_CACHE_NAMES = ["musica-svg-cache-v1"]
+# v3 : le masquage d'une voix retire désormais les part-group devenus vides,
+# ce qui peut changer la pagination ; une page v2 ne correspondrait plus au
+# pont mesure→page reconstruit (suivi sur la mauvaise page).
+CACHE_NAME = "musica-svg-cache-v3"
+LEGACY_CACHE_NAMES = ["musica-svg-cache-v1", "musica-svg-cache-v2"]
 MAX_STORAGE_BYTES = 100 * 1024 * 1024  # 100 MB limit
 
 # Un put sur ce nombre déclenche la vérification du plafond de stockage :

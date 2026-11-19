@@ -239,14 +239,15 @@ node tools/build-soundfont-subset.js /tmp/piano-mp3.js \
 
 ## Notes
 
-- Le cache persistant `musica-playback-cache-v5` stocke MIDI + `syncMarks` +
+- Le cache persistant `musica-playback-cache-v6` stocke MIDI + `syncMarks` +
   tempo initial du fichier (valeur et unité de battue), compressés, avec une clé
   fichier/mouvement/largeur/hauteur/échelle/variante de voix. Les données sont
   à l'échelle du fichier : le réglage Tempo ne les invalide pas (le facteur est
   appliqué à la lecture). Les v3 et v4 ne sont jamais resservies (la première
-  n'a pas le tempo, la seconde l'exprime en noires/minute). Le cache est
-  préservé par le service worker aux mises à jour et purgé par « Vider le
-  cache ».
+  n'a pas le tempo, la seconde l'exprime en noires/minute) ; les v5 non plus
+  (une variante avec une voix groupée masquée pouvait n'avoir aucun marqueur).
+  Le cache est préservé par le service worker aux mises à jour et purgé par
+  « Vider le cache ».
 - Les voix coupées (`muted`) n'entrent dans aucune clé de cache, ni SVG ni
   lecture : elles ne changent que le gain du moteur. Le masquage (`hidden`)
   reste dans la variante du rendu et, via le XML élagué du worker, dans celle

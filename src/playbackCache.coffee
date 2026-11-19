@@ -19,11 +19,14 @@
 # (fileTempoUnit) et non plus en noires/minute. Une entrée v4 interpréterait
 # l'ancienne valeur dans la mauvaise unité : elle n'est jamais resservie. Le
 # cache SVG n'est pas concerné.
+# v6 : masquer une voix peut laisser un <part-group> vide, que Verovio rend
+# sans timemap ; les marqueurs de cette variante étaient alors vides. Ces
+# entrées v5 ne doivent jamais être resservies après la correction.
 
 # IIFE : les modules inline partagent la portée globale. Sans cela, `cache`,
 # `get`, `set`… écraseraient ceux de svgCache.coffee (même page, scripts inline).
 do ->
-  CACHE_NAME = "musica-playback-cache-v5"
+  CACHE_NAME = "musica-playback-cache-v6"
   MAX_STORAGE_BYTES = 50 * 1024 * 1024  # 50 MB
 
   cache = null

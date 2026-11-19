@@ -265,7 +265,7 @@ remappées. Les changements de tempo internes du morceau sont donc conservés
 proportionnellement.
 
 Les données brutes du worker restent dans `playbackCache` (clé mémoire) et dans
-le cache persistant (`musica-playback-cache-v5`, tempo et unité compris) :
+le cache persistant (`musica-playback-cache-v6`, tempo et unité compris) :
 changer le tempo ne les invalide pas et ne touche jamais le cache SVG. Pendant
 la lecture,
 un changement relance le moteur à la même position musicale
