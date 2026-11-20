@@ -135,18 +135,35 @@ async function runPage(browser, url, pageName, results) {
         `${probeLinear.syncMarksCount} marqueurs, ${probeLinear.segmentsCount} segments, ` +
         `linéaire ${probeLinear.linearRepeats}`);
 
-      // Lecture complète du mouvement dans le mode écrit, fin propre.
+      // Lecture complète de la partition dans le mode écrit, fin propre. La fin
+      // d'un mouvement enchaîne désormais sur le suivant (lecture continue,
+      // cf. s6a) : le saut près de la fin du mouvement 1 poursuit sur le
+      // mouvement 2. La fin propre s'observe donc à la fin du dernier
+      // mouvement, où la lecture s'arrête au lieu d'enchaîner.
       await page.click('#transport-play');
       await waitState(page, 'playing');
       const running = await state(page);
       const durationOk = Math.abs(running.duration - probeLinear.duration) <= 1000;
       await seekFraction(page, 0.995);
+      await bounded('enchaînement vers le mouvement suivant', WAIT.transportState,
+        page.waitForFunction((previous) => {
+          const s = window.__musicaPlaybackState ? window.__musicaPlaybackState() : null;
+          return s && s.state === 'playing' && s.movementId !== previous;
+        }, running.movementId, { timeout: WAIT.transportState, polling: 50 }));
+      await seekFraction(page, 0.995);
       await waitState(page, 'stopped');
       const finished = await state(page);
+      const chained = finished.movementId !== running.movementId;
       L.record(results, '6. Reprises décochées : lecture jusqu’au bout sans erreur', pageName,
-        durationOk && finished.state === 'stopped' ? 'OK' : 'ÉCHEC',
+        durationOk && chained && finished.state === 'stopped' ? 'OK' : 'ÉCHEC',
         `durée transport ${running.duration} ms (données ${probeLinear.duration} ms), ` +
+        `enchaînement ${running.movementId} → ${finished.movementId}, ` +
         `état final ${finished.state}, position ${finished.position} ms`);
+
+      // La vérification suivante porte sur le mouvement affiché et sur les
+      // données du mouvement 1 : revenir à sa première page.
+      await page.evaluate(() => window.goToPage(1));
+      await page.waitForTimeout(400);
 
       // Changer le réglage en pleine lecture arrête la lecture.
       await page.click('#transport-play');
