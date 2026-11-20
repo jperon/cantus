@@ -42,8 +42,8 @@ setupResize = ->
 #
 # Deux interrupteurs indépendants par voix : « affichage » (👁, rendu) et
 # « lecture » (🔊, audio). Aucun <label> englobant : taper à côté ne bascule
-# rien. Les sélecteurs de taille et de volume sont séparés des interrupteurs ;
-# la ligne se replie sur deux lignes quand la place manque.
+# rien. Chaque interrupteur et son sélecteur (taille, volume) forment un groupe
+# insécable placé juste après le nom ; la ligne se replie quand la place manque.
 renderPartsList = ->
   group = $("parts-group")
   list = $("parts-list")
@@ -67,13 +67,13 @@ renderPartsList = ->
       played = not mutedParts.has partLabel
       row = document.createElement "div"
       row.className = "part-row"
-      main = document.createElement "div"
-      main.className = "part-main"
       nameEl = document.createElement "span"
       nameEl.className = "part-name"
       nameEl.textContent = partLabel
-      toggles = document.createElement "div"
-      toggles.className = "part-toggles"
+      displayGroup = document.createElement "div"
+      displayGroup.className = "part-group part-display-group"
+      soundGroup = document.createElement "div"
+      soundGroup.className = "part-group part-sound-group"
       displayBtn = document.createElement "button"
       displayBtn.type = "button"
       displayBtn.className = "part-toggle part-display"
@@ -88,12 +88,6 @@ renderPartsList = ->
       soundBtn.title = t "parts.soundTitle"
       soundBtn.setAttribute "aria-label", t("parts.soundAria", {part: partLabel})
       soundBtn.setAttribute "aria-pressed", String played
-      toggles.appendChild displayBtn
-      toggles.appendChild soundBtn
-      main.appendChild nameEl
-      main.appendChild toggles
-      controls = document.createElement "div"
-      controls.className = "part-controls"
       sizeSel = document.createElement "select"
       sizeSel.className = "part-size"
       for pct in [50..150] by 10
@@ -114,10 +108,13 @@ renderPartsList = ->
         volumeSel.appendChild opt
       volumeSel.value = partVolumes[partLabel] or 100
       volumeSel.disabled = not played
-      controls.appendChild sizeSel
-      controls.appendChild volumeSel
-      row.appendChild main
-      row.appendChild controls
+      displayGroup.appendChild displayBtn
+      displayGroup.appendChild sizeSel
+      soundGroup.appendChild soundBtn
+      soundGroup.appendChild volumeSel
+      row.appendChild nameEl
+      row.appendChild displayGroup
+      row.appendChild soundGroup
       # Affichage : rendu seul, appliqué à la fermeture. La voix reste jouée.
       displayBtn.addEventListener "click", ->
         now = displayBtn.getAttribute("aria-pressed") isnt "true"

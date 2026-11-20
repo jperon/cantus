@@ -585,6 +585,15 @@ async function runTransposition(browser, url, pageName, results) {
       const vr = visual?.getBoundingClientRect();
       const ar = audio?.getBoundingClientRect();
       const label = (value) => [...(visual?.options || [])].find((o) => o.value === value)?.textContent;
+      const rowRect = document.querySelector('.settings-transpose')?.getBoundingClientRect();
+      const fields = [...document.querySelectorAll('.settings-transpose .transpose-field')].map((f) => {
+        const r = f.getBoundingClientRect();
+        return {
+          text: f.querySelector('.transpose-label')?.textContent,
+          left: Math.round(r.left),
+          right: Math.round(r.right),
+        };
+      });
       return {
         exists: !!visual && !!audio,
         values: [visual?.value, audio?.value],
@@ -593,17 +602,28 @@ async function runTransposition(browser, url, pageName, results) {
         sameRow: !!vr && !!ar && Math.abs(vr.top - ar.top) <= 2,
         heights: [Math.round(vr?.height || 0), Math.round(ar?.height || 0)],
         aria: [visual?.getAttribute('aria-label'), audio?.getAttribute('aria-label')],
+        fields,
+        rowLeft: Math.round(rowRect?.left || 0),
+        rowWidth: Math.round(rowRect?.width || 0),
         marker: !!document.querySelector('#page-current .scroll-page svg[data-test-mark="1"]'),
       };
     });
+    // Les deux champs se suivent à gauche, au lieu d'être répartis sur la
+    // largeur (le second rejeté au milieu de l'écran).
+    const fieldsLeft = initial.fields.length === 2 &&
+      initial.fields[0].left - initial.rowLeft < 2 &&
+      initial.fields[1].left - initial.fields[0].right < 40 &&
+      initial.fields[1].right - initial.fields[0].left < initial.rowWidth * 0.85;
     L.record(results, '3. Transposition : deux sélecteurs sur une ligne, à 0 par défaut, cibles ≥ 44 px', pageName,
       initial.exists && initial.values.join('/') === '0/0' && initial.optionCount === 25 &&
         initial.labels.join(' ') === '−3 0 +2' && initial.sameRow &&
-        initial.heights.every((h) => h >= 44) &&
+        initial.heights.every((h) => h >= 44) && fieldsLeft &&
         initial.aria[0] === 'Transposition de la partition en demi-tons' &&
         initial.aria[1] === 'Transposition du son en demi-tons' && initial.marker ? 'OK' : 'ÉCHEC',
       `valeurs ${initial.values.join('/')}, ${initial.optionCount} options (${initial.labels.join(' ')}), ` +
       `même ligne ${initial.sameRow}, hauteurs ${initial.heights.join('/')} px, ` +
+      `champs à gauche ${fieldsLeft} (${initial.fields.map((f) => `${f.text} ${f.left}–${f.right}`).join(', ')} ` +
+      `dans ${initial.rowLeft}+${initial.rowWidth}), ` +
       `libellés « ${initial.aria.join(' » / « ')} »`);
 
     // Changement sans re-rendu avant la fermeture : la visuelle attend la
@@ -845,8 +865,8 @@ async function runFolderVoices(browser, url, pageName, results) {
 }
 
 // Ergonomie tactile : à 360 px de large, les deux interrupteurs de chaque voix
-// ont une cible d'au moins 44 px et la ligne se replie en deux lignes (nom et
-// interrupteurs, puis taille et volume).
+// ont une cible d'au moins 44 px, le nom occupe sa ligne puis les deux groupes
+// [👁 taille] [🔊 volume] se placent dessous, sans débordement horizontal.
 async function runVoiceTouchTargets(browser, url, pageName, results) {
   const { page, ctx, errors } = await L.newPage(browser, url, {
     pageName, viewport: { width: 360, height: 800 },
@@ -859,22 +879,47 @@ async function runVoiceTouchTargets(browser, url, pageName, results) {
         const r = b.getBoundingClientRect();
         return { w: Math.round(r.width), h: Math.round(r.height), pressed: b.getAttribute('aria-pressed') };
       });
-      const main = row.querySelector('.part-main').getBoundingClientRect();
-      const controls = row.querySelector('.part-controls').getBoundingClientRect();
+      const name = row.querySelector('.part-name').getBoundingClientRect();
+      const groups = [...row.querySelectorAll('.part-group')].map((g) => {
+        const r = g.getBoundingClientRect();
+        return { top: Math.round(r.top), left: Math.round(r.left), right: Math.round(r.right) };
+      });
       return {
         name: row.querySelector('.part-name')?.textContent?.trim(),
         toggles,
-        mainBottom: Math.round(main.bottom),
-        controlsTop: Math.round(controls.top),
+        nameBottom: Math.round(name.bottom),
+        groups,
       };
     }));
     const targetsOk = metrics.length >= 2 && metrics.every((m) => m.toggles.length === 2 &&
       m.toggles.every((t) => t.w >= 44 && t.h >= 44 && t.pressed !== null));
-    const twoLines = metrics.length >= 2 && metrics.every((m) => m.controlsTop >= m.mainBottom - 1);
-    L.record(results, '3. Interrupteurs de voix : cibles ≥ 44 px et deux lignes à 360 px', pageName,
+    const twoLines = metrics.length >= 2 && metrics.every((m) => m.groups.length === 2 &&
+      m.groups.every((g) => g.top >= m.nameBottom - 1));
+    L.record(results, '3. Interrupteurs de voix : cibles ≥ 44 px et nom sur sa ligne à 360 px', pageName,
       targetsOk && twoLines ? 'OK' : 'ÉCHEC',
       `${metrics.length} voix : ${metrics.map((m) => m.toggles.map((t) => `${t.w}×${t.h}`).join(' ')).join(' | ')} ; ` +
-      `nom/interrupteurs puis sélecteurs : ${metrics.map((m) => `${m.mainBottom}→${m.controlsTop}`).join(' ')}`);
+      `nom puis groupes : ${metrics.map((m) => `${m.nameBottom}→${m.groups.map((g) => g.top).join('/')}`).join(' ')}`);
+    // Aucun débordement horizontal à 360 px, y compris dans le panneau.
+    const overflow = await page.evaluate(() => ({
+      scrollWidth: document.documentElement.scrollWidth,
+      innerWidth: window.innerWidth,
+      listOverflow: (() => {
+        const list = document.getElementById('parts-list');
+        return list.scrollWidth > list.clientWidth;
+      })(),
+    }));
+    L.record(results, '3. Voix : aucun débordement horizontal à 360 px', pageName,
+      overflow.scrollWidth <= overflow.innerWidth && !overflow.listOverflow ? 'OK' : 'ÉCHEC',
+      `document ${overflow.scrollWidth}/${overflow.innerWidth} px, liste débordante : ${overflow.listOverflow}`);
+    // Chaque groupe reste insécable : le sélecteur et son bouton sont sur la
+    // même ligne à l'intérieur du groupe.
+    const grouped = await page.evaluate(() => [...document.querySelectorAll('#parts-list .part-group')].every((g) => {
+      const btn = g.querySelector('.part-toggle').getBoundingClientRect();
+      const sel = g.querySelector('select').getBoundingClientRect();
+      return Math.abs((btn.top + btn.height / 2) - (sel.top + sel.height / 2)) < 4;
+    }));
+    L.record(results, '3. Voix : chaque bouton et son sélecteur forment un groupe insécable', pageName,
+      grouped ? 'OK' : 'ÉCHEC', `groupes alignés : ${grouped}`);
     // La ligne n'est plus un <label> : un tap à côté ne bascule rien.
     const before = await L.partRows(page);
     await page.click('#parts-list .part-row:nth-child(1) .part-name');
@@ -889,6 +934,60 @@ async function runVoiceTouchTargets(browser, url, pageName, results) {
     L.record(results, '6. Erreurs JS (cibles tactiles des voix)', pageName, relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
   } catch (e) {
     L.record(results, '3. Cibles tactiles des voix', pageName, 'ÉCHEC', 'exception du test : ' + e.message);
+  }
+  await ctx.close();
+}
+
+// Disposition en grand écran : les contrôles suivent le nom au lieu d'être
+// repoussés au bord, dans l'ordre 👁, taille, 🔊, volume, avec des colonnes
+// alignées d'une voix à l'autre.
+async function runVoiceLayout(browser, url, pageName, results) {
+  const { page, ctx, errors } = await L.newPage(browser, url, {
+    pageName, viewport: { width: 1280, height: 900 },
+  });
+  try {
+    await importLoaded(page, L.FILES.telemannXml);
+    await L.openSettings(page);
+    const layout = await page.evaluate(() => {
+      const list = document.getElementById('parts-list');
+      const rows = [...list.querySelectorAll('.part-row')].map((row) => {
+        const nameRect = row.querySelector('.part-name').getBoundingClientRect();
+        const groups = [...row.querySelectorAll('.part-group')].map((g) => g.getBoundingClientRect());
+        const order = [...row.querySelectorAll('.part-toggle, select.part-size, select.part-volume')].map((el) => (
+          el.classList.contains('part-display') ? 'display'
+            : el.classList.contains('part-size') ? 'size'
+              : el.classList.contains('part-sound') ? 'sound' : 'volume'));
+        return {
+          name: row.querySelector('.part-name')?.textContent?.trim(),
+          nameRight: Math.round(nameRect.right),
+          groupLefts: groups.map((g) => Math.round(g.left)),
+          lastRight: Math.round(groups[groups.length - 1].right),
+          order,
+        };
+      });
+      return {
+        listWidth: Math.round(list.getBoundingClientRect().width),
+        rows,
+      };
+    });
+    const expected = 'display,size,sound,volume';
+    const orderOk = layout.rows.length >= 2 && layout.rows.every((r) => r.order.join(',') === expected);
+    const longestNameRight = Math.max(...layout.rows.map((r) => r.nameRight));
+    const gaps = layout.rows.map((r) => r.groupLefts[0] - longestNameRight);
+    const closeOk = gaps.every((g) => g >= 0 && g < 200);
+    const sameLeft = (i) => new Set(layout.rows.map((r) => r.groupLefts[i])).size === 1;
+    const alignedOk = sameLeft(0) && sameLeft(1);
+    const notStretched = layout.rows.every((r) => r.lastRight < layout.listWidth / 2);
+    L.record(results, '3. Voix à 1280 px : réglages juste après le nom, ordre 👁 taille 🔊 volume', pageName,
+      orderOk && closeOk && alignedOk && notStretched ? 'OK' : 'ÉCHEC',
+      `ordre ${layout.rows.map((r) => r.order.join('+')).join(' | ')} ; ` +
+      `nom le plus long finit à ${longestNameRight} px, premier contrôle à ` +
+      `${layout.rows.map((r) => r.groupLefts[0]).join('/')} px (écart ${gaps.join('/')} px) ; ` +
+      `colonnes alignées : ${alignedOk}, dernier contrôle < moitié de ${layout.listWidth} px : ${notStretched}`);
+    const relevant = L.summarize(errors);
+    L.record(results, '6. Erreurs JS (disposition des voix)', pageName, relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
+  } catch (e) {
+    L.record(results, '3. Disposition des voix à 1280 px', pageName, 'ÉCHEC', 'exception du test : ' + e.message);
   }
   await ctx.close();
 }
@@ -910,6 +1009,7 @@ async function runVoiceTouchTargets(browser, url, pageName, results) {
       await runLanguage(browser, url, pageName, results);
       await runFolderVoices(browser, url, pageName, results);
       await runVoiceTouchTargets(browser, url, pageName, results);
+      await runVoiceLayout(browser, url, pageName, results);
     }
   } catch (e) {
     console.log('ERREUR GÉNÉRALE', e.stack);

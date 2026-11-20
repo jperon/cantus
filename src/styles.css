@@ -388,24 +388,25 @@ html, body {
   gap: 10px;
 }
 
-/* Transpositions visuelle et auditive : deux sélecteurs compacts sur une même
-   ligne, cible tactile de 44 px, libellé tronqué plutôt que ligne repliée. */
+/* Transpositions visuelle et auditive : deux champs compacts à la suite, à
+   gauche, cible tactile de 44 px, libellé tronqué plutôt que ligne repliée. */
 .settings-transpose {
   gap: 12px;
+  flex-wrap: wrap;
+  justify-content: flex-start;
 }
 
 .settings-transpose .transpose-field {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex: 1 1 0;
+  flex: 0 0 auto;
   min-width: 0;
   font-size: 14px;
   color: #333;
 }
 
 .settings-transpose .transpose-label {
-  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -432,29 +433,24 @@ html, body {
   display: none;
 }
 
+/* Liste des voix : grille partagée par toutes les lignes. La première colonne
+   (nom) prend la largeur du nom le plus long — et se tronque si la place
+   manque —, les deux suivantes (👁+taille, 🔊+volume) viennent juste après,
+   sans étirement jusqu'au bord. */
 #parts-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  display: grid;
+  grid-template-columns: minmax(0, max-content) auto auto;
+  justify-content: start;
+  align-items: center;
+  column-gap: 16px;
+  row-gap: 8px;
 }
 
 #parts-list .part-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-}
-
-#parts-list .part-main {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex: 1 1 auto;
-  min-width: 0;
+  display: contents;
 }
 
 #parts-list .part-name {
-  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -463,10 +459,12 @@ html, body {
   color: #333;
 }
 
-#parts-list .part-toggles {
+/* Interrupteur et son sélecteur : un groupe insécable. */
+#parts-list .part-group {
   display: flex;
-  gap: 4px;
-  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
 }
 
 /* Interrupteurs tactiles : cible de 44 px, état actif plein, état éteint
@@ -496,13 +494,6 @@ html, body {
 #parts-list .part-toggle:disabled {
   opacity: 0.25;
   cursor: default;
-}
-
-#parts-list .part-controls {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex: 0 0 auto;
 }
 
 #parts-list select {
@@ -1049,19 +1040,26 @@ body.theme-dark #transport-time {
    les icônes se resserrent, le libellé de temps devient plus petit. Rien ne
    change au-delà. */
 @media (max-width: 419px) {
-  /* Voix : deux lignes explicites — nom et interrupteurs, puis taille et
-     volume. Chaque sélecteur partage la largeur restante. */
-  #parts-list .part-main {
-    flex-basis: 100%;
+  /* Voix : nom sur sa ligne, puis [👁 taille] et [🔊 volume] côte à côte,
+     l'un sous l'autre si la place manque. Les groupes restent insécables. */
+  #parts-list {
+    display: flex;
+    flex-direction: column;
   }
 
-  #parts-list .part-controls {
+  #parts-list .part-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
+
+  #parts-list .part-name {
     flex: 1 1 100%;
   }
 
-  #parts-list .part-controls select {
-    flex: 1 1 0;
-    min-width: 0;
+  #parts-list .part-group {
+    flex: 0 0 auto;
   }
 }
 
