@@ -127,7 +127,6 @@ registerLanguage 'de', 'Deutsch',
   'parts.soundAria': 'Wiedergabe von {part}'
   'parts.volumeTitle': 'Lautstärke der Stimme'
   'parts.volumeAria': 'Lautstärke von {part}'
-  'parts.volumeOption': 'Lautst. {pct} %'
 
   'tempo.unit.whole_one': 'ganze Note'
   'tempo.unit.whole_other': 'ganze Noten'

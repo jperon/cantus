@@ -129,7 +129,6 @@ registerLanguage 'en', 'English',
   'parts.soundAria': 'Playback of {part}'
   'parts.volumeTitle': 'Part volume'
   'parts.volumeAria': 'Volume of {part}'
-  'parts.volumeOption': 'Vol. {pct}%'
 
   'tempo.unit.whole_one': 'whole note'
   'tempo.unit.whole_other': 'whole notes'

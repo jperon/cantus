@@ -127,7 +127,6 @@ registerLanguage 'it', 'Italiano',
   'parts.soundAria': 'Riproduzione di {part}'
   'parts.volumeTitle': 'Volume della parte'
   'parts.volumeAria': 'Volume di {part}'
-  'parts.volumeOption': 'Vol. {pct}%'
 
   'tempo.unit.whole_one': 'semibreve'
   'tempo.unit.whole_other': 'semibrevi'

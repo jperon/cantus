@@ -127,7 +127,6 @@ registerLanguage 'es', 'Español',
   'parts.soundAria': 'Reproducción de {part}'
   'parts.volumeTitle': 'Volumen de la voz'
   'parts.volumeAria': 'Volumen de {part}'
-  'parts.volumeOption': 'Vol. {pct} %'
 
   'tempo.unit.whole_one': 'redonda'
   'tempo.unit.whole_other': 'redondas'

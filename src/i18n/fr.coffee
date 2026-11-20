@@ -127,7 +127,6 @@ registerLanguage 'fr', 'Français',
   'parts.soundAria': 'Lecture de {part}'
   'parts.volumeTitle': 'Volume de la voix'
   'parts.volumeAria': 'Volume de {part}'
-  'parts.volumeOption': 'Vol. {pct} %'
 
   'tempo.unit.whole_one': 'ronde'
   'tempo.unit.whole_other': 'rondes'

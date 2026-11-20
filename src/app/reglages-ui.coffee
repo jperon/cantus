@@ -104,7 +104,7 @@ renderPartsList = ->
       for pct in [10..100] by 10
         opt = document.createElement "option"
         opt.value = pct
-        opt.textContent = t "parts.volumeOption", {pct}
+        opt.textContent = "#{pct} %"
         volumeSel.appendChild opt
       volumeSel.value = partVolumes[partLabel] or 100
       volumeSel.disabled = not played
