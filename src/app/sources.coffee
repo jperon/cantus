@@ -134,10 +134,12 @@ startLoad = (startPage = 1, keepSources = false) ->
   showLoading()
   hideLoadingIndicator()
 
-  # Reset scroll mode for a new file. Un rechargement du même fichier (zoom,
-  # voix, redimensionnement) garde le mode déjà décidé : le worker applique la
-  # même mise en page à tous les mouvements, sans le redécider page par page.
-  scrollMode = null unless keepSources
+  # Le mode de mise en page est redécidé à chaque chargement, y compris un
+  # rechargement (zoom, voix, redimensionnement, transposition) : la première
+  # page du premier mouvement est relue en mise en page naturelle. Le réglage
+  # « Disposition » peut l'imposer d'avance. Il est ensuite transmis aux
+  # mouvements suivants de ce chargement.
+  scrollMode = if layoutPreference is "auto" then null else layoutPreference
   verticalPos = 0
 
   currentPageWidth = Math.round(window.innerWidth * 100 / currentScale)
@@ -271,8 +273,9 @@ tryNavigateTarget = ->
   goToPage page
 
 # Load a movement in worker and return Promise that resolves when loaded.
-# `mode` est le mode de défilement du fichier déjà décidé (null pour le premier
-# chargement : le worker le détecte alors sur la première page).
+# `mode` est le mode de mise en page effectif (null pour le premier mouvement
+# d'un chargement en disposition automatique : le worker le détecte alors sur
+# la première page).
 loadMovementAndWait = (movementId, xmlString, pageWidth, pageHeight, sourceId = null, measureStart = 0, measureEnd = null, mode = null) ->
   new Promise (resolve) ->
     # Store resolver to be called when movementLoaded message arrives

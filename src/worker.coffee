@@ -153,12 +153,13 @@ postPage = (movementId, pageNumber) ->
 systemCount = (svgString) ->
   (String(svgString ? "").match(/<g\b[^>]*class="system"/g) or []).length
 
-# Rend un mouvement. `mode` (« horizontal » ou « vertical ») est connu pour
-# tous les mouvements d'un fichier sauf le premier d'un chargement : il est
-# alors détecté sur la première page de la mise en page naturelle. En mode
-# horizontal, une page ne contient qu'un système (systemMaxPerPage) : sans
-# cela, une page suivante ou un mouvement moins fourni en afficherait deux,
-# superposés dans la vue paginée.
+# Rend un mouvement. `mode` (« horizontal » ou « vertical ») est le mode
+# effectif : imposé par le réglage « Disposition » ou déjà décidé pour ce
+# chargement. Il vaut null pour le premier mouvement d'un chargement en
+# disposition automatique : il est alors détecté sur la première page de la
+# mise en page naturelle. En mode horizontal, une page ne contient qu'un
+# système (systemMaxPerPage) : sans cela, une page suivante ou un mouvement
+# moins fourni en afficherait deux, superposés dans la vue paginée.
 loadMovement = (movementId, xmlString, pageWidth, pageHeight, scale = 40, sourceId = null, measureStart = 0, measureEnd = null, transpose = 0, mode = null) ->
   options = {
     breaks: "auto"

@@ -42,15 +42,19 @@ decompress = (blob) ->
   new Response(blob.stream().pipeThrough(new DecompressionStream("gzip"))).text()
 
 # Generate cache key as full URL (includes dimensions for portrait/landscape
-# and the visible-parts variant)
-makeKey = (fileId, page, width, height, variant) ->
-  "http://cache.local/svg/#{fileId}/#{page}/#{width}x#{height}/#{variant or ''}"
+# and the visible-parts variant). La dernière partie de la géométrie étiquette
+# la mise en page (« h1 » : un système par page en mode horizontal, « v » :
+# mise en page naturelle) : à mêmes dimensions et voix, les deux paginations
+# ne se mélangent pas.
+makeKey = (fileId, page, width, height, layout, variant) ->
+  "http://cache.local/svg/#{fileId}/#{page}/#{width}x#{height}@#{layout}/#{variant or ''}"
 
-# Variante contenue dans une clé (« fichier/page/largeurxhauteur/variante »)
+# Variante contenue dans une clé (« fichier/page/largeurxhauteur@mise en
+# page/variante »)
 variantOf = (url) ->
   parts = url.split "/"
   geometry = parts[parts.length - 2]
-  return "" unless /^\d+x\d+$/.test geometry
+  return "" unless /^\d+x\d+@[a-z0-9]+$/.test geometry
   decodeURIComponent parts[parts.length - 1]
 
 fileOf = (url) ->
@@ -78,24 +82,24 @@ trim = (c) ->
         c.delete entry.request
       return
 
-# Store SVG in cache (includes dimensions and parts variant)
-set = (fileId, page, svg, width, height, variant) ->
+# Store SVG in cache (includes dimensions, layout and parts variant)
+set = (fileId, page, svg, width, height, layout, variant) ->
   return Promise.resolve() unless svg and fileId
   getCache().then (c) ->
     compress(svg).then (blob) ->
       # Cache API requires a Request object as key
-      c.put(new Request(makeKey(fileId, page, width, height, variant), method: "GET"), new Response(blob))
+      c.put(new Request(makeKey(fileId, page, width, height, layout, variant), method: "GET"), new Response(blob))
     .then ->
       putsSinceTrim += 1
       return unless putsSinceTrim >= TRIM_EVERY
       putsSinceTrim = 0
       trim c
 
-# Retrieve SVG from cache (includes dimensions and parts variant)
-get = (fileId, page, width, height, variant) ->
+# Retrieve SVG from cache (includes dimensions, layout and parts variant)
+get = (fileId, page, width, height, layout, variant) ->
   return Promise.resolve(null) unless fileId
   getCache().then (c) ->
-    c.match(new Request(makeKey(fileId, page, width, height, variant))).then (response) ->
+    c.match(new Request(makeKey(fileId, page, width, height, layout, variant))).then (response) ->
       return null unless response
       response.blob().then decompress
 

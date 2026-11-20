@@ -70,10 +70,22 @@ currentScrollUnit = "page"  # Dernier réglage « Défilement » appliqué
 PREFETCH_AHEAD = 6
 PREFETCH_BEHIND = 1
 
-# Scroll mode: "horizontal" (one system per page) or "vertical" (several
-# systems per page). Decided once per file by the worker from the natural
-# layout of the first page, then applied to every movement and every reload.
+# Mode de mise en page effectif : "horizontal" (un système par page) ou
+# "vertical" (mise en page naturelle). Redécidé à chaque chargement sur la
+# première page du premier mouvement, ou imposé par le réglage « Disposition »,
+# puis transmis à tous les mouvements de ce chargement.
 scrollMode = null
+# Réglage « Disposition » : "auto" (décision sur la page naturelle),
+# "horizontal" ou "vertical" (imposé). Réglage global, appliqué au chargement.
+layoutPreference = "auto"
+
+# Étiquette de mise en page des caches (SVG et lecture) : à mêmes dimensions et
+# mêmes voix, la pagination du mode horizontal (un système par page) diffère de
+# la mise en page naturelle. Un même fichier peut passer d'un mode à l'autre
+# d'une session à l'autre (voix masquées) : les entrées ne doivent pas être
+# mélangées. Le mode est connu avant toute lecture ou écriture de cache.
+layoutLabel = ->
+  if scrollMode is "horizontal" then "h1" else "v"
 
 # Movement tracking
 movements = []  # [{id, pageCount, pushed, loaded}]
@@ -145,8 +157,8 @@ worker.onmessage = (e) ->
       return if (movementLoadTokens.get e.data.movementId) isnt loadToken
       awaitingLoad = false
       {movementId, pageCount: mvPages, pushed, scrollMode: detectedMode} = e.data
-      # Le mode est décidé par le worker sur la première page du fichier ; les
-      # mouvements suivants le reçoivent en conséquence. Il n'est jamais
+      # Le mode est décidé par le worker sur la première page de ce chargement ;
+      # les mouvements suivants le reçoivent en conséquence. Il n'est jamais
       # redécidé par une page rendue, qui pourrait en contenir plusieurs
       # systèmes alors que le mode horizontal en impose un seul.
       scrollMode = detectedMode if scrollMode is null and detectedMode?
@@ -197,7 +209,7 @@ worker.onmessage = (e) ->
         memoryCache.set globalPage, svg
         # Store in persistent cache (async, non-blocking)
         if currentFileId and currentPageWidth and currentPageHeight
-          svgStore.set(currentFileId, globalPage, svg, currentPageWidth, currentPageHeight, variant).catch (err) ->
+          svgStore.set(currentFileId, globalPage, svg, currentPageWidth, currentPageHeight, layoutLabel(), variant).catch (err) ->
             console.error "Erreur stockage SVG:", err
       # Resolve pending render if any
       key = "#{movementId}:#{page}"

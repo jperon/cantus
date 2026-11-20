@@ -21,9 +21,11 @@ requestPage = (movementId, localPage) ->
   return pendingRequests.get(pendingKey) if pendingRequests.has(pendingKey)
 
   # La page sera rendue à partir du XML chargé pour ce mouvement : sa clé de
-  # cache est la variante de ce XML, pas les réglages courants.
+  # cache est la variante de ce XML, pas les réglages courants. La mise en page
+  # (un système par page ou naturelle) en fait partie : elle change la
+  # pagination à dimensions et voix égales.
   variant = loadedVariant movementId
-  promise = svgStore.get(currentFileId, globalPage, currentPageWidth, currentPageHeight, variant).then (svg) ->
+  promise = svgStore.get(currentFileId, globalPage, currentPageWidth, currentPageHeight, layoutLabel(), variant).then (svg) ->
     if svg
       memoryCache.set(globalPage, svg)
       return svg
@@ -76,8 +78,10 @@ requestPlaybackData = (movementId, linear = not expandRepeats) ->
   measureStart = movement?.measureStart ? 0
   measureEnd = movement?.measureEnd ? null
   # Le mode de reprise et les bornes font partie de la clé persistante : les
-  # données des deux modes ne se servent jamais l'une pour l'autre.
-  variant = "#{loadedVariant movementId}|#{if linear then 'linear' else 'expanded'}|#{measureStart}:#{measureEnd ? ''}"
+  # données des deux modes ne se servent jamais l'une pour l'autre. La mise en
+  # page aussi : les numéros de page des marqueurs diffèrent entre un système
+  # par page (horizontal) et la mise en page naturelle.
+  variant = "#{loadedVariant movementId}|#{layoutLabel()}|#{if linear then 'linear' else 'expanded'}|#{measureStart}:#{measureEnd ? ''}"
   promise = new Promise (resolve, reject) ->
     pendingPlayback.set key, {resolve, reject}
     cached = if playbackStore?.get? and fileId
