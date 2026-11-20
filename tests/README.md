@@ -156,7 +156,9 @@ Si `pwa/soundfonts/piano-fluidr3-13notes.js` est absent, le build passe
   seul et dossier), ergonomie tactile des interrupteurs de voix à 360 px,
   zoom, défilement par page / système et recouvrement, tempo de lecture
   (défaut du fichier, unité et symbole affichés, réglage par fichier, retour au
-  défaut, sans re-rendu SVG), et langue (anglais par défaut, bascule au
+  défaut, sans re-rendu SVG), transpositions visuelle et auditive (deux
+  sélecteurs tactiles, valeurs de −12 à +12, persistance après rechargement,
+  variante de cache SVG, application du rendu à la fermeture), et langue (anglais par défaut, bascule au
   français, préférence conservée).
 - `s4-offline.js` — installation du service worker, mise en cache des trois
   fichiers mscz2xml, rechargement et import `.mscz` avec `setOffline(true)`,
@@ -172,10 +174,12 @@ Si `pwa/soundfonts/piano-fluidr3-13notes.js` est absent, le build passe
   il sort en code 1 avec une ligne `ERREUR GÉNÉRALE budget dépassé : <fichier>`.
 - `s6a-transport.js` — structure de la barre, lecture/pause/arrêt, raccourcis
   `p`/`s`, tempo de lecture (défaut affiché, 80 → 160 : durée divisée par
-  deux et reprise à la position courante), suivi vertical par système et par
-  page, volume général, volume par voix, et dissociation affichage / lecture
-  d'une voix (masquée mais jouée, affichée mais coupée, persistance).
-  `index.html` et `spa.html`.
+  deux et reprise à la position courante), transpositions (auditive +2 à
+  chaud : hauteurs jouées décalées sans re-rendu ni données modifiées ;
+  visuelle +2 : rendu transposé à la fermeture, son et données inchangés),
+  suivi vertical par système et par page, volume général, volume par voix, et
+  dissociation affichage / lecture d'une voix (masquée mais jouée, affichée
+  mais coupée, persistance). `index.html` et `spa.html`.
 - `s6b-suivi.js` — suivi horizontal (Fauré) : sauts avant/arrière sans page
   blanche, granularité en demi-pages, puis cale de la tête sur le premier
   marqueur de la page affichée. `index.html` et `spa.html`.

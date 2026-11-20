@@ -593,6 +593,119 @@ async function runPage(browser, url, pageName, results) {
     await ctxVoices.close();
   }
 
+  // Transpositions : l'auditive décale les hauteurs réellement jouées sans
+  // toucher aux données de lecture ni au rendu ; la visuelle transpose le
+  // rendu à la fermeture des réglages sans changer le son.
+  {
+    const { page, ctx, errors } = await L.newPage(browser, url, { pageName });
+    try {
+      await waitReady(page);
+      await L.importFile(page, L.FILES.telemannXml);
+      await waitFirstSvg(page);
+      await waitBackgroundLoaded(page);
+      await page.waitForTimeout(800);
+
+      const noteheadY = () => page.evaluate(() => {
+        const use = document.querySelector('#page-current .scroll-page svg g.notehead use');
+        const match = use?.getAttribute('transform')?.match(/translate\(\s*[-0-9.]+[ ,]+([-0-9.]+)/);
+        return match ? Number(match[1]) : null;
+      });
+
+      await page.click('#transport-play');
+      await waitState(page, 'playing');
+      await page.evaluate(() => window.__musicaAudio.startNoteLog());
+      await page.waitForTimeout(800);
+      const base = await page.evaluate(() => ({
+        notes: window.__musicaAudio.getNotes(),
+        log: window.__musicaAudio.getScheduledNotes(),
+      }));
+      const baseOk = base.log.length > 0 && base.log.every((n) => n.pitch === n.sourcePitch);
+      L.record(results, '6. Transposition auditive : référence à l’unisson', pageName,
+        baseOk ? 'OK' : 'ÉCHEC',
+        `${base.log.length} note(s) ordonnancée(s), hauteurs d’origine conservées : ${baseOk}`);
+
+      // Auditive +2 pendant la lecture : les notes programmées suivantes sont
+      // décalées, les données chargées et le SVG affiché restent intacts.
+      await L.markSvg(page);
+      await L.openSettings(page);
+      await page.selectOption('#transpose-audio', '2');
+      await page.waitForTimeout(300);
+      const hot = await page.evaluate(() => ({
+        engine: window.__musicaAudio.getTranspose(),
+        marker: !!document.querySelector('#page-current .scroll-page svg[data-test-mark="1"]'),
+      }));
+      await page.evaluate(() => window.__musicaAudio.startNoteLog());
+      await page.waitForTimeout(900);
+      const audible = await page.evaluate(() => ({
+        log: window.__musicaAudio.getScheduledNotes(),
+        notes: window.__musicaAudio.getNotes(),
+      }));
+      const shiftOk = audible.log.length > 0 && audible.log.every((n) =>
+        n.pitch === Math.max(0, Math.min(127, n.sourcePitch + 2))) &&
+        audible.log.some((n) => n.pitch !== n.sourcePitch);
+      const notesIntact = JSON.stringify(audible.notes) === JSON.stringify(base.notes);
+      L.record(results, '6. Transposition auditive +2 : hauteurs jouées décalées à chaud, rendu et données intacts', pageName,
+        hot.engine === 2 && hot.marker && shiftOk && notesIntact ? 'OK' : 'ÉCHEC',
+        `moteur ${hot.engine} demi-tons, SVG marqué conservé ${hot.marker}, ` +
+        `${audible.log.length} note(s) décalée(s) de +2 : ${shiftOk}, notes chargées identiques : ${notesIntact}`);
+
+      await page.selectOption('#transpose-audio', '0');
+      await page.waitForTimeout(150);
+      await page.evaluate(() => window.__musicaAudio.startNoteLog());
+      await page.waitForTimeout(700);
+      const resetLog = await page.evaluate(() => window.__musicaAudio.getScheduledNotes());
+      const resetOk = resetLog.length > 0 && resetLog.every((n) => n.pitch === n.sourcePitch);
+      L.record(results, '6. Transposition auditive 0 : hauteurs d’origine rétablies à chaud', pageName,
+        resetOk ? 'OK' : 'ÉCHEC', `${resetLog.length} note(s), hauteurs d’origine : ${resetOk}`);
+      await L.closeSettings(page);
+      await page.click('#transport-stop');
+      await waitState(page, 'stopped');
+
+      // Visuelle +2 : le rendu est transposé à la fermeture seulement, et les
+      // données de lecture comme les hauteurs jouées restent inchangées.
+      await page.evaluate(() => window.goToPage(1));
+      await page.waitForTimeout(500);
+      const yBefore = await noteheadY();
+      await L.markSvg(page);
+      await L.openSettings(page);
+      await page.selectOption('#transpose-visual', '2');
+      await page.waitForTimeout(300);
+      const keptBeforeClose = await L.markerPresent(page);
+      await L.closeSettings(page);
+      await waitRerender(page);
+      const yAfter = await noteheadY();
+      // Une seconde majeure monte d'un degré : −90 unités Verovio à cette échelle.
+      const renderOk = yBefore != null && yAfter != null && Math.abs(yAfter - (yBefore - 90)) <= 1;
+      L.record(results, '6. Transposition visuelle +2 : rendu transposé à la fermeture', pageName,
+        keptBeforeClose && renderOk ? 'OK' : 'ÉCHEC',
+        `SVG conservé avant fermeture ${keptBeforeClose}, première tête de note y ${yBefore} → ${yAfter} ` +
+        `(attendu ${yBefore != null ? yBefore - 90 : '?'})`);
+
+      await page.click('#transport-play');
+      await waitState(page, 'playing');
+      await page.evaluate(() => window.__musicaAudio.startNoteLog());
+      await page.waitForTimeout(800);
+      const visual = await page.evaluate(() => ({
+        log: window.__musicaAudio.getScheduledNotes(),
+        notes: window.__musicaAudio.getNotes(),
+      }));
+      const soundUnchanged = visual.log.length > 0 &&
+        visual.log.every((n) => n.pitch === n.sourcePitch) &&
+        JSON.stringify(visual.notes) === JSON.stringify(base.notes);
+      L.record(results, '6. Transposition visuelle : son et données de lecture inchangés', pageName,
+        soundUnchanged ? 'OK' : 'ÉCHEC',
+        `${visual.log.length} note(s) à l’unisson, notes préparées identiques : ` +
+        `${JSON.stringify(visual.notes) === JSON.stringify(base.notes)}`);
+      await page.click('#transport-stop');
+      await waitState(page, 'stopped');
+    } catch (e) {
+      L.record(results, '6. Transpositions', pageName, 'ÉCHEC', 'exception du test : ' + e.message);
+    }
+    const relevant = L.summarize(errors);
+    L.record(results, '6. Erreurs JS (transpositions)', pageName, relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
+    await ctx.close();
+  }
+
   // Une partition = une lecture continue : à la fin d'un mouvement, la
   // lecture enchaîne sans pause sur le suivant (suivi compris), et un saut
   // vers une mesure d'un autre mouvement lit cette mesure-là. Fixture

@@ -557,6 +557,147 @@ async function runTempo(browser, url, pageName, results) {
   await ctx.close();
 }
 
+// Transpositions visuelle et auditive : deux réglages propres au fichier,
+// persistants, sélectionnables au doigt. La visuelle transpose le rendu et sa
+// variante de cache ; l'auditive reste purement audio (aucun re-rendu).
+// Ordonnée Verovio de la première tête de note affichée. Le toolkit embarqué
+// place les glyphes par transform="translate(x, y) scale(...)".
+function firstNoteheadY(page) {
+  return page.evaluate(() => {
+    const use = document.querySelector('#page-current .scroll-page svg g.notehead use');
+    const match = use?.getAttribute('transform')?.match(/translate\(\s*[-0-9.]+[ ,]+([-0-9.]+)/);
+    return match ? Number(match[1]) : null;
+  });
+}
+
+async function runTransposition(browser, url, pageName, results) {
+  const { page, ctx, errors } = await L.newPage(browser, url, {
+    pageName, viewport: { width: 360, height: 800 },
+  });
+  try {
+    await importLoaded(page, L.FILES.telemannXml);
+    const noteYBefore = await firstNoteheadY(page);
+    await L.markSvg(page);
+    await L.openSettings(page);
+    const initial = await page.evaluate(() => {
+      const visual = document.getElementById('transpose-visual');
+      const audio = document.getElementById('transpose-audio');
+      const vr = visual?.getBoundingClientRect();
+      const ar = audio?.getBoundingClientRect();
+      const label = (value) => [...(visual?.options || [])].find((o) => o.value === value)?.textContent;
+      return {
+        exists: !!visual && !!audio,
+        values: [visual?.value, audio?.value],
+        optionCount: visual?.options.length || 0,
+        labels: [label('-3'), label('0'), label('2')],
+        sameRow: !!vr && !!ar && Math.abs(vr.top - ar.top) <= 2,
+        heights: [Math.round(vr?.height || 0), Math.round(ar?.height || 0)],
+        aria: [visual?.getAttribute('aria-label'), audio?.getAttribute('aria-label')],
+        marker: !!document.querySelector('#page-current .scroll-page svg[data-test-mark="1"]'),
+      };
+    });
+    L.record(results, '3. Transposition : deux sélecteurs sur une ligne, à 0 par défaut, cibles ≥ 44 px', pageName,
+      initial.exists && initial.values.join('/') === '0/0' && initial.optionCount === 25 &&
+        initial.labels.join(' ') === '−3 0 +2' && initial.sameRow &&
+        initial.heights.every((h) => h >= 44) &&
+        initial.aria[0] === 'Transposition visuelle en demi-tons' &&
+        initial.aria[1] === 'Transposition auditive en demi-tons' && initial.marker ? 'OK' : 'ÉCHEC',
+      `valeurs ${initial.values.join('/')}, ${initial.optionCount} options (${initial.labels.join(' ')}), ` +
+      `même ligne ${initial.sameRow}, hauteurs ${initial.heights.join('/')} px, ` +
+      `libellés « ${initial.aria.join(' » / « ')} »`);
+
+    // Changement sans re-rendu avant la fermeture : la visuelle attend la
+    // fermeture, l'auditive ne provoque jamais de rendu.
+    await page.selectOption('#transpose-visual', '2');
+    await page.selectOption('#transpose-audio', '-3');
+    await page.waitForTimeout(400);
+    const chosen = await page.evaluate(() => ({
+      marker: !!document.querySelector('#page-current .scroll-page svg[data-test-mark="1"]'),
+      stored: Object.keys(localStorage)
+        .filter((k) => k.startsWith('musica-transpose-'))
+        .reduce((all, k) => {
+          all[k.includes('-visual-') ? 'visual' : 'audio'] = localStorage.getItem(k);
+          return all;
+        }, {}),
+      engine: window.__musicaAudio.getTranspose(),
+    }));
+    L.record(results, '3. Transpositions choisies : aucun re-rendu avant la fermeture', pageName,
+      chosen.marker && chosen.engine === -3 && chosen.stored.visual === '2' &&
+        chosen.stored.audio === '-3' ? 'OK' : 'ÉCHEC',
+      `SVG marqué conservé ${chosen.marker}, moteur ${chosen.engine} demi-tons, réglages ${JSON.stringify(chosen.stored)}`);
+
+    await L.closeSettings(page);
+    await waitNewSvg(page);
+    const noteYAfter = await firstNoteheadY(page);
+    // +2 demi-tons = une seconde majeure : la première note monte d'un degré,
+    // soit −90 unités Verovio (un demi-interligne à cette échelle).
+    const shifted = noteYBefore != null && noteYAfter != null &&
+      Math.abs(noteYAfter - (noteYBefore - 90)) <= 1;
+    L.record(results, '3. Transposition visuelle +2 : rendu transposé à la fermeture', pageName,
+      shifted ? 'OK' : 'ÉCHEC',
+      `première tête de note y ${noteYBefore} → ${noteYAfter} (attendu ${noteYBefore != null ? noteYBefore - 90 : '?'})`);
+
+    const cached = await waitVariantCached(page, '|t2');
+    await page.waitForTimeout(3000);
+    const variants = await svgVariants(page);
+    L.record(results, '3. Cache SVG : la transposition visuelle entre dans la variante', pageName,
+      cached && variants.length === 1 && variants[0] === '|t2' ? 'OK' : 'ÉCHEC',
+      `variantes ${JSON.stringify(variants)} (attendu ${JSON.stringify(['|t2'])})`);
+
+    await L.openSettings(page);
+    const reopened = await page.evaluate(() => ({
+      values: [document.getElementById('transpose-visual')?.value, document.getElementById('transpose-audio')?.value],
+    }));
+    await L.closeSettings(page);
+    L.record(results, '3. Transpositions conservées à la réouverture des réglages', pageName,
+      reopened.values.join('/') === '2/-3' ? 'OK' : 'ÉCHEC', `valeurs ${reopened.values.join('/')}`);
+
+    await page.reload({ waitUntil: 'domcontentloaded', timeout: 60000 });
+    await L.waitReady(page);
+    await page.waitForTimeout(400);
+    await L.openLibraryEntry(page, 0);
+    await L.waitFirstSvg(page);
+    await L.waitBackgroundLoaded(page);
+    await page.waitForTimeout(600);
+    await L.openSettings(page);
+    const reloaded = await page.evaluate(() => ({
+      values: [document.getElementById('transpose-visual')?.value, document.getElementById('transpose-audio')?.value],
+      stored: Object.keys(localStorage)
+        .filter((k) => k.startsWith('musica-transpose-'))
+        .reduce((all, k) => {
+          all[k.includes('-visual-') ? 'visual' : 'audio'] = localStorage.getItem(k);
+          return all;
+        }, {}),
+      engine: window.__musicaAudio.getTranspose(),
+    }));
+    L.record(results, '3. Transpositions conservées après rechargement', pageName,
+      reloaded.values.join('/') === '2/-3' && reloaded.stored.visual === '2' &&
+        reloaded.stored.audio === '-3' ? 'OK' : 'ÉCHEC',
+      `sélecteurs ${reloaded.values.join('/')}, réglages ${JSON.stringify(reloaded.stored)}, ` +
+      `moteur ${reloaded.engine} demi-tons`);
+
+    // Retour aux deux valeurs neutres : les clés disparaissent.
+    await page.selectOption('#transpose-visual', '0');
+    await page.selectOption('#transpose-audio', '0');
+    await page.waitForTimeout(200);
+    const neutral = await page.evaluate(() => ({
+      stored: Object.keys(localStorage).filter((k) => k.startsWith('musica-transpose-')),
+      engine: window.__musicaAudio.getTranspose(),
+    }));
+    L.record(results, '3. Transposition 0 : neutre, aucune clé conservée', pageName,
+      neutral.stored.length === 0 && neutral.engine === 0 ? 'OK' : 'ÉCHEC',
+      `clés ${JSON.stringify(neutral.stored)}, moteur ${neutral.engine} demi-tons`);
+    await L.closeSettings(page);
+    await waitNewSvg(page);
+    const relevant = L.summarize(errors);
+    L.record(results, '6. Erreurs JS (transpositions)', pageName, relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
+  } catch (e) {
+    L.record(results, '3. Transpositions', pageName, 'ÉCHEC', 'exception du test : ' + e.message);
+  }
+  await ctx.close();
+}
+
+
 // Langue : anglais par défaut sans préférence (navigateur anglais), bascule
 // vers le français par le réglage (textes statiques et dynamiques), préférence
 // conservée au rechargement. Le contexte n'est pas forcé en français par le
@@ -765,6 +906,7 @@ async function runVoiceTouchTargets(browser, url, pageName, results) {
       await runBach(browser, url, pageName, results);
       await runPartSizeCacheRace(browser, url, pageName, results);
       await runTempo(browser, url, pageName, results);
+      await runTransposition(browser, url, pageName, results);
       await runLanguage(browser, url, pageName, results);
       await runFolderVoices(browser, url, pageName, results);
       await runVoiceTouchTargets(browser, url, pageName, results);

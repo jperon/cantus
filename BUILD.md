@@ -272,6 +272,30 @@ un changement relance le moteur à la même position musicale
 (`position × ancien facteur / nouveau facteur`) ; le suivi reprend sans
 re-rendu.
 
+### Transpositions visuelle et auditive
+
+Deux réglages indépendants, propres au fichier, en demi-tons de −12 à +12
+(0 = aucune transposition, clé `localStorage` absente) :
+
+- **Visuelle** (`musica-transpose-visual-<fileId>`) : le worker passe
+  `transpose: "<n>"` à Verovio (nombre signé, format accepté tel quel ; `""`
+  remet le toolkit à zéro). Le rendu change, donc la valeur entre dans la
+  variante de cache (`...|t<n>`, voir `partsVariant`) et par conséquent dans la
+  clé des données de lecture : la pagination peut changer, le pont
+  mesure→page est reconstruit avec le mouvement. Comme les tailles de voix,
+  elle n'est appliquée qu'à la fermeture des réglages (`partsChanged`). Le son
+  n'est pas touché.
+- **Auditive** (`musica-transpose-audio-<fileId>`) : `audio.setTranspose(n)`
+  décale les hauteurs au moment de l'ordonnancement, bornées à 0..127, sans
+  modifier les notes chargées ni le MIDI en cache. Elle n'entre dans aucune clé
+  de cache et ne déclenche aucun re-rendu. Pendant la lecture, le changement
+  s'entend à la note suivante (les notes déjà programmées dans la fenêtre de
+  150 ms gardent leur hauteur). Les pistes de percussion (canal MIDI 10) ne
+  sont jamais transposées.
+
+Le panneau affiche deux `<select>` compacts sur une même ligne, libellés
+« Affichage » et « Lecture », cibles tactiles de 44 px.
+
 ### Limites connues de scoretk
 
 - Fermatas et respirations non modélisées : la timeline les ignore.
