@@ -203,11 +203,14 @@ Si `pwa/soundfonts/piano-fluidr3-13notes.js` est absent, le build passe
   du protocole `web+musicxml` (`?file=`), et manifeste servi en POST
   multipart. `index.html` et `spa.html` (le `.mscz` seulement sur
   `index.html`).
-- `s10-horizontal.js` — en mode horizontal, une page rendue ne contient
-  jamais deux systèmes : Byrd à 1200×800 et zoom 40 (première page à un
-  système, deuxième à deux dans l'ancienne mise en page), sur toutes les
-  pages, après réouverture depuis les caches, après masquage d'une voix, puis
-  retour à un fichier vertical. `index.html` et `spa.html`.
+- `s10-horizontal.js` — disposition : en mode horizontal, une page rendue ne
+  contient jamais deux systèmes (Byrd à 1200×800 et zoom 40, première page à
+  un système, deuxième à deux dans l'ancienne mise en page), sur toutes les
+  pages, après réouverture depuis les caches, puis après masquage d'une voix
+  (le mode est redécidé au rechargement). Vérifie aussi le forçage
+  « Vertical » sur ce fichier naturellement horizontal et le retour à « Auto »
+  qui repasse en vertical quand un rechargement le justifie, enfin le retour à
+  un fichier vertical. `index.html` et `spa.html`.
 
 ## Réglages de lecture
 
@@ -215,6 +218,13 @@ Le panneau Réglages expose :
 
 - **Volume général** (0–100) : appliqué immédiatement et conservé dans
   `localStorage` (`musica-settings`).
+- **Disposition** (Auto / Horizontal / Vertical) : « Auto » décide sur la
+  première page de la mise en page naturelle (un système → horizontal avec un
+  système par page, plusieurs → vertical) ; les deux autres imposent la mise
+  en page. Réglage global conservé dans `musica-settings`, appliqué en
+  rechargeant la partition (comme le zoom). Le mode est redécidé à chaque
+  chargement, y compris après un changement de zoom, de voix ou de
+  transposition.
 - **Volume par voix** (10–100) : propre à chaque fichier, appliqué au
   `GainNode` de la voix sans re-rendu ; conservé avec les voix masquées ou
   coupées dans `musica-hidden-parts-<fileId>`.
@@ -251,10 +261,12 @@ node tools/build-soundfont-subset.js /tmp/piano-mp3.js \
 - Le cache persistant `musica-playback-cache-v8` stocke MIDI + `syncMarks` +
   tempo initial du fichier (valeur et unité de battue) + position et durée du
   mouvement dans la source, compressés, avec une clé
-  fichier/mouvement/largeur/hauteur/échelle/variante de voix. Les données sont
-  à l'échelle du fichier : le réglage Tempo ne les invalide pas (le facteur est
-  appliqué à la lecture). Les v3 et v4 ne sont jamais resservies (la première
-  n'a pas le tempo, la seconde l'exprime en noires/minute) ; les v5 non plus
+  fichier/mouvement/largeur/hauteur/échelle/variante de voix et de mise en
+  page (un système par page en mode horizontal, mise en page naturelle
+  sinon). Les données sont à l'échelle du fichier : le réglage Tempo ne les
+  invalide pas (le facteur est appliqué à la lecture). Les v3 et v4 ne sont
+  jamais resservies (la première n'a pas le tempo, la seconde l'exprime en
+  noires/minute) ; les v5 non plus
   (une variante avec une voix groupée masquée pouvait n'avoir aucun marqueur),
   ni les v6 (segments calés sur le début du mouvement : un mouvement autre que
   le premier jouait les notes du début du fichier), ni les v7 (la pagination

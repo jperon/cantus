@@ -1,9 +1,12 @@
-// Scénario 10 — mode horizontal : une page rendue ne contient jamais deux
-// systèmes. Byrd à 1200×800 et zoom 40 reproduit le mélange : la première page
-// (début du premier mouvement) n'a qu'un système, donc le mode est horizontal,
-// mais la page suivante (mouvement plus court) en contient deux et les
-// superposait. Vérifie toutes les pages, après réouverture depuis les caches,
-// après changement de voix, puis le retour à un fichier vertical.
+// Scénario 10 — disposition : en mode horizontal, une page rendue ne contient
+// jamais deux systèmes. Byrd à 1200×800 et zoom 40 reproduit le mélange : la
+// première page (début du premier mouvement) n'a qu'un système, donc le mode
+// est horizontal, mais la page suivante (mouvement plus court) en contient deux
+// et les superposait. Vérifie toutes les pages, après réouverture depuis les
+// caches, le forçage « Vertical » puis le retour à « Auto », le passage en
+// vertical décidé au rechargement après masquage d'une voix, une nouvelle
+// session avec cette voix masquée (même décision), puis le retour à un fichier
+// vertical.
 const L = require('./lib');
 
 const PAGES = ['index.html', 'spa.html'];
@@ -18,10 +21,10 @@ async function openWithZoom(browser, url, pageName) {
   await ctx.addInitScript((zoom) => {
     try { localStorage.setItem('musica-settings', JSON.stringify({ zoom })); } catch (e) { /* stockage absent */ }
   }, ZOOM);
-  const { page, errors, netFailures } = await L.newPage(browser, url, {
+  const { page, errors } = await L.newPage(browser, url, {
     pageName, context: ctx, viewport: VIEWPORT,
   });
-  return { ctx, page, errors, netFailures };
+  return { ctx, page, errors };
 }
 
 async function mode(page) {
@@ -65,8 +68,7 @@ async function walk(page) {
     await page.click('.nav-btn[data-action="start"]');
     await page.waitForFunction(() => {
       const match = /^1\s*\//.exec(document.getElementById('page-number')?.textContent || '');
-      const pages = [...document.querySelectorAll('#page-current .scroll-page')];
-      return !!match && pages.some((div) => div.querySelector('svg'));
+      return !!match && !!document.querySelector('#page-current .scroll-page[data-page="1"] svg');
     }, null, { timeout: 30000, polling: 100 });
     await page.waitForTimeout(200);
   };
@@ -94,6 +96,15 @@ async function waitRendered(page) {
   await L.waitFirstSvg(page, 180000);
   await L.waitBackgroundLoaded(page, 300000);
   await page.waitForTimeout(600);
+}
+
+// En mode vertical, displayView crée d'un coup les pages de la fenêtre : leur
+// rendu est asynchrone. Attendre que toutes aient leur SVG avant de relever.
+async function waitDisplayedRendered(page) {
+  await page.waitForFunction(() => {
+    const pages = [...document.querySelectorAll('#page-current .scroll-page')];
+    return pages.length >= 1 && pages.every((div) => div.querySelector('svg'));
+  }, null, { timeout: 180000, polling: 100 });
 }
 
 async function checkAll(page, results, label, pageName, expectedTotal) {
@@ -136,9 +147,54 @@ async function runPage(browser, url, pageName, results) {
       '10. Réouverture depuis les caches : même pagination, toujours un système par page',
       pageName, first.total);
 
-    // Changement de réglage : masquer une voix change la hauteur des systèmes
-    // et donc la pagination naturelle. Le mode déjà décidé reste horizontal et
-    // la mise en page imposée garde un système par page.
+    // Forçage « Vertical » sur un fichier que « Auto » met en horizontal : la
+    // mise en page naturelle revient (moins de pages, dont certaines à deux
+    // systèmes) et le réglage est conservé. Revenir au début : le parcours
+    // précédent a laissé la vue sur la dernière page.
+    await page.click('.nav-btn[data-action="start"]');
+    await page.waitForFunction(() => {
+      const match = /^1\s*\//.exec(document.getElementById('page-number')?.textContent || '');
+      return !!match && !!document.querySelector('#page-current .scroll-page[data-page="1"] svg');
+    }, null, { timeout: 30000, polling: 100 });
+    await L.markSvg(page);
+    await L.openSettings(page);
+    await page.click('.layout-btn[data-layout="vertical"]', { timeout: 20000 });
+    await page.waitForFunction(
+      () => !document.querySelector('#page-current .scroll-page svg[data-test-mark="1"]'),
+      null, { timeout: 120000, polling: 100 });
+    await waitRendered(page);
+    await waitDisplayedRendered(page);
+    const forcedMode = await mode(page);
+    const forced = await L.pageInfo(page);
+    const forcedPages = await rendered(page);
+    const forcedStored = await page.evaluate(
+      () => JSON.parse(localStorage.getItem('musica-settings') || '{}').layout);
+    await L.closeSettings(page);
+    L.record(results, '10. Disposition « Vertical » forcée : mise en page naturelle du fichier horizontal', pageName,
+      forcedMode === 'vertical' && forced.total < first.total && forcedPages.some((entry) => entry.systems > 1) &&
+        forcedStored === 'vertical' ? 'OK' : 'ÉCHEC',
+      `mode ${forcedMode}, ${forced.total} page(s) (horizontal : ${first.total}), ` +
+      `systèmes ${forcedPages.map((entry) => `${entry.page}:${entry.systems}`).join(' ')}, réglage ${forcedStored}`);
+
+    // Retour à « Auto » : le fichier redevient horizontal, et les pages mises
+    // en cache pour la mise en page naturelle ne sont pas resservies.
+    await L.markSvg(page);
+    await L.openSettings(page);
+    await page.click('.layout-btn[data-layout="auto"]', { timeout: 20000 });
+    await page.waitForFunction(
+      () => !document.querySelector('#page-current .scroll-page svg[data-test-mark="1"]'),
+      null, { timeout: 120000, polling: 100 });
+    await waitRendered(page);
+    const autoMode = await mode(page);
+    const auto = await L.pageInfo(page);
+    await L.closeSettings(page);
+    L.record(results, '10. Retour à « Auto » : le fichier redevient horizontal', pageName,
+      autoMode === 'horizontal' && auto.total === first.total ? 'OK' : 'ÉCHEC',
+      `mode ${autoMode}, ${auto.total} page(s) (attendu ${first.total})`);
+
+    // Masquer une voix change la hauteur des systèmes : le rechargement qui
+    // suit redécide la disposition sur la première page, qui contient
+    // maintenant deux systèmes. Le mode n'est donc pas figé pour le fichier.
     await L.markSvg(page);
     await L.openSettings(page);
     await page.waitForFunction(
@@ -150,9 +206,35 @@ async function runPage(browser, url, pageName, results) {
       () => !document.querySelector('#page-current .scroll-page svg[data-test-mark="1"]'),
       null, { timeout: 120000, polling: 100 });
     await waitRendered(page);
-    await checkAll(page, results,
-      '10. Après masquage d’une voix : mode horizontal conservé, un système par page',
-      pageName);
+    await waitDisplayedRendered(page);
+    const maskedMode = await mode(page);
+    const masked = await L.pageInfo(page);
+    const maskedPages = await rendered(page);
+    L.record(results, '10. Après masquage d’une voix : Auto redécide au rechargement et passe en vertical', pageName,
+      maskedMode === 'vertical' && masked.total < first.total && maskedPages.some((entry) => entry.systems > 1) ? 'OK' : 'ÉCHEC',
+      `mode ${maskedMode}, ${masked.total} page(s), ` +
+      `systèmes ${maskedPages.map((entry) => `${entry.page}:${entry.systems}`).join(' ')}`);
+
+    // Nouvelle session avec la voix toujours masquée : la mise en page
+    // naturelle de la première page a maintenant deux systèmes, donc le mode
+    // redevient vertical. Les pages mises en cache pour la mise en page
+    // horizontale (mêmes dimensions, mêmes voix) ne doivent pas être
+    // resservies : la clé de cache porte la mise en page.
+    await page.reload({ waitUntil: 'domcontentloaded', timeout: 60000 });
+    await L.waitReady(page, 60000);
+    await page.waitForTimeout(400);
+    await L.openLibraryEntry(page, 0);
+    await waitRendered(page);
+    await page.click('.nav-btn[data-action="start"]');
+    await page.waitForFunction(() => {
+      const match = /^1\s*\//.exec(document.getElementById('page-number')?.textContent || '');
+      return !!match && !!document.querySelector('#page-current .scroll-page[data-page="1"] svg');
+    }, null, { timeout: 30000, polling: 100 });
+    const sessionMode = await mode(page);
+    const sessionSystems = (await rendered(page)).find((entry) => entry.page === 1)?.systems ?? 0;
+    L.record(results, '10. Nouvelle session avec la voix masquée : mise en page naturelle, pas les pages horizontales en cache', pageName,
+      sessionMode === 'vertical' && sessionSystems > 1 ? 'OK' : 'ÉCHEC',
+      `mode ${sessionMode}, ${sessionSystems} système(s) sur la page 1`);
 
     // Fichier vertical ensuite, dans la même application : le mode est
     // redécidé par fichier et la mise en page d'un système par page n'est pas
