@@ -177,6 +177,27 @@ updatePartsVolumesReset = ->
   return unless btn
   btn.disabled = Object.keys(partVolumes).every (id) -> parseInt(partVolumes[id]) is 100
 
+# --- Transpositions visuelle et auditive ------------------------------------
+# Affichage neutre du sélecteur : « +2 », « 0 », « −3 » (signe moins
+# typographique, jamais de valeur vide).
+formatTranspose = (semitones) ->
+  return "0" unless semitones
+  if semitones < 0 then "−#{-semitones}" else "+#{semitones}"
+
+# Remplit les deux sélecteurs une seule fois puis affiche les valeurs du
+# fichier courant. Les options vont de −12 à +12 demi-tons.
+renderTranspositionUi = ->
+  for [id, value] in [["transpose-visual", visualTranspose], ["transpose-audio", auditoryTranspose]]
+    select = $(id)
+    continue unless select
+    if select.options.length is 0
+      for semitones in [TRANSPOSE_MIN..TRANSPOSE_MAX]
+        option = document.createElement "option"
+        option.value = String semitones
+        option.textContent = formatTranspose semitones
+        select.appendChild option
+    select.value = String value
+
 # --- Tempo de lecture -------------------------------------------------------
 # Affiche le tempo effectif : réglage du fichier s'il existe, sinon le défaut
 # du fichier (tempo initial explicite, ou 80). Le bouton « Tempo du fichier »
@@ -293,6 +314,7 @@ setupSettings = ->
     $("settings-overlay").classList.remove "hidden"
     renderPartsList()
     renderTempoUi()
+    renderTranspositionUi()
     ensureFileTempo()
     updateStorageInfo()
 
@@ -414,6 +436,27 @@ setupSettings = ->
         resetTempoToFile()
   tempoReset = $("tempo-reset")
   tempoReset?.addEventListener "click", resetTempoToFile
+
+  # Transposition visuelle : purement rendu, appliquée au rechargement à la
+  # fermeture du panneau (comme les tailles de voix).
+  transposeVisual = $("transpose-visual")
+  if transposeVisual
+    transposeVisual.addEventListener "change", (e) ->
+      visualTranspose = clampTranspose e.target.value
+      e.target.value = String visualTranspose
+      saveTranspose "visual", visualTranspose
+      partsChanged = true
+
+  # Transposition auditive : purement audio, appliquée à chaud au moteur pour
+  # les notes suivantes ; aucun re-rendu, aucune clé de cache.
+  transposeAudio = $("transpose-audio")
+  if transposeAudio
+    transposeAudio.addEventListener "change", (e) ->
+      auditoryTranspose = clampTranspose e.target.value
+      e.target.value = String auditoryTranspose
+      saveTranspose "audio", auditoryTranspose
+      engine = audioEngine()
+      engine?.setTranspose auditoryTranspose
 
   # Vidage des caches de rendu (SVG et données de lecture). Les fichiers de
   # la bibliothèque (IndexedDB) ne sont pas touchés.

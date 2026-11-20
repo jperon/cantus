@@ -412,6 +412,7 @@ applyPlaybackData = (engine, movementId, data, position = 0) ->
   playback.pauses = scaled.data.pauses ? []
   playback.followKey = null
   engine.load scaled.data
+  engine.setTranspose auditoryTranspose
   applyVoiceAudio scaled.data.staffLabels
   scaled
 

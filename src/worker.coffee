@@ -149,7 +149,7 @@ postPage = (movementId, pageNumber) ->
     svg: tk.renderToSVG pageNumber
   }
 
-loadMovement = (movementId, xmlString, pageWidth, pageHeight, scale = 40, sourceId = null, measureStart = 0, measureEnd = null) ->
+loadMovement = (movementId, xmlString, pageWidth, pageHeight, scale = 40, sourceId = null, measureStart = 0, measureEnd = null, transpose = 0) ->
   options = {
     breaks: "auto"
     adjustPageHeight: true
@@ -159,6 +159,9 @@ loadMovement = (movementId, xmlString, pageWidth, pageHeight, scale = 40, source
     condense: "none"
     header: "none"
     footer: "none"
+    # Verovio accepte un nombre de demi-tons signé. La valeur vide annule une
+    # transposition précédente du toolkit ; 0 laisse donc le rendu inchangé.
+    transpose: if transpose then String(transpose) else ""
   }
   tk.setOptions options
   loaded = tk.loadData xmlString
@@ -714,11 +717,12 @@ handleMessage = (e) ->
           pageWidth
           pageHeight
           scale
+          transpose
           sourceId
           measureStart
           measureEnd
         } = e.data
-        loadMovement movementId, xmlString, pageWidth, pageHeight, scale, sourceId, measureStart, measureEnd
+        loadMovement movementId, xmlString, pageWidth, pageHeight, scale, sourceId, measureStart, measureEnd, transpose
 
       when "renderMovementPage"
         {

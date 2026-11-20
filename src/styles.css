@@ -388,6 +388,42 @@ html, body {
   gap: 10px;
 }
 
+/* Transpositions visuelle et auditive : deux sélecteurs compacts sur une même
+   ligne, cible tactile de 44 px, libellé tronqué plutôt que ligne repliée. */
+.settings-transpose {
+  gap: 12px;
+}
+
+.settings-transpose .transpose-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 0;
+  min-width: 0;
+  font-size: 14px;
+  color: #333;
+}
+
+.settings-transpose .transpose-label {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-transpose select.transpose-select {
+  flex: 0 0 auto;
+  min-width: 4.5em;
+  min-height: 44px;
+  padding: 6px 4px;
+  font-size: 14px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  background: #f5f5f5;
+  color: #333;
+}
+
 #parts-group.hidden {
   display: none;
 }

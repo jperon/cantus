@@ -17,6 +17,10 @@ getMovementForPage = (globalPage) ->
 # Settings defaults
 defaultSettings = { zoom: 40, theme: "white", tapSize: 30, scrollUnit: "page", overlap: 0, masterVolume: 80, followPlayback: true, expandRepeats: true }
 
+# Bornes des transpositions visuelle et auditive, en demi-tons.
+TRANSPOSE_MIN = -12
+TRANSPOSE_MAX = 12
+
 loadSettings = ->
   try
     saved = localStorage.getItem "musica-settings"
@@ -176,15 +180,46 @@ currentFileTempo = ->
   return null unless fileTempo? and fileTempo.fileId is currentFileId
   fileTempo
 
-# Suffixe de clé du cache SVG : une page rendue avec une autre sélection diffère.
-# Seuls le masquage et les tailles changent le rendu ; les voix coupées sont
-# purement audio et n'entrent donc jamais dans une clé de cache.
+# Transpositions visuelle et auditive, propres au fichier, sur le modèle du
+# tempo : une clé localStorage par identifiant et par sorte. Absence de clé,
+# valeur illisible ou hors bornes = 0 (aucune transposition).
+clampTranspose = (value) ->
+  number = parseInt value, 10
+  return 0 unless isFinite number
+  Math.max TRANSPOSE_MIN, Math.min TRANSPOSE_MAX, number
+
+readTranspose = (kind) ->
+  return 0 unless currentFileId
+  try
+    clampTranspose localStorage.getItem "musica-transpose-#{kind}-#{currentFileId}"
+  catch
+    0
+
+loadTransposition = ->
+  visualTranspose = readTranspose "visual"
+  auditoryTranspose = readTranspose "audio"
+
+saveTranspose = (kind, value) ->
+  return unless currentFileId
+  try
+    key = "musica-transpose-#{kind}-#{currentFileId}"
+    if value is 0
+      localStorage.removeItem key
+    else
+      localStorage.setItem key, String(value)
+  catch
+    # localStorage unavailable (file:// on some browsers)
+
+# Suffixe de clé du cache SVG : une page rendue avec une autre sélection ou une
+# autre transposition visuelle diffère. Les voix coupées et la transposition
+# auditive sont purement audio et n'entrent donc jamais dans une clé de cache.
 partsVariant = ->
   hidden = Array.from(hiddenParts).sort().join ","
   sizes = (for id in Object.keys(partSizes).sort() when partSizes[id] isnt 100
     "#{id}=#{partSizes[id]}")
-  return hidden if sizes.length is 0  # clé inchangée quand toutes les voix sont à 100 %
-  "#{hidden}|#{sizes.join ','}"
+  variant = if sizes.length is 0 then hidden else "#{hidden}|#{sizes.join ','}"  # clé inchangée quand toutes les voix sont à 100 %
+  return variant if visualTranspose is 0
+  "#{variant}|t#{visualTranspose}"
 
 # Variante du XML que le worker a chargé pour un mouvement (voir
 # movementVariants). Tant qu'un mouvement n'a pas été chargé, les réglages

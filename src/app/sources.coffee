@@ -98,6 +98,7 @@ startLoad = (startPage = 1, keepSources = false) ->
   partsChanged = false
   loadPartSettings()
   loadPlaybackTempo()
+  loadTransposition()
   fileTempoRequest = null
   fileTempoError = false
   scrollPos = 0
@@ -275,8 +276,9 @@ loadMovementAndWait = (movementId, xmlString, pageWidth, pageHeight, sourceId = 
     pendingMovementLoads.set movementId, resolve
     # Retain the load this reply belongs to, so a superseded one is ignored
     movementLoadTokens.set movementId, loadToken
-    # Le XML envoyé porte les tailles de voix courantes : les pages que le
-    # worker va produire pour ce mouvement vaudront pour cette variante.
+    # Le XML envoyé porte les tailles de voix et la transposition visuelle
+    # courantes : les pages que le worker va produire vaudront pour cette
+    # variante.
     movementVariants[movementId] = partsVariant()
 
     worker.postMessage
@@ -286,6 +288,7 @@ loadMovementAndWait = (movementId, xmlString, pageWidth, pageHeight, sourceId = 
       pageWidth: pageWidth
       pageHeight: pageHeight
       scale: currentScale
+      transpose: visualTranspose
       sourceId: sourceId
       measureStart: measureStart
       measureEnd: measureEnd

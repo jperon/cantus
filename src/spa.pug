@@ -58,6 +58,15 @@ html(lang="en")
             span /min
             button#tempo-reset.settings-btn.tempo-reset(type="button" title="Reset to the file tempo" data-i18n-title="settings.tempoResetTitle" data-i18n="settings.tempoReset" disabled) File tempo
           p#tempo-hint.settings-hint(data-i18n="tempo.pending") Determining the file tempo…
+      .settings-group
+        label.settings-label(data-i18n="settings.transposition") Transposition
+        .settings-row.settings-transpose
+          label.transpose-field
+            span.transpose-label(data-i18n="settings.transposeVisual") Display
+            select#transpose-visual.transpose-select(data-i18n-aria-label="settings.transposeVisualAria")
+          label.transpose-field
+            span.transpose-label(data-i18n="settings.transposeAudio") Playback
+            select#transpose-audio.transpose-select(data-i18n-aria-label="settings.transposeAudioAria")
       #parts-group.settings-group.hidden
         label.settings-label(data-i18n="settings.parts") Parts
         #parts-list

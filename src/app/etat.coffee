@@ -41,6 +41,11 @@ playbackTempoOverride = null
 fileTempo = null
 fileTempoRequest = null
 fileTempoError = false
+# Transpositions propres au fichier (demi-tons, −12..+12, 0 = aucune) :
+# visuelle pour le rendu Verovio, auditive pour les hauteurs jouées. Seule la
+# visuelle entre dans les variantes de cache ; l'auditive ne touche que le moteur.
+visualTranspose = 0
+auditoryTranspose = 0
 # Cale de la tête de lecture sur la page affichée ---------------------------------
 # Un changement de page (défilement, boutons, goto) place la tête de lecture au
 # premier marqueur de synchronisation de cette page, après un court debounce le
