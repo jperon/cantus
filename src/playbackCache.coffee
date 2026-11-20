@@ -25,11 +25,14 @@
 # v7 : les segments sont calés sur le temps absolu de la source et les données
 # portent offsetMs/sourceDurationMs. Une entrée v6 d'un mouvement autre que le
 # premier jouerait les notes du début du fichier : elle n'est jamais resservie.
+# v8 : en mode horizontal, la pagination impose un système par page ; les
+# marqueurs de synchronisation (numéros de page) d'une entrée v7 visaient
+# l'ancienne pagination et le suivi sauterait sur la mauvaise page.
 
 # IIFE : les modules inline partagent la portée globale. Sans cela, `cache`,
 # `get`, `set`… écraseraient ceux de svgCache.coffee (même page, scripts inline).
 do ->
-  CACHE_NAME = "musica-playback-cache-v7"
+  CACHE_NAME = "musica-playback-cache-v8"
   MAX_STORAGE_BYTES = 50 * 1024 * 1024  # 50 MB
 
   cache = null

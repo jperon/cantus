@@ -8,8 +8,11 @@
 # v3 : le masquage d'une voix retire désormais les part-group devenus vides,
 # ce qui peut changer la pagination ; une page v2 ne correspondrait plus au
 # pont mesure→page reconstruit (suivi sur la mauvaise page).
-CACHE_NAME = "musica-svg-cache-v3"
-LEGACY_CACHE_NAMES = ["musica-svg-cache-v1", "musica-svg-cache-v2"]
+# v4 : en mode horizontal, une page ne contient plus qu'un système
+# (systemMaxPerPage) : la pagination de ces fichiers change, et une page v3
+# pouvait en superposer deux. Ces entrées ne sont jamais resservies.
+CACHE_NAME = "musica-svg-cache-v4"
+LEGACY_CACHE_NAMES = ["musica-svg-cache-v1", "musica-svg-cache-v2", "musica-svg-cache-v3"]
 MAX_STORAGE_BYTES = 100 * 1024 * 1024  # 100 MB limit
 
 # Un put sur ce nombre déclenche la vérification du plafond de stockage :
