@@ -134,9 +134,10 @@ startLoad = (startPage = 1, keepSources = false) ->
   showLoading()
   hideLoadingIndicator()
 
-  # Reset scroll mode for new file
-  scrollMode = null
-  systemHeight = 0
+  # Reset scroll mode for a new file. Un rechargement du même fichier (zoom,
+  # voix, redimensionnement) garde le mode déjà décidé : le worker applique la
+  # même mise en page à tous les mouvements, sans le redécider page par page.
+  scrollMode = null unless keepSources
   verticalPos = 0
 
   currentPageWidth = Math.round(window.innerWidth * 100 / currentScale)
@@ -173,7 +174,7 @@ loadFirstSource = (token) ->
       ensureWorkerSource index, info
       firstMovement = movements[0]
       loadMovementAndWait(1, mvXml, currentPageWidth, currentPageHeight, index,
-        firstMovement?.measureStart, firstMovement?.measureEnd)
+        firstMovement?.measureStart, firstMovement?.measureEnd, scrollMode)
       # Subsequent movements and sources are loaded once this one is displayed
       # (see movementLoaded handler)
       fileLoaded = true
@@ -216,7 +217,7 @@ stepLoad = (token) ->
     pageWidth = Math.round(window.innerWidth * 100 / currentScale)
     pageHeight = Math.round(window.innerHeight * 100 / currentScale)
     loadMovementAndWait(pending.id, mvXml, pageWidth, pageHeight, pending.sourceIndex,
-      pending.measureStart, pending.measureEnd).then ->
+      pending.measureStart, pending.measureEnd, scrollMode).then ->
       stepLoad token
     return
 
@@ -269,8 +270,10 @@ tryNavigateTarget = ->
   targetPage = null
   goToPage page
 
-# Load a movement in worker and return Promise that resolves when loaded
-loadMovementAndWait = (movementId, xmlString, pageWidth, pageHeight, sourceId = null, measureStart = 0, measureEnd = null) ->
+# Load a movement in worker and return Promise that resolves when loaded.
+# `mode` est le mode de défilement du fichier déjà décidé (null pour le premier
+# chargement : le worker le détecte alors sur la première page).
+loadMovementAndWait = (movementId, xmlString, pageWidth, pageHeight, sourceId = null, measureStart = 0, measureEnd = null, mode = null) ->
   new Promise (resolve) ->
     # Store resolver to be called when movementLoaded message arrives
     pendingMovementLoads.set movementId, resolve
@@ -292,6 +295,7 @@ loadMovementAndWait = (movementId, xmlString, pageWidth, pageHeight, sourceId = 
       sourceId: sourceId
       measureStart: measureStart
       measureEnd: measureEnd
+      scrollMode: mode
 
 # Loading indicator for background movement loading
 showLoadingIndicator = ->

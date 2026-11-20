@@ -70,9 +70,10 @@ currentScrollUnit = "page"  # Dernier réglage « Défilement » appliqué
 PREFETCH_AHEAD = 6
 PREFETCH_BEHIND = 1
 
-# Scroll mode: "horizontal" (1 system) or "vertical" (2+ systems)
+# Scroll mode: "horizontal" (one system per page) or "vertical" (several
+# systems per page). Decided once per file by the worker from the natural
+# layout of the first page, then applied to every movement and every reload.
 scrollMode = null
-systemHeight = 0  # Height of a single system in vertical mode
 
 # Movement tracking
 movements = []  # [{id, pageCount, pushed, loaded}]
@@ -143,7 +144,12 @@ worker.onmessage = (e) ->
       # Réponse d'un chargement abandonné (suppression, rechargement) : ignorer
       return if (movementLoadTokens.get e.data.movementId) isnt loadToken
       awaitingLoad = false
-      {movementId, pageCount: mvPages, pushed} = e.data
+      {movementId, pageCount: mvPages, pushed, scrollMode: detectedMode} = e.data
+      # Le mode est décidé par le worker sur la première page du fichier ; les
+      # mouvements suivants le reçoivent en conséquence. Il n'est jamais
+      # redécidé par une page rendue, qui pourrait en contenir plusieurs
+      # systèmes alors que le mode horizontal en impose un seul.
+      scrollMode = detectedMode if scrollMode is null and detectedMode?
       mv = movements.find (m) -> m.id is movementId
       if mv
         mv.pageCount = mvPages
@@ -164,9 +170,7 @@ worker.onmessage = (e) ->
         hideLoading()
         if mvPages > 0
           # Page 1 is part of the pushed pages: display it on arrival
-          requestPage(1, 1).then (svg) ->
-            # Detect scroll mode from first page before displaying
-            detectScrollMode(svg)
+          requestPage(1, 1).then ->
             displayView()
             prefetch()
             # Now load subsequent movements after first page is displayed

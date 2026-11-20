@@ -149,7 +149,17 @@ postPage = (movementId, pageNumber) ->
     svg: tk.renderToSVG pageNumber
   }
 
-loadMovement = (movementId, xmlString, pageWidth, pageHeight, scale = 40, sourceId = null, measureStart = 0, measureEnd = null, transpose = 0) ->
+# Nombre de systèmes d'une page SVG : Verovio les écrit <g class="system">.
+systemCount = (svgString) ->
+  (String(svgString ? "").match(/<g\b[^>]*class="system"/g) or []).length
+
+# Rend un mouvement. `mode` (« horizontal » ou « vertical ») est connu pour
+# tous les mouvements d'un fichier sauf le premier d'un chargement : il est
+# alors détecté sur la première page de la mise en page naturelle. En mode
+# horizontal, une page ne contient qu'un système (systemMaxPerPage) : sans
+# cela, une page suivante ou un mouvement moins fourni en afficherait deux,
+# superposés dans la vue paginée.
+loadMovement = (movementId, xmlString, pageWidth, pageHeight, scale = 40, sourceId = null, measureStart = 0, measureEnd = null, transpose = 0, mode = null) ->
   options = {
     breaks: "auto"
     adjustPageHeight: true
@@ -159,6 +169,9 @@ loadMovement = (movementId, xmlString, pageWidth, pageHeight, scale = 40, source
     condense: "none"
     header: "none"
     footer: "none"
+    # Toujours posé : le toolkit sert à plusieurs fichiers et une valeur
+    # laissée à 1 forcerait la mise en page du fichier suivant.
+    systemMaxPerPage: if mode is "horizontal" then 1 else 0
     # Verovio accepte un nombre de demi-tons signé. La valeur vide annule une
     # transposition précédente du toolkit ; 0 laisse donc le rendu inchangé.
     transpose: if transpose then String(transpose) else ""
@@ -173,6 +186,18 @@ loadMovement = (movementId, xmlString, pageWidth, pageHeight, scale = 40, source
     }
     return
   pageCount = tk.getPageCount()
+  # Page 1 déjà rendue par la détection : elle est renvoyée telle quelle plutôt
+  # que rendue une seconde fois.
+  firstPageSvg = null
+  unless mode in ["horizontal", "vertical"]
+    firstPageSvg = if pageCount > 0 then tk.renderToSVG(1) else null
+    mode = if systemCount(firstPageSvg) <= 1 then "horizontal" else "vertical"
+    if mode is "horizontal" and pageCount > 0
+      options.systemMaxPerPage = 1
+      tk.setOptions {systemMaxPerPage: 1}
+      tk.redoLayout()
+      pageCount = tk.getPageCount()
+      firstPageSvg = null
   mv = {
     pageCount
     loaded: true
@@ -204,9 +229,14 @@ loadMovement = (movementId, xmlString, pageWidth, pageHeight, scale = 40, source
     movementId
     pageCount
     pushed
+    scrollMode: mode
   }
   if pushed > 0
-    postPage movementId, page for page in [1..pushed]
+    for page in [1..pushed]
+      if page is 1 and firstPageSvg?
+        self.postMessage {type: "svg", movementId, page, svg: firstPageSvg}
+      else
+        postPage movementId, page
 
 # Switch to a different movement if needed
 switchToMovement = (movementId) ->
@@ -721,8 +751,9 @@ handleMessage = (e) ->
           sourceId
           measureStart
           measureEnd
+          scrollMode
         } = e.data
-        loadMovement movementId, xmlString, pageWidth, pageHeight, scale, sourceId, measureStart, measureEnd, transpose
+        loadMovement movementId, xmlString, pageWidth, pageHeight, scale, sourceId, measureStart, measureEnd, transpose, scrollMode
 
       when "renderMovementPage"
         {
