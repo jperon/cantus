@@ -548,7 +548,7 @@ html, body {
   text-align: center;
 }
 
-.theme-btn, .tap-btn, .scroll-unit-btn, .settings-btn {
+.theme-btn, .tap-btn, .scroll-unit-btn, .layout-btn, .settings-btn {
   flex: 1;
   padding: 8px 4px;
   font-size: 13px;
@@ -590,7 +590,7 @@ html, body {
   cursor: default;
 }
 
-.theme-btn.active, .tap-btn.active, .scroll-unit-btn.active {
+.theme-btn.active, .tap-btn.active, .scroll-unit-btn.active, .layout-btn.active {
   background: #333;
   color: #fff;
   border-color: #333;

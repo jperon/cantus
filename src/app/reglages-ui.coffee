@@ -376,6 +376,18 @@ setupSettings = ->
         saveSettings settings
         applyScrollSettings settings.scrollUnit, settings.overlap or 0
 
+  # Disposition : le mode change la pagination, donc on recharge la partition
+  # (comme le zoom).
+  for btn in document.querySelectorAll(".layout-btn")
+    do (btn) ->
+      btn.addEventListener "click", ->
+        applyLayoutSetting btn.dataset.layout
+        settings = loadSettings()
+        settings.layout = layoutPreference
+        saveSettings settings
+        if fileLoaded and currentSources?.length
+          reloadScore displayedPage()
+
   # Overlap select
   $("overlap-select").addEventListener "change", (e) ->
     settings = loadSettings()

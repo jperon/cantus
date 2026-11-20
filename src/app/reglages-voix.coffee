@@ -15,7 +15,7 @@ getMovementForPage = (globalPage) ->
   null
 
 # Settings defaults
-defaultSettings = { zoom: 40, theme: "white", tapSize: 30, scrollUnit: "page", overlap: 0, masterVolume: 80, followPlayback: true, expandRepeats: true }
+defaultSettings = { zoom: 40, theme: "white", tapSize: 30, scrollUnit: "page", overlap: 0, layout: "auto", masterVolume: 80, followPlayback: true, expandRepeats: true }
 
 # Bornes des transpositions visuelle et auditive, en demi-tons.
 TRANSPOSE_MIN = -12
@@ -61,6 +61,14 @@ applyScrollSettings = (unit, overlap) ->
   $("overlap-select").value = String overlap
   $("overlap-row").classList.toggle "hidden", unit isnt "page"
 
+# Réglage « Disposition » : "auto" décide sur la première page, "horizontal"
+# ou "vertical" impose la mise en page. Il ne change le rendu qu'au prochain
+# chargement, comme le zoom.
+applyLayoutSetting = (layout) ->
+  layoutPreference = if layout is "horizontal" or layout is "vertical" then layout else "auto"
+  for btn in document.querySelectorAll ".layout-btn"
+    btn.classList.toggle "active", btn.dataset.layout is layoutPreference
+
 applyFollowPlayback = (enabled) ->
   followPlaybackEnabled = enabled isnt false
   box = $("follow-playback")
@@ -88,6 +96,7 @@ applyAllSettings = ->
   applyTapSize settings.tapSize
   applyZoom settings.zoom
   applyScrollSettings settings.scrollUnit or "page", settings.overlap or 0
+  applyLayoutSetting settings.layout
   applyMasterVolume settings.masterVolume
   applyFollowPlayback settings.followPlayback
   applyExpandRepeats settings.expandRepeats

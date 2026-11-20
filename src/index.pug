@@ -104,6 +104,12 @@ html(lang="en")
           button.tap-btn.active(data-size="30" data-i18n="tap.normal") Normal
           button.tap-btn(data-size="40" data-i18n="tap.large") Large
       .settings-group
+        label.settings-label(data-i18n="settings.layout") Layout
+        .settings-row(role="group" aria-label="Layout" data-i18n-aria-label="settings.layout")
+          button.layout-btn.active(data-layout="auto" data-i18n="layout.auto") Auto
+          button.layout-btn(data-layout="horizontal" data-i18n="layout.horizontal") Horizontal
+          button.layout-btn(data-layout="vertical" data-i18n="layout.vertical") Vertical
+      .settings-group
         label.settings-label(data-i18n="settings.scroll") Scrolling
         .settings-row
           button.scroll-unit-btn.active(data-unit="page" data-i18n="scroll.page") Per page
