@@ -203,6 +203,11 @@ Si `pwa/soundfonts/piano-fluidr3-13notes.js` est absent, le build passe
   du protocole `web+musicxml` (`?file=`), et manifeste servi en POST
   multipart. `index.html` et `spa.html` (le `.mscz` seulement sur
   `index.html`).
+- `s10-horizontal.js` — en mode horizontal, une page rendue ne contient
+  jamais deux systèmes : Byrd à 1200×800 et zoom 40 (première page à un
+  système, deuxième à deux dans l'ancienne mise en page), sur toutes les
+  pages, après réouverture depuis les caches, après masquage d'une voix, puis
+  retour à un fichier vertical. `index.html` et `spa.html`.
 
 ## Réglages de lecture
 
@@ -243,7 +248,7 @@ node tools/build-soundfont-subset.js /tmp/piano-mp3.js \
 
 ## Notes
 
-- Le cache persistant `musica-playback-cache-v7` stocke MIDI + `syncMarks` +
+- Le cache persistant `musica-playback-cache-v8` stocke MIDI + `syncMarks` +
   tempo initial du fichier (valeur et unité de battue) + position et durée du
   mouvement dans la source, compressés, avec une clé
   fichier/mouvement/largeur/hauteur/échelle/variante de voix. Les données sont
@@ -252,7 +257,9 @@ node tools/build-soundfont-subset.js /tmp/piano-mp3.js \
   n'a pas le tempo, la seconde l'exprime en noires/minute) ; les v5 non plus
   (une variante avec une voix groupée masquée pouvait n'avoir aucun marqueur),
   ni les v6 (segments calés sur le début du mouvement : un mouvement autre que
-  le premier jouait les notes du début du fichier).
+  le premier jouait les notes du début du fichier), ni les v7 (la pagination
+  horizontale impose désormais un système par page : leurs marqueurs visaient
+  l'ancienne pagination).
   Le cache est préservé par le service worker aux mises à jour et purgé par
   « Vider le cache ».
 - Les voix coupées (`muted`) n'entrent dans aucune clé de cache, ni SVG ni
