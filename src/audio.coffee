@@ -11,6 +11,7 @@
 #   isPlaying()
 #   onEnd(cb)
 #   setMasterVolume(v)           -> 0..100
+#   setTranspose(semitones)      -> décalage des hauteurs jouées (percussions exclues)
 #   setVoiceVolume(label, v)     -> 0..100, par libellé de voix
 #   setVoiceMuted(label, m)      -> true : silence réel
 #   getVoiceGain(label)          -> gain courant du GainNode de la voix (ou null)
@@ -96,6 +97,21 @@ nearestSampleKey = (buffers, pitch) ->
 
 samplePlaybackRate = (sampleKey, pitch) ->
   2 ** ((Number(pitch) - Number(sampleKey)) / 12)
+
+# Transposition auditive : décale une hauteur MIDI sans jamais sortir du
+# domaine 0..127 (une note poussée hors limites est ramenée à la borne).
+transposePitch = (pitch, semitones) ->
+  value = Number pitch
+  return pitch unless isFinite value
+  shift = Number semitones
+  return value unless isFinite(shift) and shift isnt 0
+  Math.max 0, Math.min 127, Math.round(value + shift)
+
+# Hauteur réellement jouée : les percussions (canal MIDI 10, index 9) ne sont
+# jamais transposées, quel que soit le réglage.
+playedPitch = (pitch, semitones, percussion) ->
+  return Number pitch if percussion
+  transposePitch pitch, semitones
 
 # Première note dont le début est >= time (recherche binaire ; notes triées).
 noteIndexAt = (notes, time) ->
@@ -231,12 +247,14 @@ scalePlaybackData = (data, factor) ->
   scaled
 
 # Analyse le MIDI une seule fois et normalise les notes en secondes, avec
-# l'indice de piste de chacune.
+# l'indice de piste de chacune. Les pistes de percussion (canal MIDI 10) sont
+# signalées : la transposition auditive ne les décale pas.
 normalizePlaybackData = (data, parser) ->
   throw new Error "Données de lecture absentes" unless data
   throw new Error "Parseur MIDI indisponible" unless parser
   midi = if typeof data.midi is 'string' then parser.parseBase64(data.midi) else parser.parse(data.midi)
   tracks = midi.tracks ? []
+  percussionTracks = (track.index for track in tracks when Number(track.channel) is 9)
   notes = []
   for track in tracks
     index = track.index ? tracks.indexOf track
@@ -288,6 +306,7 @@ normalizePlaybackData = (data, parser) ->
     syncMarks: data.syncMarks ? []
     staffLabels: data.staffLabels ? []
     segments
+    percussionTracks
   }
 
 # --- Moteur ----------------------------------------------------------------
@@ -321,6 +340,11 @@ createEngine = (initialOptions = {}) ->
     masterVolume: DEFAULT_VOLUME
     voiceVolumes: {}
     voiceMuted: {}
+    # Transposition auditive (demi-tons) : appliquée aux notes programmées à
+    # partir de maintenant, sans modifier les notes chargées. Les pistes de
+    # percussion n'en dépendent pas.
+    transposeSemitones: 0
+    percussionTracks: new Set()
     onEndCb: null
 
   api = {}
@@ -487,6 +511,14 @@ createEngine = (initialOptions = {}) ->
   trackDestination = (trackIndex) ->
     state.trackGains[trackIndex] ? state.masterGain
 
+  # Note telle qu'elle sera jouée : seule la hauteur peut changer. La note
+  # chargée reste intacte (même début, même durée, même piste).
+  transposedNote = (note) ->
+    return note if state.transposeSemitones is 0
+    pitch = playedPitch note.pitch, state.transposeSemitones, state.percussionTracks.has note.track
+    return note if pitch is note.pitch
+    {start: note.start, dur: note.dur, pitch, velocity: note.velocity, track: note.track}
+
   playOscillator = (note, at) ->
     ctx = state.ctx
     return unless ctx
@@ -589,15 +621,17 @@ createEngine = (initialOptions = {}) ->
       continue if (note.start ? 0) < current - 0.05
       at = state.startCtxTime + note.start
       at = now if at < now
+      played = transposedNote note
       if state.noteLog?
         state.noteLog.push {
-          start: note.start
-          dur: note.dur
-          pitch: note.pitch
-          track: note.track
+          start: played.start
+          dur: played.dur
+          pitch: played.pitch
+          sourcePitch: note.pitch
+          track: played.track
           offset: at - state.startCtxTime
         }
-      scheduleNote note, at
+      scheduleNote played, at
     if state.duration > 0 and current >= state.duration
       finish()
 
@@ -623,6 +657,7 @@ createEngine = (initialOptions = {}) ->
     state.trackMap = normalized.trackMap
     state.syncMarks = normalized.syncMarks
     state.staffLabels = normalized.staffLabels
+    state.percussionTracks = new Set normalized.percussionTracks ? []
     state.loaded = true
     state.position = 0
     state.noteIndex = 0
@@ -711,6 +746,17 @@ createEngine = (initialOptions = {}) ->
       state.masterGain.gain.setTargetAtTime volumeToGain(state.masterVolume), state.ctx.currentTime, 0.01
     api
 
+  # Transposition auditive (demi-tons). Les notes déjà programmées (fenêtre
+  # d'anticipation de 150 ms) et les sons en cours gardent leur hauteur : le
+  # changement s'entend à la note suivante. Aucune donnée chargée n'est
+  # modifiée, aucun re-rendu n'est déclenché.
+  api.setTranspose = (semitones) ->
+    value = Number semitones
+    state.transposeSemitones = if isFinite(value) then value else 0
+    api
+
+  api.getTranspose = -> state.transposeSemitones
+
   api.setVoiceVolume = (label, volume) ->
     return api unless label?
     state.voiceVolumes[label] = clampVolume volume
@@ -761,6 +807,8 @@ createEngine = (initialOptions = {}) ->
   api.segmentsDuration = segmentsDuration
   api.playbackTempoFactor = playbackTempoFactor
   api.scalePlaybackData = scalePlaybackData
+  api.transposePitch = transposePitch
+  api.playedPitch = playedPitch
   api.FLOOR = FLOOR
   api
 

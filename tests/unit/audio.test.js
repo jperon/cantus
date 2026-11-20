@@ -422,6 +422,42 @@ test('scalePlaybackData : facteur 1 rend les données telles quelles', () => {
   assert.strictEqual(audio.scalePlaybackData(data, 0), data);
 });
 
+// --- Transposition auditive ------------------------------------------------
+
+test('transposePitch : décalage entier, borné à 0..127', () => {
+  assert.strictEqual(audio.transposePitch(60, 2), 62);
+  assert.strictEqual(audio.transposePitch(60, -3), 57);
+  assert.strictEqual(audio.transposePitch(60, 0), 60);
+  assert.strictEqual(audio.transposePitch(126, 5), 127, 'borne haute');
+  assert.strictEqual(audio.transposePitch(2, -5), 0, 'borne basse');
+  assert.strictEqual(audio.transposePitch(60, 1.4), 61, 'arrondi');
+  assert.strictEqual(audio.transposePitch(60, NaN), 60, 'décalage invalide');
+});
+
+test('playedPitch : une percussion (canal MIDI 10) n’est jamais transposée', () => {
+  assert.strictEqual(audio.playedPitch(60, 5, false), 65);
+  assert.strictEqual(audio.playedPitch(60, 5, true), 60);
+  assert.strictEqual(audio.playedPitch(60, -5, true), 60);
+});
+
+test('normalizePlaybackData : pistes de percussion signalées, hauteurs intactes', () => {
+  const parser = {
+    parseBase64: () => ({
+      duration: 1,
+      tracks: [
+        { index: 0, channel: 0, notes: [{ start: 0, dur: 0.5, pitch: 60, velocity: 90 }] },
+        { index: 1, channel: 9, notes: [{ start: 0.2, dur: 0.2, pitch: 38, velocity: 80 }] },
+      ],
+    }),
+  };
+  const data = audio.normalizePlaybackData(
+    { midi: 'x', duration: 1000, segments: [{ fromMs: 0, toMs: 1000, offsetMs: 0 }] },
+    parser
+  );
+  assert.deepStrictEqual(data.percussionTracks, [1]);
+  assert.deepStrictEqual(data.notes.map((n) => n.pitch), [60, 38], 'notes chargées inchangées');
+});
+
 // --- Exécution -------------------------------------------------------------
 
 let passed = 0;
