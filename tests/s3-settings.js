@@ -600,8 +600,8 @@ async function runTransposition(browser, url, pageName, results) {
       initial.exists && initial.values.join('/') === '0/0' && initial.optionCount === 25 &&
         initial.labels.join(' ') === '−3 0 +2' && initial.sameRow &&
         initial.heights.every((h) => h >= 44) &&
-        initial.aria[0] === 'Transposition visuelle en demi-tons' &&
-        initial.aria[1] === 'Transposition auditive en demi-tons' && initial.marker ? 'OK' : 'ÉCHEC',
+        initial.aria[0] === 'Transposition de la partition en demi-tons' &&
+        initial.aria[1] === 'Transposition du son en demi-tons' && initial.marker ? 'OK' : 'ÉCHEC',
       `valeurs ${initial.values.join('/')}, ${initial.optionCount} options (${initial.labels.join(' ')}), ` +
       `même ligne ${initial.sameRow}, hauteurs ${initial.heights.join('/')} px, ` +
       `libellés « ${initial.aria.join(' » / « ')} »`);

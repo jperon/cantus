@@ -98,19 +98,16 @@ nearestSampleKey = (buffers, pitch) ->
 samplePlaybackRate = (sampleKey, pitch) ->
   2 ** ((Number(pitch) - Number(sampleKey)) / 12)
 
-# Transposition auditive : décale une hauteur MIDI sans jamais sortir du
-# domaine 0..127 (une note poussée hors limites est ramenée à la borne).
+# Transposition auditive : décale une hauteur MIDI entière (le réglage est
+# borné en amont par clampTranspose) sans jamais sortir du domaine 0..127 :
+# une note poussée hors limites est ramenée à la borne.
 transposePitch = (pitch, semitones) ->
-  value = Number pitch
-  return pitch unless isFinite value
-  shift = Number semitones
-  return value unless isFinite(shift) and shift isnt 0
-  Math.max 0, Math.min 127, Math.round(value + shift)
+  Math.max 0, Math.min 127, pitch + semitones
 
 # Hauteur réellement jouée : les percussions (canal MIDI 10, index 9) ne sont
 # jamais transposées, quel que soit le réglage.
 playedPitch = (pitch, semitones, percussion) ->
-  return Number pitch if percussion
+  return pitch if percussion
   transposePitch pitch, semitones
 
 # Première note dont le début est >= time (recherche binaire ; notes triées).
@@ -627,6 +624,8 @@ createEngine = (initialOptions = {}) ->
           start: played.start
           dur: played.dur
           pitch: played.pitch
+          # Hauteur d'origine : instrumentation de test, jamais utilisée par
+          # le moteur (le journal n'existe qu'entre startNoteLog et stop).
           sourcePitch: note.pitch
           track: played.track
           offset: at - state.startCtxTime
@@ -751,8 +750,7 @@ createEngine = (initialOptions = {}) ->
   # changement s'entend à la note suivante. Aucune donnée chargée n'est
   # modifiée, aucun re-rendu n'est déclenché.
   api.setTranspose = (semitones) ->
-    value = Number semitones
-    state.transposeSemitones = if isFinite(value) then value else 0
+    state.transposeSemitones = semitones
     api
 
   api.getTranspose = -> state.transposeSemitones
