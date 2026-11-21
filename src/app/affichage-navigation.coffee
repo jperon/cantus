@@ -486,7 +486,7 @@ findLastCompleteSvg = ->
   wrapper = slot.querySelector(".scroll-wrapper")
   return null unless wrapper
 
-  svgs = wrapper.querySelectorAll("svg")
+  svgs = wrapper.querySelectorAll(".scroll-page > svg")
   return null if svgs.length is 0
 
   slotRect = slot.getBoundingClientRect()
@@ -514,7 +514,8 @@ setScrollPos = (pos) ->
   showIndicator()
   prefetch()
   savePositionDebounced()
-  # Saut explicite (boutons de page, ±5, goto) : cale la lecture sur la page
+  # Saut explicite (boutons de page, sélecteur de page) : cale la lecture sur
+  # la page
   noteDisplayedPage()
 
 # Tolérance (px) : un système plus proche que ça du haut de l'écran y est
@@ -563,7 +564,7 @@ verticalTarget = (dir) ->
   else
     # Par page sans recouvrement : page SVG suivante après la dernière
     # entièrement visible, ou page précédente (comportement historique)
-    svgs = slot.querySelectorAll ".scroll-page svg"
+    svgs = slot.querySelectorAll ".scroll-page > svg"
     base = slot.getBoundingClientRect().top - slot.scrollTop
     svgTop = (svg) -> svg.getBoundingClientRect().top - base
     if dir > 0
@@ -571,6 +572,14 @@ verticalTarget = (dir) ->
       if lastComplete
         index = Array.prototype.indexOf.call svgs, lastComplete
         target = svgTop svgs[index + 1] if index + 1 < svgs.length
+      # Aucune page entièrement visible (page plus haute que la zone de
+      # lecture, cas de la barre du bas) : viser le début de la page suivante
+      # plutôt qu'une demi-page, sinon « par page » ne changerait jamais de
+      # page. Le repli demi-page ne sert plus qu'en fin de partition.
+      unless target?
+        for svg in svgs when svgTop(svg) > current + SYSTEM_TOLERANCE
+          target = svgTop svg
+          break
       target = null unless target? and target > current + SYSTEM_TOLERANCE
     else
       for svg in svgs when svgTop(svg) < current - SYSTEM_TOLERANCE
