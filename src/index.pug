@@ -143,9 +143,11 @@ html(lang="en")
             a(href="https://github.com/jperon/cantus/blob/master/THIRD-PARTY.md" target="_blank" rel="noopener" data-i18n="settings.thirdParty") Third-party components
         .settings-row
           small
-            span(data-i18n="settings.soundfontCredit") FluidR3 piano samples by Frank Wen, MIDI.js rendering by Benjamin Gleitzman —
+            span(data-i18n="settings.soundfontCredit") TimGM6mb General MIDI soundfont, SpessaSynth synthesis —
             = ' '
-            a(href="https://creativecommons.org/licenses/by/3.0/" target="_blank" rel="noopener") CC-BY 3.0
+            a(href="https://www.gnu.org/licenses/old-licenses/gpl-2.0.html" target="_blank" rel="noopener") GPL-2.0
+            = ' · '
+            a(href="https://www.apache.org/licenses/LICENSE-2.0" target="_blank" rel="noopener") Apache-2.0
     #library-overlay.hidden
       #library-header
         h2(data-i18n="library.title") Library
@@ -178,6 +180,7 @@ html(lang="en")
     script.
       window.__musicaBuildDate = "#{buildDate}"
       window.__musicaScoretkAvailable = #{scoretkAvailable ? 'true' : 'false'}
+      window.__musicaSoundfontAvailable = #{soundfontsAvailable ? 'true' : 'false'}
     script !{workerSetup}
     script !{fflateSetup}
     script !{mxlJs}
@@ -188,10 +191,9 @@ html(lang="en")
     script !{formatsJs}
     script !{timelineJs}
     script !{i18nJs}
+    //- Bundle SpessaSynth (window.__musicaSpessa) : la banque et le processeur
+    //- AudioWorklet de soundfonts/ sont chargés paresseusement au premier play().
+    script !{spessaJs}
     script !{audioJs}
     script !{playbackJs}
-    script !{soundfontPlayerJs}
-    if soundfontsAvailable
-      //- Échantillons MIDI.js chargés en différé : le moteur audio les lit au moment de jouer
-      script(src="soundfonts/piano-fluidr3-13notes.js" defer)
     script !{appJs}

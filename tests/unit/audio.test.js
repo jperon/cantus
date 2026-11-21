@@ -99,6 +99,77 @@ test('resolveTrackMap : entrées absentes ou non numériques ignorées', () => {
   assert.deepStrictEqual(audio.resolveTrackMap(null), { byTrack: {}, byLabel: {} });
 });
 
+// --- Canaux et programmes GM -----------------------------------------------
+
+const playedTrack = (index, program, channel = 0) => ({
+  index,
+  program,
+  channel,
+  notes: [{ start: 0, dur: 1, pitch: 60, velocity: 90 }],
+});
+
+test('assignTrackChannels : deux programmes différents -> deux canaux et deux programChange', () => {
+  const plan = audio.assignTrackChannels(
+    [playedTrack(0, 0), playedTrack(1, 40)],
+    {}
+  );
+  assert.deepStrictEqual(plan.byTrack, { 0: 0, 1: 1 });
+  assert.deepStrictEqual(plan.channels.map((c) => c.channel), [0, 1]);
+  assert.deepStrictEqual(plan.channels.map((c) => c.program), [0, 40]);
+  assert.strictEqual(plan.overflow, 0);
+  assert.ok(
+    plan.channels[0].program !== plan.channels[1].program,
+    'les deux pistes reçoivent des programChange différents'
+  );
+});
+
+test('assignTrackChannels : percussion sur le canal 9, programme ignoré', () => {
+  const plan = audio.assignTrackChannels(
+    [playedTrack(0, 0), playedTrack(1, 24, 9)],
+    {}
+  );
+  assert.strictEqual(plan.byTrack[1], 9);
+  const drums = plan.channels.find((c) => c.percussion);
+  assert.strictEqual(drums.channel, 9);
+  assert.deepStrictEqual(drums.tracks, [1]);
+});
+
+test('assignTrackChannels : plus de 15 pistes -> un canal par libellé de voix', () => {
+  const tracks = [];
+  const byTrack = {};
+  for (let i = 0; i < 24; i += 1) {
+    tracks.push(playedTrack(i, i));
+    byTrack[i] = `voix-${i % 3}`;
+  }
+  const plan = audio.assignTrackChannels(tracks, byTrack);
+  assert.strictEqual(plan.channels.length, 3, 'un canal par voix');
+  assert.strictEqual(plan.overflow, 0);
+  assert.strictEqual(new Set(plan.channels.map((c) => c.channel)).size, 3);
+  for (let i = 0; i < 24; i += 1) {
+    assert.strictEqual(plan.byTrack[i], plan.byTrack[i % 3], `piste ${i} rattachée à sa voix`);
+  }
+});
+
+test('assignTrackChannels : au-delà de 15 voix, débordement signalé', () => {
+  const tracks = [];
+  const byTrack = {};
+  for (let i = 0; i < 18; i += 1) {
+    tracks.push(playedTrack(i, i));
+    byTrack[i] = `voix-${i}`;
+  }
+  const plan = audio.assignTrackChannels(tracks, byTrack);
+  assert.strictEqual(plan.channels.length, 18);
+  assert.strictEqual(plan.overflow, 3, 'trois voix partagent un canal');
+});
+
+test('trackProgram : programme borné à 0..127, piano par défaut', () => {
+  assert.strictEqual(audio.trackProgram({ program: 40 }), 40);
+  assert.strictEqual(audio.trackProgram({ program: null }), 0);
+  assert.strictEqual(audio.trackProgram({}), 0);
+  assert.strictEqual(audio.trackProgram({ program: 200 }), 127);
+  assert.strictEqual(audio.trackProgram({ program: -4 }), 0);
+});
+
 // --- Ordonnanceur ----------------------------------------------------------
 
 const notes = [

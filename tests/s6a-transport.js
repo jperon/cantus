@@ -83,6 +83,37 @@ async function runPage(browser, url, pageName, results) {
       timeOk ? 'OK' : 'ÉCHEC',
       `« ${timeBefore.trim()} » → « ${timeAfter.trim()} », durée ${growth.after.duration} ms`);
 
+    // --- SpessaSynth : un canal et un programme par piste, gigue bornée ---
+    // La banque SF3 se charge au premier play() ; on laisse ensuite
+    // l'ordonnanceur envoyer quelques notes avant de lire la gigue mesurée
+    // (déclenchement réel - début musical, en secondes).
+    await page.evaluate(() => window.__musicaAudio.startNoteLog());
+    await page.waitForTimeout(1200);
+    const synth = await page.evaluate(() => ({
+      mode: window.__musicaAudio.getEngineMode(),
+      timing: window.__musicaAudio.getTimingStats(),
+      assignments: window.__musicaAudio.getChannelAssignments(),
+      changes: window.__musicaAudio.getProgramChanges(),
+    }));
+    const melodic = (synth.assignments || []).filter((a) => !a.percussion);
+    const channels = melodic.map((a) => a.channel);
+    const drums = (synth.assignments || []).filter((a) => a.percussion);
+    const uniqueChannels = new Set(channels).size === channels.length;
+    const programsSent = new Set((synth.changes || []).map((c) => `${c.channel}:${c.program}`));
+    const programsOk = melodic.every((a) => programsSent.has(`${a.channel}:${a.program}`));
+    const drumsOk = drums.every((a) => a.channel === 9);
+    const jitterOk = synth.mode === 'soundfont' && synth.timing &&
+      synth.timing.count > 0 && synth.timing.max < 0.05;
+    L.record(results, '6. SpessaSynth : canal et programme par piste, gigue < 50 ms', pageName,
+      uniqueChannels && programsOk && drumsOk && jitterOk ? 'OK' : 'ÉCHEC',
+      `moteur ${synth.mode}, ${melodic.length} piste(s) mélodique(s) sur ` +
+      `${new Set(channels).size} canal/canaux${uniqueChannels ? '' : ' (collision)'}, ` +
+      `${drums.length} piste(s) de batterie sur le 9 : ${drumsOk}, ` +
+      `${(synth.changes || []).length} programChange ; ` +
+      `${synth.timing ? synth.timing.count : 0} note(s) déclenchée(s), gigue max ` +
+      `${synth.timing ? (synth.timing.max * 1000).toFixed(1) : '?'} ms, ` +
+      `RMS ${synth.timing ? (synth.timing.rms * 1000).toFixed(1) : '?'} ms`);
+
     // --- Tempo de lecture, pendant la lecture ---
     // Telemann : 80 noires/min dans le fichier. Le défaut affiché est 80 ;
     // passer à 160 double le facteur et divise la durée par deux, en reprenant
@@ -469,7 +500,7 @@ async function runPage(browser, url, pageName, results) {
       await page.click('#transport-play');
       await waitState(page, 'playing');
       await page.evaluate(() => window.__musicaAudio.startNoteLog());
-      await page.waitForTimeout(700);
+      await page.waitForTimeout(1100);
       const hidden = await page.evaluate(async (label) => {
         const probe = await window.__musicaPlaybackProbe();
         const tracks = probe.trackMap?.[label] || [];
@@ -521,7 +552,7 @@ async function runPage(browser, url, pageName, results) {
       await page.click('#transport-play');
       await waitState(page, 'playing');
       await page.evaluate(() => window.__musicaAudio.startNoteLog());
-      await page.waitForTimeout(700);
+      await page.waitForTimeout(1100);
       const muted = await page.evaluate(async (label) => {
         const probe = await window.__musicaPlaybackProbe();
         const tracks = probe.trackMap?.[label] || [];
@@ -614,7 +645,7 @@ async function runPage(browser, url, pageName, results) {
       await page.click('#transport-play');
       await waitState(page, 'playing');
       await page.evaluate(() => window.__musicaAudio.startNoteLog());
-      await page.waitForTimeout(800);
+      await page.waitForTimeout(1100);
       const base = await page.evaluate(() => ({
         notes: window.__musicaAudio.getNotes(),
         log: window.__musicaAudio.getScheduledNotes(),
@@ -635,7 +666,7 @@ async function runPage(browser, url, pageName, results) {
         marker: !!document.querySelector('#page-current .scroll-page svg[data-test-mark="1"]'),
       }));
       await page.evaluate(() => window.__musicaAudio.startNoteLog());
-      await page.waitForTimeout(900);
+      await page.waitForTimeout(1100);
       const audible = await page.evaluate(() => ({
         log: window.__musicaAudio.getScheduledNotes(),
         notes: window.__musicaAudio.getNotes(),
@@ -652,7 +683,7 @@ async function runPage(browser, url, pageName, results) {
       await page.selectOption('#transpose-audio', '0');
       await page.waitForTimeout(150);
       await page.evaluate(() => window.__musicaAudio.startNoteLog());
-      await page.waitForTimeout(700);
+      await page.waitForTimeout(1100);
       const resetLog = await page.evaluate(() => window.__musicaAudio.getScheduledNotes());
       const resetOk = resetLog.length > 0 && resetLog.every((n) => n.pitch === n.sourcePitch);
       L.record(results, '6. Transposition auditive 0 : hauteurs d’origine rétablies à chaud', pageName,
@@ -684,7 +715,7 @@ async function runPage(browser, url, pageName, results) {
       await page.click('#transport-play');
       await waitState(page, 'playing');
       await page.evaluate(() => window.__musicaAudio.startNoteLog());
-      await page.waitForTimeout(800);
+      await page.waitForTimeout(1100);
       const visual = await page.evaluate(() => ({
         log: window.__musicaAudio.getScheduledNotes(),
         notes: window.__musicaAudio.getNotes(),

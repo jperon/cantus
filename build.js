@@ -15,9 +15,13 @@ const SCORETK_CLASSIC = path.join(
   process.env.SCORETK_PKG || path.join(__dirname, '..', 'musescore', 'result'),
   'classic'
 );
-// Échantillons audio (sous-ensemble FluidR3_GM, format MIDI.js)
+// Banque General MIDI (SF3) et processeur AudioWorklet de SpessaSynth.
 const SOUNDFONTS_SRC = path.join(PWA, 'soundfonts');
-const SOUNDFONT_SAMPLES = path.join(SOUNDFONTS_SRC, 'piano-fluidr3-13notes.js');
+const SOUNDFONT_FILE = path.join(SOUNDFONTS_SRC, 'TimGM6mb.sf3');
+const SPESSA_LIB = path.join(__dirname, 'node_modules', 'spessasynth_lib');
+const SPESSA_PROCESSOR = path.join(SPESSA_LIB, 'dist', 'spessasynth_processor.min.js');
+const SPESSA_WORKLET_DEST = path.join('soundfonts', 'spessasynth_processor.min.js');
+let spessaBundleCache = null;
 
 // Formats importables : src/formats.coffee est la seule source (extensions,
 // `from` scoretk, types MIME). Le module y est évalué en CommonJS pour calculer
@@ -200,49 +204,76 @@ function readScoretk() {
   };
 }
 
-// Copie les assets d'échantillons dans dist/soundfonts ; renvoie false s'il
-// n'y en a aucun (le build reste valide, le moteur audio se rabat sur OSC).
+// Copie la banque SF3 dans dist/soundfonts ; renvoie false si elle est
+// absente (le build reste valide, le moteur audio se rabat sur l'oscillateur).
 function copySoundfontSamples() {
-  if (!fs.existsSync(SOUNDFONTS_SRC)) {
-    console.warn(`  Attention : ${SOUNDFONTS_SRC} introuvable, échantillons audio désactivés`);
-    return false;
-  }
-  const files = fs.readdirSync(SOUNDFONTS_SRC).filter((file) => file.endsWith('.js'));
-  if (!files.length) {
-    console.warn('  Attention : aucun échantillon audio dans pwa/soundfonts, aperçu audio désactivé');
-    return false;
-  }
-  console.log('  Copying soundfont samples...');
   ensureDir(path.join(DIST, 'soundfonts'));
-  for (const file of files) {
-    const dest = path.join(DIST, 'soundfonts', file);
-    // Même précaution que copyScoretk : la destination peut être en lecture seule
-    fs.rmSync(dest, { force: true });
-    fs.copyFileSync(path.join(SOUNDFONTS_SRC, file), dest);
-    fs.chmodSync(dest, 0o644);
-    console.log(`  -> dist/soundfonts/${file}`);
+  // Fichier de l'ancienne banque MIDI.js : retiré de dist pour ne pas rester
+  // accessible après une mise à jour.
+  fs.rmSync(path.join(DIST, 'soundfonts', 'piano-fluidr3-13notes.js'), { force: true });
+  if (!fs.existsSync(SOUNDFONT_FILE)) {
+    console.warn(`  Attention : ${SOUNDFONT_FILE} introuvable, échantillons audio désactivés`);
+    return false;
   }
+  console.log('  Copying soundfont...');
+  const dest = path.join(DIST, 'soundfonts', 'TimGM6mb.sf3');
+  fs.rmSync(dest, { force: true });
+  fs.copyFileSync(SOUNDFONT_FILE, dest);
+  fs.chmodSync(dest, 0o644);
+  console.log('  -> dist/soundfonts/TimGM6mb.sf3');
   return true;
 }
 
-// Librairie soundfont-player (UMD déjà minifié) exposée comme window.Soundfont
-function readSoundfontPlayer() {
-  console.log('  Reading soundfont-player...');
-  const src = fs.readFileSync(
-    path.join(__dirname, 'node_modules', 'soundfont-player', 'dist', 'soundfont-player.min.js'),
-    'utf-8'
-  );
-  return minify(`(function(){${src}; window.__musicaSoundfontPlayer = window.Soundfont;})()`);
+// Bundle navigateur de spessasynth_lib (ESM + spessasynth_core), exposé comme
+// window.__musicaSpessa. Un seul bundle par processus de build.
+function readSpessaBundle() {
+  if (spessaBundleCache) return spessaBundleCache;
+  console.log('  Bundling spessasynth_lib...');
+  const result = esbuild.buildSync({
+    stdin: {
+      contents: "import { WorkletSynthesizer } from 'spessasynth_lib'; window.__musicaSpessa = { WorkletSynthesizer };",
+      resolveDir: __dirname,
+      sourcefile: 'spessasynth-entry.js',
+    },
+    bundle: true,
+    format: 'iife',
+    minify: MINIFY,
+    write: false,
+    platform: 'browser',
+    target: ['es2020'],
+    logLevel: 'warning',
+  });
+  spessaBundleCache = result.outputFiles[0].text;
+  return spessaBundleCache;
 }
 
-// Échantillons pour le SPA (file:// interdit fetch) ; null si absents
-function readSoundfontSamples() {
-  if (!fs.existsSync(SOUNDFONT_SAMPLES)) {
-    console.warn(`  Attention : ${SOUNDFONT_SAMPLES} introuvable, échantillons audio désactivés`);
+// Processeur AudioWorklet (texte), servi comme fichier dans le build normal et
+// inliné dans le SPA (file:// interdit fetch).
+function readSpessaWorklet() {
+  if (!fs.existsSync(SPESSA_PROCESSOR)) {
+    throw new Error(`Processeur SpessaSynth introuvable : ${SPESSA_PROCESSOR}`);
+  }
+  return fs.readFileSync(SPESSA_PROCESSOR, 'utf-8');
+}
+
+function copySpessaWorklet() {
+  console.log('  Copying SpessaSynth worklet...');
+  const dest = path.join(DIST, SPESSA_WORKLET_DEST);
+  ensureDir(path.dirname(dest));
+  fs.rmSync(dest, { force: true });
+  fs.writeFileSync(dest, readSpessaWorklet(), { mode: 0o644 });
+  fs.chmodSync(dest, 0o644);
+  console.log(`  -> dist/${SPESSA_WORKLET_DEST}`);
+}
+
+// Banque pour le SPA (file:// interdit fetch), inlinée en base64.
+function readSoundfontBase64() {
+  if (!fs.existsSync(SOUNDFONT_FILE)) {
+    console.warn(`  Attention : ${SOUNDFONT_FILE} introuvable, échantillons audio désactivés`);
     return null;
   }
-  console.log('  Reading soundfont samples...');
-  return fs.readFileSync(SOUNDFONT_SAMPLES, 'utf-8');
+  console.log('  Reading soundfont...');
+  return fs.readFileSync(SOUNDFONT_FILE).toString('base64');
 }
 
 // Le contenu d'un <script type="text/plain"> est du texte brut : un
@@ -366,9 +397,10 @@ async function build() {
 
   const scoretkAvailable = copyScoretk();
   const soundfontsAvailable = copySoundfontSamples();
+  copySpessaWorklet();
 
   const fflateSetup = readFflate();
-  const soundfontPlayerJs = readSoundfontPlayer();
+  const spessaJs = readSpessaBundle();
   const formats = loadFormats();
   const { mxlJs, storageJs, svgCacheJs, playbackCacheJs, midiJs, formatsJs, timelineJs, i18nJs, audioJs, playbackJs, workerJs, appJs } = compileScripts();
 
@@ -400,7 +432,7 @@ async function build() {
     css,
     workerSetup,
     fflateSetup,
-    soundfontPlayerJs,
+    spessaJs: escapeScript(spessaJs),
     mxlJs,
     storageJs,
     svgCacheJs,
@@ -449,8 +481,9 @@ async function buildSpa() {
   const verovioJs = fs.readFileSync(verovioToolkit(), 'utf-8');
 
   const fflateSetup = readFflate();
-  const soundfontPlayerJs = readSoundfontPlayer();
-  const soundfontSamples = readSoundfontSamples();
+  const spessaJs = readSpessaBundle();
+  const spessaWorklet = readSpessaWorklet();
+  const soundfontB64 = readSoundfontBase64();
   const formats = loadFormats();
   const { mxlJs, storageJs, svgCacheJs, playbackCacheJs, midiJs, formatsJs, timelineJs, i18nJs, audioJs, playbackJs, workerJs, appJs } = compileScripts();
   const scoretkInline = readScoretk();
@@ -506,8 +539,10 @@ ${workerJs}
     workerSource,
     workerSetup,
     fflateSetup,
-    soundfontPlayerJs,
-    soundfontSamples: soundfontSamples ? escapeScript(soundfontSamples) : null,
+    spessaJs: escapeScript(spessaJs),
+    spessaWorklet: escapeScript(spessaWorklet),
+    soundfontB64,
+    soundfontsAvailable: !!soundfontB64,
     mxlJs,
     storageJs,
     svgCacheJs,

@@ -18,27 +18,38 @@
 #   resume()                     -> reprend l'AudioContext (politique autoplay)
 #   destroy()
 #
-# Les dépendances du navigateur (window.__musicaMidi, window.Soundfont et
-# l'asset window.MIDI.Soundfont.acoustic_grand_piano) sont lues paresseusement
-# au premier play() : en build normal l'asset est chargé en defer et peut ne
-# pas encore être disponible quand ce fichier est évalué.
+# Les dépendances du navigateur (window.__musicaMidi, window.__musicaSpessa et
+# la soundfont) sont lues paresseusement au premier play(). Le synthétiseur
+# SpessaSynth (spessasynth_lib) est embarqué par build.js ; le fichier SF3 est
+# servi depuis soundfonts/ (build normal) ou inliné en base64 (SPA), et le
+# processeur AudioWorklet depuis soundfonts/ (build normal) ou inliné (SPA).
 #
-# Graphe : GainNode par piste MIDI -> GainNode par voix (libellé) -> masterGain
-# -> destination. Les pistes absentes de trackMap sont rattachées directement
-# au master pour ne jamais les perdre.
+# Graphe : sortie de canal SpessaSynth -> GainNode par piste -> GainNode par
+# voix (libellé) -> masterGain -> destination. Une piste sans canal (cas
+# dégradé) est jouée par l'oscillateur de repli vers son GainNode de piste.
+# Les pistes absentes de trackMap sont rattachées directement au master pour
+# ne jamais les perdre.
 
 FLOOR = 0.01            # plancher du curseur de volume (≈ −40 dB)
 DEFAULT_VOLUME = 100
 SCHEDULE_INTERVAL = 25  # ms, période de l'ordonnanceur à anticipation
 SCHEDULE_WINDOW = 0.150 # s, fenêtre de notes planifiées d'avance
-MAX_VOICES = 64         # plafond de sources simultanées
+MAX_VOICES = 64         # plafond de sources simultanées (repli oscillateur)
 SOUNDFONT_TIMEOUT = 1500 # ms avant bascule vers la synthèse de repli
 FALLBACK_ATTACK = 0.01
 FALLBACK_DECAY = 0.07
 FALLBACK_SUSTAIN = 0.7
 FALLBACK_RELEASE = 0.15
-DEFAULT_INSTRUMENT = 'acoustic_grand_piano'
-SOUNDFONT_FILE = 'soundfonts/piano-fluidr3-13notes.js'
+DEFAULT_PROGRAM = 0     # piano acoustique GM
+DRUM_CHANNEL = 9        # canal MIDI 10 (index 9) : percussion GM
+# Canaux mélodiques : les 15 canaux autres que le 9. Un canal par piste, ou
+# par libellé de voix quand les pistes dépassent cette capacité.
+MELODIC_CHANNELS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14, 15]
+SOUNDFONT_FILE = 'soundfonts/TimGM6mb.sf3'
+SPESSA_WORKLET_FILE = 'soundfonts/spessasynth_processor.min.js'
+# Petite tolérance pour l'envoi des noteOff : une note est relâchée au tick où
+# son échéance est atteinte (voir flushSpessaOffs).
+SPESSA_DUE_EPSILON = 0.005
 
 # --- Logique pure (testable sans AudioContext) ------------------------------
 
@@ -77,26 +88,70 @@ resolveTrackMap = (trackMap) ->
     byLabel[label] = list
   {byTrack, byLabel}
 
-# Échantillon le plus proche d'une hauteur MIDI. Le sous-ensemble FluidR3 ne
-# contient qu'une note tous les 4 demi-tons : on choisit le buffer voisin et on
-# corrige la hauteur par playbackRate, au lieu de chercher une note exacte.
-nearestSampleKey = (buffers, pitch) ->
-  return null unless buffers?
-  target = Number pitch
-  return null unless isFinite target
-  keys = []
-  for own key of buffers
-    value = Number key
-    keys.push value if isFinite value
-  return null unless keys.length
-  best = keys[0]
-  for key in keys[1..]
-    if Math.abs(key - target) < Math.abs(best - target)
-      best = key
-  best
+# Programme GM d'une piste (0 à 127). Une piste sans programChange explicite
+# reçoit le piano acoustique, programme 0.
+trackProgram = (track) ->
+  program = Number track?.program
+  return DEFAULT_PROGRAM unless isFinite program
+  Math.min 127, Math.max 0, Math.floor program
 
-samplePlaybackRate = (sampleKey, pitch) ->
-  2 ** ((Number(pitch) - Number(sampleKey)) / 12)
+# Répartit les pistes jouées sur les canaux MIDI de SpessaSynth :
+#   - une piste par canal mélodique tant qu'il y en a au plus 15 ;
+#   - au-delà, un canal par libellé de voix (les pistes d'une même voix
+#     partagent alors le programme de la première) ;
+#   - la percussion va toujours sur le canal 9.
+# `byTrack` est la table libellé par piste de resolveTrackMap. Retourne aussi
+# le nombre de groupes qui n'ont pas pu obtenir leur propre canal (overflow),
+# signalé par l'appelant : au-delà de 15 voix, deux voix doivent partager un
+# canal et l'une des deux est jouée avec le programme de l'autre.
+assignTrackChannels = (tracks, byTrack) ->
+  played = (track for track in (tracks ? []) when track?.notes?.length)
+  melodic = (track for track in played when Number(track.channel) isnt DRUM_CHANNEL)
+  percussion = (track for track in played when Number(track.channel) is DRUM_CHANNEL)
+  byTrackChannel = {}
+  channels = []
+  addChannel = (channel, entries, label, percussionFlag) ->
+    return unless entries.length
+    entries = entries.slice().sort (a, b) -> Number(a.index) - Number(b.index)
+    channels.push {
+      channel
+      program: trackProgram entries[0]
+      tracks: (Number(track.index) for track in entries)
+      label: label ? null
+      percussion: !!percussionFlag
+    }
+    byTrackChannel[Number track.index] = channel for track in entries
+
+  if melodic.length <= MELODIC_CHANNELS.length
+    for track, i in melodic
+      addChannel MELODIC_CHANNELS[i], [track], (byTrack ? {})[Number(track.index)], false
+  else
+    groups = []
+    index = {}
+    for track in melodic
+      trackIndex = Number track.index
+      label = (byTrack ? {})[trackIndex]
+      key = if label? then "label:#{label}" else "track:#{trackIndex}"
+      unless index[key]?
+        index[key] = {entries: [], label: label ? null}
+        groups.push index[key]
+      index[key].entries.push track
+    for group, i in groups
+      addChannel MELODIC_CHANNELS[i % MELODIC_CHANNELS.length], group.entries, group.label, false
+
+  # Percussion : un seul canal (9) pour toutes les pistes de batterie, dont
+  # les sorties ne peuvent donc pas être séparées par piste.
+  if percussion.length
+    labels = {}
+    for track in percussion
+      label = (byTrack ? {})[Number(track.index)]
+      labels[label] = true if label?
+    addChannel DRUM_CHANNEL, percussion, (Object.keys labels)[0] ? null, true
+  {
+    byTrack: byTrackChannel
+    channels
+    overflow: if melodic.length > MELODIC_CHANNELS.length then Math.max(0, groups.length - MELODIC_CHANNELS.length) else 0
+  }
 
 # Transposition auditive : décale une hauteur MIDI entière (le réglage est
 # borné en amont par clampTranspose) sans jamais sortir du domaine 0..127 :
@@ -315,9 +370,28 @@ createEngine = (initialOptions = {}) ->
     masterGain: null
     voiceGains: {}
     trackGains: {}
-    soundfont: null
+    # Synthétiseur SpessaSynth (WorkletSynthesizer) et état de son chargement.
+    synth: null
     enginePromise: null
     engineMode: null
+    # Incrémenté à chaque libération du moteur : un chargement qui se termine
+    # après un rechargement de partition est détruit au lieu d'être adopté.
+    engineGeneration: 0
+    workletUrl: null
+    # Connexions sortie de canal -> GainNode de piste, à détacher au prochain
+    # graphe (spessaLinks) et journal des programChange réellement envoyés.
+    spessaLinks: []
+    programChanges: []
+    # Répartition piste -> canal SpessaSynth et description par canal.
+    channelByTrack: {}
+    channelPlan: []
+    # File d'attente SpessaSynth : notes déjà retenues par l'ordonnanceur mais
+    # pas encore dues, et noteOff à envoyer. Les deux sont vidés à chaque
+    # pause/seek/stop, donc aucun événement ne survit à un changement de
+    # transport.
+    spessaQueue: []
+    pendingOffs: []
+    dispatchJitter: []
     loaded: false
     tracks: []
     notes: []
@@ -396,8 +470,37 @@ createEngine = (initialOptions = {}) ->
     buildGraph()
     ctx
 
+  # Détache les sorties de canal du synthétiseur courant. Les nœuds peuvent
+  # déjà avoir été déconnectés par buildGraph : disconnectChannel tolère un
+  # nœud absent de la connexion.
+  disconnectSpessa = ->
+    synth = state.synth
+    for link in state.spessaLinks
+      try
+        synth?.disconnectChannel link.node, link.channel
+      catch
+        null
+    state.spessaLinks = []
+
+  releaseSynth = ->
+    state.engineGeneration += 1
+    synth = state.synth
+    state.synth = null
+    state.spessaLinks = []
+    state.programChanges = []
+    state.pendingOffs = []
+    state.spessaQueue = []
+    state.dispatchJitter = []
+    if synth
+      try synth.stopAll true
+      try synth.destroy()
+    if state.workletUrl?.startsWith? 'blob:'
+      try URL.revokeObjectURL state.workletUrl
+      state.workletUrl = null
+    null
+
   resetEngine = ->
-    state.soundfont = null
+    releaseSynth()
     state.enginePromise = null
     state.engineMode = null
 
@@ -408,41 +511,70 @@ createEngine = (initialOptions = {}) ->
     value = state.duration if state.duration > 0 and value > state.duration
     value
 
-  # Source MIDI.js relue par soundfont-player. L'asset est déjà en mémoire
-  # (build normal : script defer ; SPA : script inliné) : on le sérialise en
-  # data: URL terminée par « //.js », ce qui évite tout accès réseau et tout
-  # blob à révoquer. Le « //.js » final est un commentaire JS inerte qui sert
-  # seulement à ce que le chargeur reconnaisse un fichier .js.
-  soundfontSource = (asset) ->
-    return SOUNDFONT_FILE unless asset
-    try
-      json = JSON.stringify asset
-      # Virgule finale : midiJsToJson coupe au dernier « , » puis ajoute « } ».
-      body = "MIDI.Soundfont.#{DEFAULT_INSTRUMENT} = #{json.slice(0, -1)},;//.js"
-      "data:application/javascript,#{encodeURIComponent body}"
-    catch
-      SOUNDFONT_FILE
+  # URL du processeur AudioWorklet : fichier servi à côté de la page (build
+  # normal) ou texte inliné (SPA, où file:// interdit fetch) transformé en
+  # blob. Le blob est conservé jusqu'à destroy().
+  workletModuleUrl = ->
+    return state.workletUrl if state.workletUrl
+    explicit = window?.__musicaSpessaWorkletUrl
+    return state.workletUrl = explicit if typeof explicit is 'string' and explicit
+    text = window?.__musicaSpessaWorkletText
+    if typeof text is 'string' and text.length
+      blob = new Blob [text], type: 'application/javascript'
+      return state.workletUrl = URL.createObjectURL blob
+    base = window?.location?.href ? 'http://localhost/'
+    state.workletUrl = new URL(SPESSA_WORKLET_FILE, base).href
 
-  # Charge l'instrument UNE SEULE FOIS, quel que soit le nombre de pistes.
-  # Les buffers décodés sont ensuite partagés par toutes les pistes ; le
-  # routage se fait note par note vers le GainNode de piste puis de voix.
+  decodeBase64Bytes = (b64) ->
+    midi = window?.__musicaMidi
+    return midi.decodeBase64 b64 if typeof midi?.decodeBase64 is 'function'
+    unless typeof atob is 'function'
+      throw new Error "Décodage base64 indisponible"
+    bin = atob String(b64).replace /\s+/g, ''
+    out = new Uint8Array bin.length
+    for i in [0...bin.length]
+      out[i] = bin.charCodeAt i
+    out
+
+  # Buffer de la soundfont : inliné en base64 dans le SPA (aucun fetch
+  # possible en file://), sinon téléchargé depuis soundfonts/.
+  readSoundfontBuffer = ->
+    return Promise.reject new Error "Soundfont absente" if window?.__musicaSoundfontAvailable is false
+    b64 = window?.__musicaSoundfontB64
+    if typeof b64 is 'string' and b64.length
+      try
+        bytes = decodeBase64Bytes b64
+        return Promise.resolve bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
+      catch err
+        return Promise.reject err
+    fetch SOUNDFONT_FILE, {cache: 'force-cache'}
+    .then (response) ->
+      throw new Error "Soundfont introuvable (#{response.status})" unless response.ok
+      response.arrayBuffer()
+
+  # Charge le synthétiseur et la banque UNE SEULE FOIS par moteur. La banque
+  # n'est pas relue du MIDI : scheduleNote envoie les noteOn/noteOff, ce qui
+  # laisse le remappage des reprises et le tempo sous le contrôle de
+  # normalizePlaybackData.
   loadSoundfont = (ctx) ->
     tracks = (track for track in state.tracks when track.notes?.length)
     return Promise.resolve(null) unless tracks.length
-    asset = window?.MIDI?.Soundfont?[DEFAULT_INSTRUMENT]
-    soundfont = window?.Soundfont
-    # Asset absent (build sans échantillons, ou premier lancement hors ligne
-    # sans précache) : repli immédiat sur l'oscillateur, sans requête réseau.
-    return Promise.resolve(null) unless asset and soundfont?.instrument
-    source = soundfontSource asset
-    loading = soundfont.instrument ctx, source,
-      isSoundfontURL: -> true
-      destination: state.masterGain
-    .then (instrument) ->
-      return null unless instrument?.buffers and Object.keys(instrument.buffers).length
-      instrument
+    Spessa = window?.__musicaSpessa
+    return Promise.resolve(null) unless Spessa?.WorkletSynthesizer
+    return Promise.resolve(null) unless ctx?.audioWorklet?.addModule
+    # Banque absente (build sans SF3) : inutile de charger le worklet.
+    return Promise.resolve(null) if window?.__musicaSoundfontAvailable is false
+    generation = state.engineGeneration
+    loading = Promise.resolve()
+      .then -> ctx.audioWorklet.addModule workletModuleUrl()
+      .then -> new Spessa.WorkletSynthesizer ctx
+      .then (synth) ->
+        readSoundfontBuffer()
+        .then (buffer) -> synth.soundBankManager.addSoundBank buffer, 'main'
+        .then -> synth.isReady
+        .then -> synth
     # La bascule doit être rapide et transparente : au-delà du délai, on
-    # n'attend plus les échantillons et on joue avec l'oscillateur.
+    # n'attend plus la banque et on joue avec l'oscillateur.
     new Promise (resolve) ->
       settled = false
       timer = setTimeout (->
@@ -450,16 +582,51 @@ createEngine = (initialOptions = {}) ->
         settled = true
         resolve null
       ), SOUNDFONT_TIMEOUT
-      loading.then (instrument) ->
-        return if settled
+      loading.then (synth) ->
+        if settled or generation isnt state.engineGeneration
+          try synth?.destroy()
+          catch
+            null
+          return
         settled = true
         clearTimeout timer
-        resolve instrument
+        resolve synth
       .catch ->
         return if settled
         settled = true
         clearTimeout timer
         resolve null
+
+  # Envoie les programme GM de chaque canal et raccorde les sorties de canal
+  # aux GainNode de piste. Une seule connexion par canal : les pistes d'une
+  # même voix partagent le gain de leur représentante.
+  setupSynth = (synth) ->
+    return unless synth
+    disconnectSpessa()
+    state.programChanges = []
+    seen = {}
+    for entry in state.channelPlan
+      unless seen[entry.channel]?
+        seen[entry.channel] = true
+        try
+          synth.programChange entry.channel, entry.program
+          state.programChanges.push {channel: entry.channel, program: entry.program}
+        catch
+          null
+      node = state.trackGains[entry.tracks[0]]
+      continue unless node
+      try
+        synth.connectChannel node, entry.channel
+        state.spessaLinks.push {node, channel: entry.channel}
+      catch
+        null
+    # Par sécurité, le canal 9 est explicitement un canal de batterie (c'est
+    # déjà le cas en GM) : les programmes y sont ignorés au profit du kit.
+    try
+      synth.midiChannels?[DRUM_CHANNEL]?.setDrums? true
+    catch
+      null
+    synth
 
   ensureEngine = ->
     return state.enginePromise if state.enginePromise
@@ -467,21 +634,25 @@ createEngine = (initialOptions = {}) ->
       state.engineMode = 'oscillator'
       state.enginePromise = Promise.resolve null
       return state.enginePromise
-    unless window?.Soundfont
+    unless window?.__musicaSpessa?.WorkletSynthesizer
       state.engineMode = 'oscillator'
       state.enginePromise = Promise.resolve null
       return state.enginePromise
     ctx = state.ctx
-    state.enginePromise = loadSoundfont(ctx).then (soundfont) ->
-      if soundfont
-        state.soundfont = soundfont
+    generation = state.engineGeneration
+    state.enginePromise = loadSoundfont(ctx).then (synth) ->
+      return state.engineMode if generation isnt state.engineGeneration
+      if synth
+        state.synth = synth
         state.engineMode = 'soundfont'
+        setupSynth synth
       else
-        state.soundfont = null
+        state.synth = null
         state.engineMode = 'oscillator'
       state.engineMode
     .catch ->
-      state.soundfont = null
+      return state.engineMode if generation isnt state.engineGeneration
+      state.synth = null
       state.engineMode = 'oscillator'
       null
     state.enginePromise
@@ -495,15 +666,28 @@ createEngine = (initialOptions = {}) ->
     now = if ctx then ctx.currentTime else 0
     for source in state.sources.slice()
       try
-        if source.kind is 'oscillator'
-          source.gain.gain.cancelScheduledValues now
-          source.gain.gain.setValueAtTime 0, now
-          source.osc.stop now
-        else if source.node?.stop
-          source.node.stop now
+        source.gain.gain.cancelScheduledValues now
+        source.gain.gain.setValueAtTime 0, now
+        source.osc.stop now
       catch
         null
     state.sources = []
+
+  # Coupe immédiatement les notes SpessaSynth (all sound off) et oublie les
+  # noteOff en attente : pause, arrêt et seek ne laissent aucune traînée ni
+  # aucun événement futur qui repartirait après la reprise.
+  clearSpessaNotes = ->
+    state.pendingOffs = []
+    state.spessaQueue = []
+    return unless state.synth
+    try
+      state.synth.stopAll true
+    catch
+      null
+
+  cancelAll = ->
+    cancelSources()
+    clearSpessaNotes()
 
   trackDestination = (trackIndex) ->
     state.trackGains[trackIndex] ? state.masterGain
@@ -544,52 +728,64 @@ createEngine = (initialOptions = {}) ->
     osc.start at
     osc.stop end + FALLBACK_RELEASE + 0.01
 
-  # Joue un buffer du soundfont partagé vers la piste de la note. Retourne
-  # false si aucun échantillon n'est disponible (repli oscillateur).
-  playSoundfont = (note, at) ->
-    ctx = state.ctx
-    buffers = state.soundfont?.buffers
-    return false unless ctx and buffers
-    sampleKey = nearestSampleKey buffers, note.pitch
-    return false unless sampleKey?
-    buffer = buffers[sampleKey] ? buffers["#{sampleKey}"]
-    return false unless buffer
-    sourceNode = ctx.createBufferSource()
-    gain = ctx.createGain()
-    source = {kind: 'soundfont', node: sourceNode, gain}
+  # Envoie une note au synthétiseur. Le noteOff est mémorisé et envoyé par
+  # l'ordonnanceur à son échéance : les événements ne sont pas datés dans le
+  # futur, ce qui permet à pause/seek/stop de tout couper instantanément.
+  # Retourne false si la note n'a pas de canal (repli oscillateur).
+  playSpessa = (note, at, intendedAt = at) ->
+    synth = state.synth
+    channel = state.channelByTrack[note.track]
+    return false unless synth and channel?
+    pitch = Math.max 0, Math.min 127, Math.round note.pitch
+    velocity = Math.max 1, Math.min 127, Math.round(note.velocity ? 100)
     try
-      sourceNode.buffer = buffer
-      sourceNode.playbackRate.value = samplePlaybackRate sampleKey, note.pitch
-      peak = (Math.min(127, Math.max(0, note.velocity)) / 127) * 0.6
-      end = at + Math.max(0.05, note.dur)
-      gain.gain.setValueAtTime 0, at
-      gain.gain.linearRampToValueAtTime peak, at + FALLBACK_ATTACK
-      gain.gain.linearRampToValueAtTime peak * FALLBACK_SUSTAIN, at + FALLBACK_ATTACK + FALLBACK_DECAY
-      gain.gain.setValueAtTime peak * FALLBACK_SUSTAIN, end
-      gain.gain.exponentialRampToValueAtTime 0.0001, end + FALLBACK_RELEASE
-      sourceNode.connect gain
-      gain.connect trackDestination(note.track)
-      sourceNode.onended = ->
-        removeSource source
-        try
-          gain.disconnect()
-        catch
-          null
-      sourceNode.start at
-      sourceNode.stop end + FALLBACK_RELEASE + 0.01
-      state.sources.push source
+      synth.noteOn channel, pitch, velocity
+      state.pendingOffs.push {
+        time: intendedAt + Math.max(0.02, note.dur)
+        channel
+        pitch
+      }
       true
     catch
-      try
-        gain.disconnect()
-      catch
-        null
       false
 
-  scheduleNote = (note, at) ->
+  # Envoie les notes retenues par l'ordonnanceur dont l'instant est arrivé.
+  # L'anticipation ne sert donc qu'à décider quelles notes jouer : rien n'est
+  # daté dans le futur chez SpessaSynth, et la file est annulable.
+  dispatchSpessaQueue = (now) ->
+    return unless state.synth and state.spessaQueue.length
+    remaining = []
+    for item in state.spessaQueue
+      if item.intendedAt <= now
+        if playSpessa item.note, now, item.intendedAt
+          if state.noteLog?
+            state.dispatchJitter.push {start: item.note.start, jitter: now - item.intendedAt}
+        else
+          playOscillator item.note, Math.max(item.intendedAt, now)
+      else
+        remaining.push item
+    state.spessaQueue = remaining
+
+  # Envoie les noteOff dus. Le tri par échéance garde l'ordre quelle que soit
+  # la durée des notes.
+  flushSpessaOffs = (now) ->
+    return unless state.synth and state.pendingOffs.length
+    remaining = []
+    for pending in state.pendingOffs
+      if pending.time <= now + SPESSA_DUE_EPSILON
+        try
+          state.synth.noteOff pending.channel, pending.pitch
+        catch
+          null
+      else
+        remaining.push pending
+    state.pendingOffs = remaining
+
+  scheduleNote = (note, at, intendedAt = at) ->
+    return true if state.engineMode is 'soundfont' and playSpessa note, at, intendedAt
     return if state.sources.length >= MAX_VOICES
-    return if state.engineMode is 'soundfont' and playSoundfont note, at
     playOscillator note, at
+    false
 
   clearTimer = ->
     if state.timer?
@@ -601,7 +797,7 @@ createEngine = (initialOptions = {}) ->
     state.playing = false
     state.position = state.duration
     clearTimer()
-    cancelSources()
+    cancelAll()
     callback = state.onEndCb
     callback? state.position
 
@@ -611,13 +807,18 @@ createEngine = (initialOptions = {}) ->
     now = ctx.currentTime
     current = now - state.startCtxTime
     return if current < 0
+    # L'oscillateur est planifié d'avance dans Web Audio. Les notes
+    # SpessaSynth sont d'abord retenues par le même ordonnanceur (la file
+    # d'anticipation), puis envoyées au moment où elles sont dues : faute
+    # d'API pour annuler des événements datés, cela garantit que
+    # pause/seek/stop coupent réellement tout.
     horizon = current + SCHEDULE_WINDOW
+    flushSpessaOffs now
     while state.noteIndex < state.notes.length and (state.notes[state.noteIndex].start ? 0) < horizon
       note = state.notes[state.noteIndex]
       state.noteIndex += 1
       continue if (note.start ? 0) < current - 0.05
-      at = state.startCtxTime + note.start
-      at = now if at < now
+      intendedAt = state.startCtxTime + note.start
       played = transposedNote note
       if state.noteLog?
         state.noteLog.push {
@@ -628,9 +829,13 @@ createEngine = (initialOptions = {}) ->
           # le moteur (le journal n'existe qu'entre startNoteLog et stop).
           sourcePitch: note.pitch
           track: played.track
-          offset: at - state.startCtxTime
+          offset: intendedAt - state.startCtxTime
         }
-      scheduleNote played, at
+      if state.engineMode is 'soundfont'
+        state.spessaQueue.push {note: played, intendedAt}
+      else
+        scheduleNote played, Math.max(intendedAt, now), intendedAt
+    dispatchSpessaQueue now
     if state.duration > 0 and current >= state.duration
       finish()
 
@@ -646,8 +851,10 @@ createEngine = (initialOptions = {}) ->
 
   api.load = (playbackData, options = {}) ->
     api.stop()
+    engineChanged = options.engine? and options.engine isnt state.options.engine
     for own key, value of options
       state.options[key] = value
+    resetEngine() if engineChanged
     parser = window?.__musicaMidi
     normalized = normalizePlaybackData playbackData, parser
     state.tracks = normalized.tracks
@@ -657,24 +864,31 @@ createEngine = (initialOptions = {}) ->
     state.syncMarks = normalized.syncMarks
     state.staffLabels = normalized.staffLabels
     state.percussionTracks = new Set normalized.percussionTracks ? []
+    plan = assignTrackChannels state.tracks, state.trackMap.byTrack
+    state.channelByTrack = plan.byTrack
+    state.channelPlan = plan.channels
+    if plan.overflow > 0
+      console.warn "Audio : #{plan.overflow} voix sans canal MIDI propre, programme partagé"
     state.loaded = true
     state.position = 0
     state.noteIndex = 0
     state.noteLog = null
-    resetEngine()
+    state.dispatchJitter = []
+    # La banque reste chargée d'un mouvement à l'autre : seul un moteur
+    # absent (premier play, ou échec précédent) est relancé.
+    resetEngine() unless state.synth
     buildGraph() if state.ctx
+    setupSynth state.synth if state.synth
     normalized
 
   api.play = (fromSeconds = 0, options = {}) ->
     throw new Error "Aucune donnée de lecture chargée" unless state.loaded
     if options.engine? and options.engine isnt state.options.engine
       state.options.engine = options.engine
-      state.soundfont = null
-      state.enginePromise = null
-      state.engineMode = null
+      resetEngine()
     ctx = ensureContext()
     api.resume()
-    cancelSources()
+    cancelAll()
     state.noteIndex = 0
     from = Number fromSeconds
     from = 0 unless isFinite from
@@ -692,13 +906,13 @@ createEngine = (initialOptions = {}) ->
     state.position = clampTime api.position()
     state.playing = false
     clearTimer()
-    cancelSources()
+    cancelAll()
     api
 
   api.stop = ->
     state.playing = false
     clearTimer()
-    cancelSources()
+    cancelAll()
     state.position = 0
     state.noteIndex = 0
     api
@@ -708,7 +922,7 @@ createEngine = (initialOptions = {}) ->
     state.position = value
     state.noteIndex = noteIndexAt state.notes, value
     if state.playing and state.ctx
-      cancelSources()
+      cancelAll()
       state.startCtxTime = state.ctx.currentTime - value
     api
 
@@ -731,6 +945,7 @@ createEngine = (initialOptions = {}) ->
   # journal n'est tenu tant qu'une sonde ne l'a pas demandé.
   api.startNoteLog = ->
     state.noteLog = []
+    state.dispatchJitter = []
     api
 
   api.getScheduledNotes = -> (state.noteLog ? []).slice()
@@ -781,24 +996,54 @@ createEngine = (initialOptions = {}) ->
   api.destroy = ->
     api.stop()
     disconnectGraph()
+    releaseSynth()
     if state.ctx
       ctx = state.ctx
       state.ctx = null
       ctx.close?().catch? -> null
-    state.soundfont = null
     state.enginePromise = null
     state.engineMode = null
     state.loaded = false
     state.noteLog = null
     api
 
+  # Diagnostic / tests : répartition des pistes sur les canaux MIDI, avec le
+  # programme GM et le libellé de voix de chaque canal.
+  api.getChannelAssignments = ->
+    for entry in state.channelPlan
+      channel: entry.channel
+      program: entry.program
+      tracks: entry.tracks.slice()
+      label: entry.label
+      percussion: entry.percussion
+
+  # Diagnostic / tests : programChange réellement envoyés au synthétiseur.
+  api.getProgramChanges = ->
+    for entry in state.programChanges
+      {channel: entry.channel, program: entry.program}
+
+  # Diagnostic / tests : gigue de l'ordonnanceur, mesurée à l'envoi réel des
+  # notes SpessaSynth (déclenchement - début musical). Null sans journal.
+  api.getTimingStats = ->
+    log = state.dispatchJitter ? []
+    return null unless log.length
+    diffs = for entry in log
+      Number entry.jitter
+    rms = Math.sqrt diffs.reduce(((sum, d) -> sum + d * d), 0) / diffs.length
+    {
+      count: diffs.length
+      max: Math.max.apply null, (Math.abs(d) for d in diffs)
+      rms
+      mean: diffs.reduce(((sum, d) -> sum + d), 0) / diffs.length
+    }
+
   # Exposé pour les tests purs et les intégrations avancées
   api.volumeToGain = volumeToGain
   api.voiceGainValue = voiceGainValue
   api.clampVolume = clampVolume
   api.resolveTrackMap = resolveTrackMap
-  api.nearestSampleKey = nearestSampleKey
-  api.samplePlaybackRate = samplePlaybackRate
+  api.trackProgram = trackProgram
+  api.assignTrackChannels = assignTrackChannels
   api.noteIndexAt = noteIndexAt
   api.notesToSchedule = notesToSchedule
   api.remapNotesToSegments = remapNotesToSegments

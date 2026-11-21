@@ -2,7 +2,9 @@
 # Progressive Web App with offline support and intelligent caching
 
 VERSION = 'dev'
-STATIC_CACHE = "musica-static-#{VERSION}"
+# v2 : passage de la banque MIDI.js au SF3 TimGM6mb et à SpessaSynth, avec son
+# processeur AudioWorklet. Les anciens caches statiques sont supprimés.
+STATIC_CACHE = "musica-static-v2-#{VERSION}"
 DYNAMIC_CACHE = "musica-dynamic-#{VERSION}"
 
 # Essential assets for offline functionality
@@ -24,9 +26,11 @@ SCORETK_ASSETS = [
   './scoretk/scoretk_wasm_bg.wasm'
 ]
 
-# Échantillons audio (facultatifs : absents des builds sans soundfonts)
+# Banque General MIDI et processeur AudioWorklet (facultatifs : absents des
+# builds sans soundfonts)
 SOUNDFONT_ASSETS = [
-  './soundfonts/piano-fluidr3-13notes.js'
+  './soundfonts/TimGM6mb.sf3'
+  './soundfonts/spessasynth_processor.min.js'
 ]
 
 # Formats importables : injectés par build.js depuis src/formats.coffee, seule
@@ -225,6 +229,7 @@ isStaticAsset = (urlOrPath) ->
          path.endsWith('.js') or
          path.endsWith('.css') or
          path.endsWith('.wasm') or
+         path.endsWith('.sf3') or
          path.endsWith('.png') or
          path.endsWith('.ico') or
          path.endsWith('.svg')
