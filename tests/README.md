@@ -165,8 +165,10 @@ l'ordonnanceur. Si `pwa/soundfonts/TimGM6mb.sf3` est absent, le build passe
   (défaut du fichier, unité et symbole affichés, réglage par fichier, retour au
   défaut, sans re-rendu SVG), transpositions visuelle et auditive (deux
   sélecteurs tactiles, valeurs de −12 à +12, persistance après rechargement,
-  variante de cache SVG, application du rendu à la fermeture), et langue (anglais par défaut, bascule au
-  français, préférence conservée).
+  variante de cache SVG, application du rendu à la fermeture), choix
+  d'instrument par voix et option « Piano seulement » (programmes GM effectifs,
+  persistance), et langue (anglais par défaut, bascule au français,
+  préférence conservée).
 - `s4-offline.js` — installation du service worker, mise en cache des trois
   fichiers mscz2xml, rechargement et import `.mscz` avec `setOffline(true)`,
   puis lecture audio hors ligne (position qui progresse, soundfont précaché ou
@@ -235,6 +237,13 @@ Le panneau Réglages expose :
 - **Volume par voix** (10–100) : propre à chaque fichier, appliqué au
   `GainNode` de la voix sans re-rendu ; conservé avec les voix masquées ou
   coupées dans `musica-hidden-parts-<fileId>`.
+- **Instrument par voix** : « Partition » (instrument GM d'origine) ou un des
+  128 programmes GM, groupés par famille de huit. Propre à chaque fichier
+  (`programs: {libellé: numéro}` dans `musica-hidden-parts-<fileId>`), appliqué
+  à chaud par `programChange` ; aucune sélection pour une voix de batterie.
+- **Piano seulement** : force le programme 0 sur toutes les voix mélodiques
+  sans effacer les choix par voix ; réglage global conservé dans
+  `musica-settings`. Les sélecteurs d'instrument sont alors désactivés.
 - **Affichage et lecture d'une voix** (deux interrupteurs de 44 px par voix) :
   « affichée » ne concerne que le rendu (masquage, appliqué à la fermeture),
   « jouée » que l'audio (coupure, appliquée à chaud au `GainNode`). Les deux

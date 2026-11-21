@@ -557,6 +557,81 @@ async function runTempo(browser, url, pageName, results) {
   await ctx.close();
 }
 
+// Instruments : choix par voix (programme GM, mémorisé par fichier) et option
+// globale « Piano seulement » (réglage `musica-settings`). Le programme
+// effectif est lu sur le canal de la voix par le diagnostic du moteur.
+async function runInstruments(browser, url, pageName, results) {
+  const { page, ctx, errors } = await L.newPage(browser, url, { pageName });
+  const readVoice = (label) => page.evaluate((name) => {
+    const sel = document.querySelector('#parts-list select.part-program');
+    const row = sel?.closest('.part-row');
+    const voice = name || row?.querySelector('.part-name')?.textContent?.trim();
+    const entry = window.__musicaAudio.getChannelAssignments()
+      .find((a) => a.label === voice) || null;
+    return {
+      label: voice,
+      value: sel?.value,
+      firstOption: sel?.options?.[0]?.textContent || '',
+      optgroups: sel ? sel.querySelectorAll('optgroup').length : 0,
+      disabled: !!(sel && sel.disabled),
+      program: entry ? entry.program : null,
+      channel: entry ? entry.channel : null,
+    };
+  }, label);
+  const startAndPause = async () => {
+    await page.click('#transport-play');
+    await page.waitForFunction(() => {
+      const state = window.__musicaPlaybackState?.();
+      return state?.state === 'playing' && window.__musicaAudio.getChannelAssignments().length > 0;
+    }, null, { timeout: 180000, polling: 100 });
+    await page.click('#transport-play');
+    await page.waitForFunction(() => window.__musicaPlaybackState?.().state === 'paused',
+      null, { timeout: 10000, polling: 100 });
+  };
+  try {
+    await importLoaded(page, L.FILES.telemannXml);
+    await startAndPause();
+    await L.openSettings(page);
+    const before = await readVoice();
+    await page.selectOption('#parts-list select.part-program >> nth=0', '52');
+    await page.waitForTimeout(300);
+    const chosen = await readVoice(before.label);
+    const uiOk = before.optgroups === 16 && /^Partition \(/.test(before.firstOption);
+    L.record(results, '3. Instrument d’une voix : « Choir Aahs » (programme 52) appliqué au moteur', pageName,
+      uiOk && chosen.value === '52' && chosen.program === 52 ? 'OK' : 'ÉCHEC',
+      `voix « ${before.label} », ${before.optgroups} familles, première option « ${before.firstOption} » ; ` +
+      `choix ${chosen.value}, programme effectif ${chosen.program} (canal ${chosen.channel})`);
+
+    await page.check('#piano-only');
+    await page.waitForTimeout(300);
+    const piano = await readVoice(before.label);
+    L.record(results, '3. Piano seulement : programme 0 sans effacer le choix par voix', pageName,
+      piano.program === 0 && piano.value === '52' && piano.disabled ? 'OK' : 'ÉCHEC',
+      `programme effectif ${piano.program}, choix conservé ${piano.value}, sélecteur désactivé ${piano.disabled}`);
+
+    await page.reload({ waitUntil: 'domcontentloaded', timeout: 60000 });
+    await L.waitReady(page, 60000);
+    await page.waitForTimeout(400);
+    await L.openLibraryEntry(page, 0);
+    await L.waitFirstSvg(page, 180000);
+    await L.waitBackgroundLoaded(page, 180000);
+    await page.waitForTimeout(1000);
+    await startAndPause();
+    await L.openSettings(page);
+    const persisted = await readVoice(before.label);
+    const checked = await page.isChecked('#piano-only');
+    L.record(results, '3. Instrument et piano seulement conservés après rechargement', pageName,
+      checked && persisted.value === '52' && persisted.program === 0 && persisted.disabled ? 'OK' : 'ÉCHEC',
+      `piano seulement coché ${checked}, choix ${persisted.value}, programme effectif ${persisted.program}, ` +
+      `sélecteur désactivé ${persisted.disabled}`);
+    const relevant = L.summarize(errors);
+    L.record(results, '6. Erreurs JS (instruments)', pageName, relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
+  } catch (e) {
+    L.record(results, '3. Instruments par voix', pageName, 'ÉCHEC', 'exception du test : ' + e.message);
+  }
+  await ctx.close();
+}
+
 // Transpositions visuelle et auditive : deux réglages propres au fichier,
 // persistants, sélectionnables au doigt. La visuelle transpose le rendu et sa
 // variante de cache ; l'auditive reste purement audio (aucun re-rendu).
@@ -1005,6 +1080,7 @@ async function runVoiceLayout(browser, url, pageName, results) {
       await runBach(browser, url, pageName, results);
       await runPartSizeCacheRace(browser, url, pageName, results);
       await runTempo(browser, url, pageName, results);
+      await runInstruments(browser, url, pageName, results);
       await runTransposition(browser, url, pageName, results);
       await runLanguage(browser, url, pageName, results);
       await runFolderVoices(browser, url, pageName, results);
