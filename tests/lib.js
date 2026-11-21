@@ -254,6 +254,7 @@ async function partRows(page) {
       sizeDisabled: !!size?.disabled,
       volume: volume?.value,
       volumeDisabled: !!volume?.disabled,
+      expanded: r.querySelector('.part-expand')?.getAttribute('aria-expanded') === 'true',
     };
   }));
 }

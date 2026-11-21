@@ -80,6 +80,8 @@ async function runPage(browser, url, pageName, results) {
         'ÉCHEC', `voix : ${JSON.stringify(rows)}`);
       return;
     }
+    await page.click(`#parts-list .part-row:nth-child(${target.index + 1}) .part-expand`);
+    await page.waitForTimeout(100);
     await page.selectOption(
       `#parts-list .part-row:nth-child(${target.index + 1}) select.part-program`,
       String(PROGRAM)

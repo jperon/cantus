@@ -366,8 +366,8 @@ async function runPage(browser, url, pageName, results) {
         saved: JSON.parse(localStorage.getItem('musica-settings') || '{}').masterVolume,
         transportHidden: document.getElementById('transport')?.classList.contains('hidden'),
       }));
-      const ok = labelSet === '55' && savedSet === 55 && afterReload.slider === '55' &&
-        afterReload.label === '55' && afterReload.saved === 55 && afterReload.transportHidden;
+      const ok = labelSet === '55 %' && savedSet === 55 && afterReload.slider === '55' &&
+        afterReload.label === '55 %' && afterReload.saved === 55 && afterReload.transportHidden;
       L.record(results, '6. Volume général 55 % conservé après rechargement', pageName,
         ok ? 'OK' : 'ÉCHEC',
         `libellé ${labelSet}, réglage ${savedSet}, après rechargement curseur ${afterReload.slider}/${afterReload.label}, ` +

@@ -23,6 +23,22 @@ async function importLoaded(page, file, timeout = 300000) {
   await page.waitForTimeout(800);
 }
 
+// Déplie les réglages fins (taille, instrument) d'une voix.
+async function expandPart(page, index = 0) {
+  await page.click(`#parts-list .part-expand >> nth=${index}`);
+  await page.waitForTimeout(100);
+}
+
+// Ouvre les réglages sans dépendre de la barre du bas, hors périmètre de ce
+// scénario et trop large pour un écran de 390 px.
+async function openSettingsNarrow(page) {
+  await page.evaluate(() => document.getElementById('btn-settings').click());
+  await page.waitForFunction(
+    () => !document.getElementById('settings-overlay').classList.contains('hidden'),
+    null, { timeout: 10000 }
+  );
+}
+
 async function runTelemann(browser, url, pageName, results) {
   const { page, ctx, errors } = await L.newPage(browser, url, { pageName });
   try {
@@ -95,6 +111,7 @@ async function runTelemann(browser, url, pageName, results) {
 
     // Taille d'une seule voix : le menu « Tailles à » passe à « — » (valeurs
     // divergentes), aucune régénération avant la fermeture.
+    await expandPart(page, 0);
     await page.selectOption('#parts-list select.part-size >> nth=0', '120');
     await page.waitForTimeout(2000);
     const marker = await L.markerPresent(page);
@@ -203,7 +220,7 @@ async function runZoomAndScroll(browser, url, pageName, results) {
       const info1 = await L.pageInfo(page);
       const rect1 = await page.$eval('#page-current .scroll-page svg', (s) => { const r = s.getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height) }; });
       const saved = await page.evaluate(() => localStorage.getItem('musica-settings'));
-      const zoomOk = label === '60' && JSON.parse(saved).zoom === 60 && (rect1.h !== rect0.h || info1.total !== info0.total);
+      const zoomOk = label === '60 %' && JSON.parse(saved).zoom === 60 && (rect1.h !== rect0.h || info1.total !== info0.total);
       L.record(results, '3. Zoom 40 → 60 : libellé, rendu et réglage conservé', pageName, zoomOk ? 'OK' : 'ÉCHEC',
         `libellé ${label}, SVG ${rect0.w}×${rect0.h} → ${rect1.w}×${rect1.h}, pages ${info0.total} → ${info1.total}, réglage ${saved}`);
       const posOk = info0.page === 1 || info1.page !== 1;
@@ -381,6 +398,7 @@ async function runBach(browser, url, pageName, results) {
     await L.markSvg(page);
     await L.openSettings(page);
     const rows = await L.partRows(page);
+    await expandPart(page, 0);
     await page.selectOption('#parts-list select.part-size >> nth=0', '120');
     await L.closeSettings(page);
     await waitNewSvg(page, 300000);
@@ -499,6 +517,8 @@ async function runPartSizeCacheRace(browser, url, pageName, results) {
     await page.click('.nav-btn[data-action="next-5"]');
     await page.waitForTimeout(200);
     await L.openSettings(page);
+    await expandPart(page, 0);
+    await expandPart(page, 1);
     await page.selectOption('#parts-list select.part-size >> nth=0', '70');
     await page.selectOption('#parts-list select.part-size >> nth=1', '70');
     await page.waitForTimeout(3000); // les SVG en vol arrivent ici
@@ -543,6 +563,7 @@ async function runPartSizeCacheRace(browser, url, pageName, results) {
     // Le rapport d'utilisateur : une seule voix repasse de 70 à 80 %.
     const sigBefore = await pageSignature(page);
     await L.openSettings(page);
+    await expandPart(page, 0);
     await page.selectOption('#parts-list select.part-size >> nth=0', '80');
     await L.closeSettings(page);
     await waitVariantCached(page, variant80);
@@ -670,6 +691,7 @@ async function runInstruments(browser, url, pageName, results) {
     await importLoaded(page, L.FILES.telemannXml);
     await startAndPause();
     await L.openSettings(page);
+    await expandPart(page, 0);
     const before = await readVoice();
     await page.selectOption('#parts-list select.part-program >> nth=0', '52');
     await page.waitForTimeout(300);
@@ -725,59 +747,43 @@ function firstNoteheadY(page) {
 
 async function runTransposition(browser, url, pageName, results) {
   const { page, ctx, errors } = await L.newPage(browser, url, {
-    pageName, viewport: { width: 360, height: 800 },
+    pageName, viewport: { width: 390, height: 844 },
   });
   try {
     await importLoaded(page, L.FILES.telemannXml);
     const noteYBefore = await firstNoteheadY(page);
     await L.markSvg(page);
-    await L.openSettings(page);
+    await openSettingsNarrow(page);
     const initial = await page.evaluate(() => {
       const visual = document.getElementById('transpose-visual');
       const audio = document.getElementById('transpose-audio');
       const vr = visual?.getBoundingClientRect();
       const ar = audio?.getBoundingClientRect();
       const label = (value) => [...(visual?.options || [])].find((o) => o.value === value)?.textContent;
-      const rowRect = document.querySelector('.settings-transpose')?.getBoundingClientRect();
-      const fields = [...document.querySelectorAll('.settings-transpose .transpose-field')].map((f) => {
-        const r = f.getBoundingClientRect();
-        return {
-          text: f.querySelector('.transpose-label')?.textContent,
-          left: Math.round(r.left),
-          right: Math.round(r.right),
-        };
-      });
+      const sectionOf = (el) => el?.closest('section')?.querySelector('.settings-section-title')?.textContent.trim();
+      const groupLabel = (el) => el?.closest('.settings-group')?.querySelector('.settings-label')?.textContent.trim();
       return {
         exists: !!visual && !!audio,
         values: [visual?.value, audio?.value],
         optionCount: visual?.options.length || 0,
         labels: [label('-3'), label('0'), label('2')],
-        sameRow: !!vr && !!ar && Math.abs(vr.top - ar.top) <= 2,
         heights: [Math.round(vr?.height || 0), Math.round(ar?.height || 0)],
         aria: [visual?.getAttribute('aria-label'), audio?.getAttribute('aria-label')],
-        fields,
-        rowLeft: Math.round(rowRect?.left || 0),
-        rowWidth: Math.round(rowRect?.width || 0),
+        sections: [sectionOf(visual), sectionOf(audio)],
+        groups: [groupLabel(visual), groupLabel(audio)],
         marker: !!document.querySelector('#page-current .scroll-page svg[data-test-mark="1"]'),
       };
     });
-    // Les deux champs se suivent à gauche, au lieu d'être répartis sur la
-    // largeur (le second rejeté au milieu de l'écran).
-    const fieldsLeft = initial.fields.length === 2 &&
-      initial.fields[0].left - initial.rowLeft < 2 &&
-      initial.fields[1].left - initial.fields[0].right < 40 &&
-      initial.fields[1].right - initial.fields[0].left < initial.rowWidth * 0.85;
-    L.record(results, '3. Transposition : deux sélecteurs sur une ligne, à 0 par défaut, cibles ≥ 44 px', pageName,
+    L.record(results, '3. Transposition : partition et son dans leurs sections, à 0, cibles ≥ 44 px', pageName,
       initial.exists && initial.values.join('/') === '0/0' && initial.optionCount === 25 &&
-        initial.labels.join(' ') === '−3 0 +2' && initial.sameRow &&
-        initial.heights.every((h) => h >= 44) && fieldsLeft &&
+        initial.labels.join(' ') === '−3 0 +2' && initial.heights.every((h) => h >= 44) &&
+        initial.sections.join('|') === 'Affichage|Lecture' &&
+        initial.groups.join('|') === 'Transposition de la partition|Transposition du son' &&
         initial.aria[0] === 'Transposition de la partition en demi-tons' &&
         initial.aria[1] === 'Transposition du son en demi-tons' && initial.marker ? 'OK' : 'ÉCHEC',
       `valeurs ${initial.values.join('/')}, ${initial.optionCount} options (${initial.labels.join(' ')}), ` +
-      `même ligne ${initial.sameRow}, hauteurs ${initial.heights.join('/')} px, ` +
-      `champs à gauche ${fieldsLeft} (${initial.fields.map((f) => `${f.text} ${f.left}–${f.right}`).join(', ')} ` +
-      `dans ${initial.rowLeft}+${initial.rowWidth}), ` +
-      `libellés « ${initial.aria.join(' » / « ')} »`);
+      `sections ${initial.sections.join('/')}, libellés de groupe « ${initial.groups.join(' » / « ')} », ` +
+      `hauteurs ${initial.heights.join('/')} px, aria « ${initial.aria.join(' » / « ')} »`);
 
     // Changement sans re-rendu avant la fermeture : la visuelle attend la
     // fermeture, l'auditive ne provoque jamais de rendu.
@@ -1017,72 +1023,227 @@ async function runFolderVoices(browser, url, pageName, results) {
   await ctx.close();
 }
 
-// Ergonomie tactile : à 360 px de large, les deux interrupteurs de chaque voix
-// ont une cible d'au moins 44 px, le nom occupe sa ligne puis les deux groupes
-// [👁 taille] [🔊 volume] se placent dessous, sans débordement horizontal.
-async function runVoiceTouchTargets(browser, url, pageName, results) {
+// Structure du panneau : quatre sections titrées dans l'ordre demandé,
+// contrôles de même hauteur et même style, valeurs de curseurs avec unité,
+// bouton « Tempo du fichier » franchement actif quand il l'est.
+async function runSettingsSections(browser, url, pageName, results) {
   const { page, ctx, errors } = await L.newPage(browser, url, {
-    pageName, viewport: { width: 360, height: 800 },
+    pageName, viewport: { width: 390, height: 844 },
   });
   try {
     await importLoaded(page, L.FILES.telemannXml);
     await L.openSettings(page);
+    const info = await page.evaluate(() => {
+      const visible = (el) => el && el.offsetParent !== null;
+      const fonts = (el) => getComputedStyle(el);
+      const sectionOf = (id) => document.getElementById(id)
+        ?.closest('section')?.querySelector('.settings-section-title')?.textContent.trim() || null;
+      const selects = [...document.querySelectorAll('#settings-overlay select')].filter(visible);
+      return {
+        titles: [...document.querySelectorAll('.settings-section-title')].map((el) => el.textContent.trim()),
+        zoom: document.getElementById('zoom-value')?.textContent.trim(),
+        master: document.getElementById('master-volume-value')?.textContent.trim(),
+        language: {
+          height: Math.round(document.getElementById('language-select')?.getBoundingClientRect().height || 0),
+          fontSize: parseFloat(fonts(document.getElementById('language-select')).fontSize),
+        },
+        selectStyles: selects.map((sel) => {
+          const style = fonts(sel);
+          return {
+            id: sel.id || sel.className,
+            height: Math.round(sel.getBoundingClientRect().height),
+            fontSize: style.fontSize,
+            radius: style.borderRadius,
+            background: style.backgroundColor,
+          };
+        }),
+        placed: {
+          zoom: sectionOf('zoom-range'),
+          transposeVisual: sectionOf('transpose-visual'),
+          master: sectionOf('master-volume-range'),
+          tempo: sectionOf('tempo-input'),
+          transposeAudio: sectionOf('transpose-audio'),
+          piano: sectionOf('piano-only'),
+          follow: sectionOf('follow-playback'),
+          repeats: sectionOf('expand-repeats'),
+          language: sectionOf('language-select'),
+          storage: sectionOf('btn-storage'),
+          parts: sectionOf('parts-list'),
+        },
+        voiceCompact: (() => {
+          const row = document.querySelector('#parts-list .part-row');
+          const expand = row?.querySelector('.part-expand');
+          return {
+            row: !!row,
+            expand: Math.round(expand?.getBoundingClientRect().height || 0),
+            detailsHidden: row?.querySelector('.part-details')?.classList.contains('hidden') === true,
+          };
+        })(),
+      };
+    });
+    const titlesOk = info.titles.join('|') === 'Affichage|Lecture|Voix|Application';
+    L.record(results, '3. Réglages : sections Affichage, Lecture, Voix, Application', pageName,
+      titlesOk ? 'OK' : 'ÉCHEC', `titres « ${info.titles.join(' » / « ')} »`);
+
+    const placed = info.placed;
+    const placedOk = placed.zoom === 'Affichage' && placed.transposeVisual === 'Affichage' &&
+      placed.master === 'Lecture' && placed.tempo === 'Lecture' && placed.transposeAudio === 'Lecture' &&
+      placed.piano === 'Lecture' && placed.follow === 'Lecture' && placed.repeats === 'Lecture' &&
+      placed.language === 'Application' && placed.storage === 'Application' && placed.parts === 'Voix';
+    L.record(results, '3. Réglages : chaque contrôle est dans sa section', pageName,
+      placedOk ? 'OK' : 'ÉCHEC',
+      `affichage ${placed.zoom}/${placed.transposeVisual}, lecture ${[placed.master, placed.tempo, placed.transposeAudio, placed.piano, placed.follow, placed.repeats].join('/')}, ` +
+      `voix ${placed.parts}, application ${placed.language}/${placed.storage}`);
+
+    const sameStyle = (key) => new Set(info.selectStyles.map((s) => s[key])).size === 1;
+    const selectsOk = info.selectStyles.length >= 5 && info.selectStyles.every((s) => s.height >= 44) &&
+      sameStyle('fontSize') && sameStyle('radius') && sameStyle('background');
+    L.record(results, '3. Réglages : listes déroulantes de même hauteur et de même style', pageName,
+      selectsOk ? 'OK' : 'ÉCHEC',
+      `${info.selectStyles.length} listes : ${info.selectStyles.map((s) => `${s.id || s.className} ${s.height}px`).join(', ')} ; ` +
+      `style commun ${sameStyle('fontSize') && sameStyle('radius') && sameStyle('background')}`);
+
+    const valuesOk = /^\d+ %$/.test(info.zoom || '') && /^\d+ %$/.test(info.master || '') &&
+      info.language.height >= 44 && info.language.fontSize >= 14;
+    L.record(results, '3. Réglages : zoom et volume avec unité, langue lisible', pageName,
+      valuesOk && info.voiceCompact.row && info.voiceCompact.expand >= 44 && info.voiceCompact.detailsHidden ? 'OK' : 'ÉCHEC',
+      `zoom « ${info.zoom} », volume « ${info.master} », langue ${info.language.height} px / ${info.language.fontSize} px ; ` +
+      `voix compacte ${info.voiceCompact.row}, chevron ${info.voiceCompact.expand} px, réglages fins repliés ${info.voiceCompact.detailsHidden}`);
+
+    // Le bouton « Tempo du fichier » actif garde un contour et un fond francs ;
+    // désactivé, il est visiblement estompé.
+    await page.$eval('#tempo-input', (el) => {
+      el.value = '100';
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await page.waitForTimeout(300);
+    const active = await page.evaluate(() => {
+      const btn = document.getElementById('tempo-reset');
+      const style = getComputedStyle(btn);
+      return { disabled: btn.disabled, opacity: style.opacity, background: style.backgroundColor, border: style.borderTopColor };
+    });
+    await page.click('#tempo-reset');
+    await page.waitForTimeout(300);
+    const inactive = await page.evaluate(() => {
+      const btn = document.getElementById('tempo-reset');
+      const style = getComputedStyle(btn);
+      return { disabled: btn.disabled, opacity: style.opacity, background: style.backgroundColor };
+    });
+    const activeOk = active.disabled === false && active.opacity === '1' &&
+      active.background === 'rgb(255, 255, 255)' && active.border === 'rgb(34, 34, 34)';
+    const inactiveOk = inactive.disabled === true && parseFloat(inactive.opacity) < 0.6;
+    L.record(results, '3. Réglages : « Tempo du fichier » actif ne semble pas désactivé', pageName,
+      activeOk && inactiveOk ? 'OK' : 'ÉCHEC',
+      `actif : désactivé ${active.disabled}, opacité ${active.opacity}, fond ${active.background}, bord ${active.border} ; ` +
+      `désactivé : opacité ${inactive.opacity}`);
+    const relevant = L.summarize(errors);
+    L.record(results, '6. Erreurs JS (structure des réglages)', pageName, relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
+  } catch (e) {
+    L.record(results, '3. Structure des réglages', pageName, 'ÉCHEC', 'exception du test : ' + e.message);
+  }
+  await ctx.close();
+}
+
+// Ergonomie tactile : à 390 px de large, chaque voix tient sur une ligne
+// compacte (nom + 👁 + 🔊 + volume), les cibles font au moins 44 px et les
+// réglages fins (taille, instrument) restent repliés jusqu'à un appui.
+async function runVoiceTouchTargets(browser, url, pageName, results) {
+  const { page, ctx, errors } = await L.newPage(browser, url, {
+    pageName, viewport: { width: 390, height: 844 },
+  });
+  try {
+    await importLoaded(page, L.FILES.telemannXml);
+    await openSettingsNarrow(page);
     const metrics = await page.evaluate(() => [...document.querySelectorAll('#parts-list .part-row')].map((row) => {
+      const expand = row.querySelector('.part-expand');
       const toggles = [...row.querySelectorAll('.part-toggle')].map((b) => {
         const r = b.getBoundingClientRect();
         return { w: Math.round(r.width), h: Math.round(r.height), pressed: b.getAttribute('aria-pressed') };
       });
-      const name = row.querySelector('.part-name').getBoundingClientRect();
-      const groups = [...row.querySelectorAll('.part-group')].map((g) => {
-        const r = g.getBoundingClientRect();
-        return { top: Math.round(r.top), left: Math.round(r.left), right: Math.round(r.right) };
-      });
+      const controls = row.querySelector('.part-controls').getBoundingClientRect();
+      const volume = row.querySelector('select.part-volume').getBoundingClientRect();
+      const expandRect = expand.getBoundingClientRect();
       return {
         name: row.querySelector('.part-name')?.textContent?.trim(),
         toggles,
-        nameBottom: Math.round(name.bottom),
-        groups,
+        expand: { h: Math.round(expandRect.height), top: Math.round(expandRect.top), right: Math.round(expandRect.right) },
+        controls: { top: Math.round(controls.top), left: Math.round(controls.left), right: Math.round(controls.right) },
+        volume: { h: Math.round(volume.height) },
+        detailsHidden: row.querySelector('.part-details')?.classList.contains('hidden'),
+        expanded: expand.getAttribute('aria-expanded') === 'true',
       };
     }));
     const targetsOk = metrics.length >= 2 && metrics.every((m) => m.toggles.length === 2 &&
-      m.toggles.every((t) => t.w >= 44 && t.h >= 44 && t.pressed !== null));
-    const twoLines = metrics.length >= 2 && metrics.every((m) => m.groups.length === 2 &&
-      m.groups.every((g) => g.top >= m.nameBottom - 1));
-    L.record(results, '3. Interrupteurs de voix : cibles ≥ 44 px et nom sur sa ligne à 360 px', pageName,
-      targetsOk && twoLines ? 'OK' : 'ÉCHEC',
-      `${metrics.length} voix : ${metrics.map((m) => m.toggles.map((t) => `${t.w}×${t.h}`).join(' ')).join(' | ')} ; ` +
-      `nom puis groupes : ${metrics.map((m) => `${m.nameBottom}→${m.groups.map((g) => g.top).join('/')}`).join(' ')}`);
-    // Aucun débordement horizontal à 360 px, y compris dans le panneau.
+      m.toggles.every((t) => t.w >= 44 && t.h >= 44 && t.pressed !== null) &&
+      m.expand.h >= 44 && m.volume.h >= 44);
+    const oneLine = metrics.length >= 2 && metrics.every((m) =>
+      Math.abs(m.expand.top - m.controls.top) < 12 && m.expand.right <= m.controls.left + 2);
+    L.record(results, '3. Voix : une ligne compacte par voix, cibles ≥ 44 px à 390 px', pageName,
+      targetsOk && oneLine && metrics.every((m) => m.detailsHidden && !m.expanded) ? 'OK' : 'ÉCHEC',
+      `${metrics.length} voix : ${metrics.map((m) => `${m.name} ${m.toggles.map((t) => `${t.w}×${t.h}`).join(' ')} ` +
+        `volume ${m.volume.h} px, chevron ${m.expand.h} px`).join(' | ')} ; ` +
+      `ligne unique : ${oneLine}, réglages fins repliés : ${metrics.every((m) => m.detailsHidden)}`);
+
+    // Un appui sur le chevron déplie la taille et l'instrument, puis les replie.
+    await expandPart(page, 0);
+    const opened = await page.evaluate(() => {
+      const row = document.querySelector('#parts-list .part-row');
+      const details = row.querySelector('.part-details');
+      const size = row.querySelector('select.part-size').getBoundingClientRect();
+      const program = row.querySelector('select.part-program')?.getBoundingClientRect();
+      return {
+        expanded: row.querySelector('.part-expand').getAttribute('aria-expanded') === 'true',
+        hidden: details.classList.contains('hidden'),
+        sizeHeight: Math.round(size.height),
+        programHeight: program ? Math.round(program.height) : null,
+        sizeLabel: details.querySelector('.part-detail-label')?.textContent,
+      };
+    });
+    await expandPart(page, 0);
+    const closed = await page.evaluate(() => {
+      const row = document.querySelector('#parts-list .part-row');
+      return {
+        expanded: row.querySelector('.part-expand').getAttribute('aria-expanded') === 'true',
+        hidden: row.querySelector('.part-details').classList.contains('hidden'),
+      };
+    });
+    L.record(results, '3. Voix : le chevron déplie taille et instrument, puis les replie', pageName,
+      opened.expanded && !opened.hidden && opened.sizeHeight >= 44 && opened.programHeight >= 44 &&
+        closed.expanded === false && closed.hidden ? 'OK' : 'ÉCHEC',
+      `déplié : aria-expanded ${opened.expanded}, taille ${opened.sizeHeight} px, ` +
+      `instrument ${opened.programHeight} px, libellé « ${opened.sizeLabel} » ; ` +
+      `replié : aria-expanded ${closed.expanded}, caché ${closed.hidden}`);
+
+    // Un appui sur la ligne (hors contrôle) déplie sans toucher aux interrupteurs.
+    const before = await L.partRows(page);
+    await page.evaluate(() => document.querySelector('#parts-list .part-row').click());
+    await page.waitForTimeout(150);
+    const after = await L.partRows(page);
+    const statesSame = before.every((r, i) => r.displayed === after[i].displayed && r.played === after[i].played);
+    L.record(results, '3. Voix : un appui sur la ligne déplie sans changer les interrupteurs', pageName,
+      statesSame && after[0]?.expanded ? 'OK' : 'ÉCHEC',
+      `avant ${before.map((r) => `${r.displayed ? 'a' : 'm'}/${r.played ? 'j' : 'c'}`).join(' ')} ; ` +
+      `après ${after.map((r) => `${r.displayed ? 'a' : 'm'}/${r.played ? 'j' : 'c'}`).join(' ')}, ` +
+      `déplié ${after[0]?.expanded}`);
+
+    // Aucun débordement horizontal à 390 px, y compris dans le panneau.
     const overflow = await page.evaluate(() => ({
       scrollWidth: document.documentElement.scrollWidth,
       innerWidth: window.innerWidth,
+      overlay: (() => {
+        const el = document.getElementById('settings-overlay');
+        return { scroll: el.scrollWidth, client: el.clientWidth };
+      })(),
       listOverflow: (() => {
         const list = document.getElementById('parts-list');
         return list.scrollWidth > list.clientWidth;
       })(),
     }));
-    L.record(results, '3. Voix : aucun débordement horizontal à 360 px', pageName,
-      overflow.scrollWidth <= overflow.innerWidth && !overflow.listOverflow ? 'OK' : 'ÉCHEC',
-      `document ${overflow.scrollWidth}/${overflow.innerWidth} px, liste débordante : ${overflow.listOverflow}`);
-    // Chaque groupe reste insécable : le sélecteur et son bouton sont sur la
-    // même ligne à l'intérieur du groupe.
-    const grouped = await page.evaluate(() => [...document.querySelectorAll('#parts-list .part-group')].every((g) => {
-      const btn = g.querySelector('.part-toggle').getBoundingClientRect();
-      const sel = g.querySelector('select').getBoundingClientRect();
-      return Math.abs((btn.top + btn.height / 2) - (sel.top + sel.height / 2)) < 4;
-    }));
-    L.record(results, '3. Voix : chaque bouton et son sélecteur forment un groupe insécable', pageName,
-      grouped ? 'OK' : 'ÉCHEC', `groupes alignés : ${grouped}`);
-    // La ligne n'est plus un <label> : un tap à côté ne bascule rien.
-    const before = await L.partRows(page);
-    await page.click('#parts-list .part-row:nth-child(1) .part-name');
-    await page.waitForTimeout(150);
-    const after = await L.partRows(page);
-    const untouched = JSON.stringify(before) === JSON.stringify(after);
-    L.record(results, '3. Interrupteurs de voix : un tap à côté ne bascule rien', pageName,
-      untouched ? 'OK' : 'ÉCHEC',
-      `avant ${before.map((r) => `${r.displayed ? 'a' : 'm'}/${r.played ? 'j' : 'c'}`).join(' ')} ; ` +
-      `après ${after.map((r) => `${r.displayed ? 'a' : 'm'}/${r.played ? 'j' : 'c'}`).join(' ')}`);
+    L.record(results, '3. Réglages : aucun débordement horizontal à 390 px', pageName,
+      overflow.scrollWidth <= overflow.innerWidth && overflow.overlay.scroll <= overflow.overlay.client &&
+        !overflow.listOverflow ? 'OK' : 'ÉCHEC',
+      `document ${overflow.scrollWidth}/${overflow.innerWidth} px, panneau ${overflow.overlay.scroll}/${overflow.overlay.client} px, ` +
+      `liste débordante : ${overflow.listOverflow}`);
     const relevant = L.summarize(errors);
     L.record(results, '6. Erreurs JS (cibles tactiles des voix)', pageName, relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
   } catch (e) {
@@ -1091,9 +1252,8 @@ async function runVoiceTouchTargets(browser, url, pageName, results) {
   await ctx.close();
 }
 
-// Disposition en grand écran : les contrôles suivent le nom au lieu d'être
-// repoussés au bord, dans l'ordre 👁, taille, 🔊, volume, avec des colonnes
-// alignées d'une voix à l'autre.
+// Grand écran : la ligne compacte garde l'ordre 👁, 🔊, volume ; les réglages
+// fins (taille, instrument) sont sur une seconde ligne, repliée par défaut.
 async function runVoiceLayout(browser, url, pageName, results) {
   const { page, ctx, errors } = await L.newPage(browser, url, {
     pageName, viewport: { width: 1280, height: 900 },
@@ -1104,39 +1264,49 @@ async function runVoiceLayout(browser, url, pageName, results) {
     const layout = await page.evaluate(() => {
       const list = document.getElementById('parts-list');
       const rows = [...list.querySelectorAll('.part-row')].map((row) => {
-        const nameRect = row.querySelector('.part-name').getBoundingClientRect();
-        const groups = [...row.querySelectorAll('.part-group')].map((g) => g.getBoundingClientRect());
-        const order = [...row.querySelectorAll('.part-toggle, select.part-size, select.part-volume')].map((el) => (
+        const expand = row.querySelector('.part-expand').getBoundingClientRect();
+        const controls = row.querySelector('.part-controls').getBoundingClientRect();
+        const order = [...row.querySelectorAll('.part-toggle, select.part-volume')].map((el) => (
           el.classList.contains('part-display') ? 'display'
-            : el.classList.contains('part-size') ? 'size'
-              : el.classList.contains('part-sound') ? 'sound' : 'volume'));
+            : el.classList.contains('part-sound') ? 'sound' : 'volume'));
+        const details = row.querySelector('.part-details');
         return {
           name: row.querySelector('.part-name')?.textContent?.trim(),
-          nameRight: Math.round(nameRect.right),
-          groupLefts: groups.map((g) => Math.round(g.left)),
-          lastRight: Math.round(groups[groups.length - 1].right),
+          expandTop: Math.round(expand.top),
+          controlsTop: Math.round(controls.top),
+          controlsRight: Math.round(controls.right),
+          rowRight: Math.round(row.getBoundingClientRect().right),
           order,
+          detailsHidden: details.classList.contains('hidden'),
         };
       });
+      return { listWidth: Math.round(list.getBoundingClientRect().width), rows };
+    });
+    const expected = 'display,sound,volume';
+    const orderOk = layout.rows.length >= 2 && layout.rows.every((r) => r.order.join(',') === expected);
+    const lineOk = layout.rows.every((r) => Math.abs(r.expandTop - r.controlsTop) < 12);
+    const alignedOk = new Set(layout.rows.map((r) => r.controlsRight)).size === 1;
+    const collapsedOk = layout.rows.every((r) => r.detailsHidden);
+    L.record(results, '3. Voix à 1280 px : ligne compacte 👁 🔊 volume, réglages fins repliés', pageName,
+      orderOk && lineOk && alignedOk && collapsedOk ? 'OK' : 'ÉCHEC',
+      `ordre ${layout.rows.map((r) => r.order.join('+')).join(' | ')} ; ligne unique : ${lineOk}, ` +
+      `contrôles alignés à droite : ${alignedOk}, réglages fins repliés : ${collapsedOk}`);
+
+    await expandPart(page, 0);
+    const opened = await page.evaluate(() => {
+      const row = document.querySelector('#parts-list .part-row');
+      const controls = row.querySelector('.part-controls').getBoundingClientRect();
+      const details = row.querySelector('.part-details').getBoundingClientRect();
       return {
-        listWidth: Math.round(list.getBoundingClientRect().width),
-        rows,
+        visible: !row.querySelector('.part-details').classList.contains('hidden'),
+        below: Math.round(details.top) >= Math.round(controls.bottom) - 2,
+        size: !!row.querySelector('select.part-size'),
+        program: !!row.querySelector('select.part-program'),
       };
     });
-    const expected = 'display,size,sound,volume';
-    const orderOk = layout.rows.length >= 2 && layout.rows.every((r) => r.order.join(',') === expected);
-    const longestNameRight = Math.max(...layout.rows.map((r) => r.nameRight));
-    const gaps = layout.rows.map((r) => r.groupLefts[0] - longestNameRight);
-    const closeOk = gaps.every((g) => g >= 0 && g < 200);
-    const sameLeft = (i) => new Set(layout.rows.map((r) => r.groupLefts[i])).size === 1;
-    const alignedOk = sameLeft(0) && sameLeft(1);
-    const notStretched = layout.rows.every((r) => r.lastRight < layout.listWidth / 2);
-    L.record(results, '3. Voix à 1280 px : réglages juste après le nom, ordre 👁 taille 🔊 volume', pageName,
-      orderOk && closeOk && alignedOk && notStretched ? 'OK' : 'ÉCHEC',
-      `ordre ${layout.rows.map((r) => r.order.join('+')).join(' | ')} ; ` +
-      `nom le plus long finit à ${longestNameRight} px, premier contrôle à ` +
-      `${layout.rows.map((r) => r.groupLefts[0]).join('/')} px (écart ${gaps.join('/')} px) ; ` +
-      `colonnes alignées : ${alignedOk}, dernier contrôle < moitié de ${layout.listWidth} px : ${notStretched}`);
+    L.record(results, '3. Voix à 1280 px : les réglages fins se déplient sous la ligne', pageName,
+      opened.visible && opened.below && opened.size && opened.program ? 'OK' : 'ÉCHEC',
+      `déplié ${opened.visible}, sous la ligne ${opened.below}, taille ${opened.size}, instrument ${opened.program}`);
     const relevant = L.summarize(errors);
     L.record(results, '6. Erreurs JS (disposition des voix)', pageName, relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
   } catch (e) {
@@ -1162,6 +1332,7 @@ async function runVoiceLayout(browser, url, pageName, results) {
       await runTransposition(browser, url, pageName, results);
       await runLanguage(browser, url, pageName, results);
       await runFolderVoices(browser, url, pageName, results);
+      await runSettingsSections(browser, url, pageName, results);
       await runVoiceTouchTargets(browser, url, pageName, results);
       await runVoiceLayout(browser, url, pageName, results);
     }
