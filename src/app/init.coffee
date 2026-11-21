@@ -9,6 +9,7 @@ document.addEventListener "DOMContentLoaded", ->
   setupImport()
   setupLibrary()
   setupSettings()
+  setupExport()
   setupResize()
 
   # Request increased storage quota for MusicXML files

@@ -303,6 +303,7 @@ html, body {
 }
 
 #btn-library,
+#btn-export,
 #btn-settings {
   background: rgba(255,255,255,0.85);
   border: 1px solid #ddd;
@@ -315,6 +316,7 @@ html, body {
 }
 
 #btn-library.hidden,
+#btn-export.hidden,
 #btn-settings.hidden {
   display: none;
 }
@@ -754,6 +756,81 @@ body.theme-dark #page-indicator {
 
 #library-overlay.hidden {
   display: none;
+}
+
+/* Dialogue d'export : petit panneau modal, fond assombri, au-dessus des
+   panneaux plein écran (réglages, bibliothèque). */
+#export-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.4);
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+#export-overlay.hidden {
+  display: none;
+}
+
+#export-dialog {
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.3);
+  width: min(360px, 100%);
+  max-height: 100%;
+  overflow-y: auto;
+}
+
+#export-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid #eee;
+}
+
+#export-header h2 {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+#export-close {
+  background: none;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  color: #666;
+  padding: 4px 8px;
+}
+
+#export-format {
+  flex: 1;
+  min-width: 0;
+  padding: 8px;
+  font-size: 14px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  background: #f5f5f5;
+  color: #333;
+}
+
+#export-actions {
+  display: flex;
+  gap: 10px;
+  padding: 14px 16px;
+}
+
+#export-actions .settings-btn {
+  margin-top: 0;
+}
+
+#export-confirm {
+  background: #333;
+  border-color: #333;
+  color: #fff;
 }
 
 #library-header {

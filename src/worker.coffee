@@ -415,6 +415,105 @@ readPartInfo = (xmlString) ->
     staves[idMatch[1]] = count
   {parts, labels, staves}
 
+# --- Export ----------------------------------------------------------------
+
+# Échappe un texte inséré dans un élément XML (instrument-name).
+escapeXmlText = (text) ->
+  String(text)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+
+# Insère <midi-program> dans un <midi-instrument> qui n'en a pas, à la place
+# qu'impose le schéma MusicXML : après midi-bank, avant midi-unpitched puis
+# volume, pan et elevation.
+insertMidiProgram = (inner, value) ->
+  tag = "<midi-program>#{value}</midi-program>"
+  for name in ["midi-unpitched", "volume", "pan", "elevation"]
+    match = inner.match new RegExp "<#{name}(?:\\s[^>]*)?>", "i"
+    return inner.slice(0, match.index) + tag + inner.slice(match.index) if match
+  inner + tag
+
+# Réécrit le <midi-program> d'un <midi-instrument> existant, ou l'y ajoute.
+setInstrumentProgram = (instrument, value) ->
+  openEnd = instrument.indexOf ">"
+  closeAt = instrument.lastIndexOf "</midi-instrument>"
+  return instrument if openEnd < 0 or closeAt < openEnd
+  opening = instrument.slice 0, openEnd + 1
+  inner = instrument.slice openEnd + 1, closeAt
+  if /<midi-program(?:\s[^>]*)?>[\s\S]*?<\/midi-program>/i.test inner
+    inner = inner.replace /<midi-program(?:\s[^>]*)?>[\s\S]*?<\/midi-program>/i,
+      "<midi-program>#{value}</midi-program>"
+  else
+    inner = insertMidiProgram inner, value
+  "#{opening}#{inner}</midi-instrument>"
+
+# Ajoute score-instrument (si nécessaire) puis midi-instrument à un score-part
+# qui n'en a pas. L'id de midi-instrument est un IDREF : il reprend celui d'un
+# score-instrument existant, sinon on en crée un avant lui.
+addMidiInstrument = (attrs, body, value) ->
+  partId = attrs.match(/\bid\s*=\s*"([^"]*)"/)?[1] ? "P1"
+  existing = body.match /<score-instrument\b[^>]*\bid\s*=\s*"([^"]*)"/i
+  instrumentId = existing?[1]
+  addition = ""
+  unless instrumentId?
+    instrumentId = "#{partId}-I1"
+    name = xmlTagText(body, "part-name") or partId
+    addition += "<score-instrument id=\"#{escapeXmlText instrumentId}\">" +
+      "<instrument-name>#{escapeXmlText name}</instrument-name></score-instrument>"
+  addition += "<midi-instrument id=\"#{escapeXmlText instrumentId}\">" +
+    "<midi-program>#{value}</midi-program></midi-instrument>"
+  "#{body}#{addition}"
+
+# Remplace le programme General MIDI des score-part visés. `programs` associe
+# l'id d'un score-part au programme GM (0..127) ; MusicXML numérote
+# <midi-program> à partir de 1. Une partie de batterie (canal MIDI 10) n'est
+# jamais modifiée : son programme désigne un kit de percussions. Les score-part
+# absents de `programs` restent intacts.
+replaceMidiPrograms = (xml, programs) ->
+  return xml unless typeof xml is "string" and programs?
+  xml.replace /<score-part\b([^>]*)>([\s\S]*?)<\/score-part>/gi, (whole, attrs, body) ->
+    id = attrs.match(/\bid\s*=\s*"([^"]*)"/)?[1]
+    return whole unless id?
+    raw = programs[id]
+    return whole unless raw?
+    program = parseInt raw, 10
+    return whole unless isFinite(program) and program >= 0 and program <= 127
+    return whole if /<midi-channel(?:\s[^>]*)?>\s*10\s*<\/midi-channel>/i.test body
+    value = program + 1
+    newBody = if /<midi-instrument\b/i.test body
+      body.replace /<midi-instrument\b[^>]*>[\s\S]*?<\/midi-instrument>/gi,
+        (instrument) -> setInstrumentProgram instrument, value
+    else
+      addMidiInstrument attrs, body, value
+    "<score-part#{attrs}>#{newBody}</score-part>"
+
+# Choix d'instrument par libellé de voix (partPrograms côté page) -> id de
+# score-part. Les libellés sont calculés comme côté page (readPartInfo), jamais
+# par position : une partie peut manquer dans le mouvement élagué.
+programsByPartId = (xml, programsByLabel) ->
+  result = {}
+  return result unless programsByLabel?
+  {parts} = readPartInfo xml
+  for part in parts
+    program = programsByLabel[part.label]
+    result[part.id] = program if program?
+  result
+
+# Exporte la source complète (toutes ses voix) vers un format que scoretk sait
+# écrire, après application des choix d'instrument de l'utilisateur. Les octets
+# du MusicXML complet sont ceux enregistrés par registerSource, pas le
+# mouvement élagué du rendu.
+exportSource = (sourceId, to, programsByLabel) ->
+  source = sources[sourceId]
+  return Promise.reject new Error "Source #{sourceId} inconnue dans le worker" unless source
+  xml = replaceMidiPrograms source.xml, programsByPartId(source.xml, programsByLabel)
+  loadScoretk().then (api) ->
+    bytes = api.convert new TextEncoder().encode(xml), {from: 'musicxml', to}
+    throw new Error "scoretk n'a produit aucun octet pour #{to}" unless bytes?
+    bytes
+
 # Mapping libellé -> indices de pistes MIDI. Les pistes de portée suivent
 # l'ordre du document ; les noms FF 03 servent à confirmer/affiner, puis
 # l'ordre du document remplit les portées restantes. Une partie à plusieurs
@@ -738,6 +837,31 @@ handleMessage = (e) ->
               message: err.message or String(err)
             }
 
+      when "listFormats"
+        { id } = e.data
+        loadScoretk()
+          .then (api) -> api.formats()
+          .then (formats) ->
+            self.postMessage { type: "formatsResult", id, formats }
+          .catch (err) ->
+            self.postMessage {
+              type: "formatsError"
+              id
+              message: err.message or String(err)
+            }
+
+      when "exportSource"
+        { id, sourceId, to, programs } = e.data
+        exportSource sourceId, to, programs
+          .then (bytes) ->
+            self.postMessage { type: "exportResult", id, bytes }
+          .catch (err) ->
+            self.postMessage {
+              type: "exportError"
+              id
+              message: err.message or String(err)
+            }
+
       when "clearMovements"
         clearMovements e.data.keepSources
 
@@ -819,6 +943,8 @@ if typeof module isnt 'undefined' and module?.exports?
   module.exports = {
     countWrittenMeasures
     playbackCacheKey
+    replaceMidiPrograms
+    programsByPartId
     # Crochets de test : injecter un toolkit factice, déclencher le flush des
     # messages en attente et lire l'état interne des sources.
     __test: {

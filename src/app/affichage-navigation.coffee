@@ -24,6 +24,7 @@ hideImport = ->
 
 showLibraryBtn = ->
   $("btn-library").classList.remove "hidden"
+  $("btn-export").classList.remove "hidden"
   $("btn-settings").classList.remove "hidden"
 
 # Page shown in the indicator: in vertical mode, the page containing the top of

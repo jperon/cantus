@@ -103,6 +103,11 @@ memoryVariant = null  # variante des entrées de memoryCache
 pendingMovementLoads = new Map()  # movementId -> resolve function
 pendingScoretk = new Map()  # scoretk conversion id -> {resolve, reject}
 scoretkRequestId = 0
+pendingFormats = new Map()  # demande de formats d'écriture -> {resolve, reject}
+formatsRequestId = 0
+pendingExports = new Map()  # export en cours -> {resolve, reject}
+exportRequestId = 0
+exportFormats = null  # formats d'écriture proposés par scoretk (api.formats())
 transcriptionNoticeTimer = null  # minuterie du message « transcription MIDI »
 targetPage = null  # Page to navigate to once all movements are loaded
 awaitingLoad = false  # A new load is posted: ignore the previous render's replies
@@ -240,6 +245,26 @@ worker.onmessage = (e) ->
       pendingScoretk.delete id
       if type is "scoretkConverted"
         pending.resolve xml
+      else
+        pending.reject new Error message
+
+    when "formatsResult", "formatsError"
+      {id, formats, message} = e.data
+      pending = pendingFormats.get id
+      return unless pending
+      pendingFormats.delete id
+      if type is "formatsResult"
+        pending.resolve formats ? []
+      else
+        pending.reject new Error message
+
+    when "exportResult", "exportError"
+      {id, bytes, message} = e.data
+      pending = pendingExports.get id
+      return unless pending
+      pendingExports.delete id
+      if type is "exportResult"
+        pending.resolve bytes
       else
         pending.reject new Error message
 

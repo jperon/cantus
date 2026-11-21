@@ -113,6 +113,7 @@ const APP_SOURCES = [
   'sources.coffee',                // conversion scoretk, chargement des sources
   'bibliotheque-import.coffee',    // bibliothèque, tap, import de fichiers
   'reglages-ui.coffee',            // panneau de réglages
+  'export.coffee',                 // dialogue et téléchargement de l'export
   'integration.coffee',            // stockage, protocole, URL, partage
   'init.coffee',                   // câblage DOMContentLoaded
 ];
