@@ -117,15 +117,19 @@ partPercussionLabels = ->
     labels.add entry.label if entry.percussion and entry.label?
   labels
 
+# Voix dont les réglages fins (taille, instrument) sont dépliés. L'état survit
+# aux re-rendus de la liste (changement de taille, piano seulement…).
+expandedVoiceLabels = new Set()
+
 # Remplit la liste des voix avec l'union, dans l'ordre d'apparition, des voix
 # de toutes les sources déjà converties de l'entrée (pas de re-parse). Chaque
 # fichier renumérote ses parties à partir de P1 : les voix sont identifiées par
 # leur libellé (partLabels), pas par leur id.
 #
-# Deux interrupteurs indépendants par voix : « affichage » (👁, rendu) et
-# « lecture » (🔊, audio). Aucun <label> englobant : taper à côté ne bascule
-# rien. Chaque interrupteur et son sélecteur (taille, volume) forment un groupe
-# insécable placé juste après le nom ; la ligne se replie quand la place manque.
+# Une ligne compacte par voix : nom, interrupteurs « affichage » (👁, rendu) et
+# « lecture » (🔊, audio), volume. Aucun <label> englobant : taper à côté ne
+# bascule rien. Le chevron (ou un appui sur la ligne) déplie la taille et
+# l'instrument de la voix.
 renderPartsList = ->
   group = $("parts-group")
   list = $("parts-list")
@@ -145,19 +149,27 @@ renderPartsList = ->
   list.innerHTML = ""
   sourcePrograms = partSourcePrograms()
   percussion = partPercussionLabels()
-  for partLabel in labels
-    do (partLabel) ->
+  for partLabel, index in labels
+    do (partLabel, index) ->
       displayed = not hiddenParts.has partLabel
       played = not mutedParts.has partLabel
       row = document.createElement "div"
       row.className = "part-row"
+      # La ligne compacte : le nom (avec le chevron) ouvre les réglages fins,
+      # puis viennent 👁, 🔊 et le volume. Aucun <label> englobant : taper à
+      # côté ne bascule rien.
+      expandBtn = document.createElement "button"
+      expandBtn.type = "button"
+      expandBtn.className = "part-expand"
+      caret = document.createElement "span"
+      caret.className = "part-caret"
       nameEl = document.createElement "span"
       nameEl.className = "part-name"
       nameEl.textContent = partLabel
-      displayGroup = document.createElement "div"
-      displayGroup.className = "part-group part-display-group"
-      soundGroup = document.createElement "div"
-      soundGroup.className = "part-group part-sound-group"
+      expandBtn.appendChild caret
+      expandBtn.appendChild nameEl
+      controls = document.createElement "div"
+      controls.className = "part-controls"
       displayBtn = document.createElement "button"
       displayBtn.type = "button"
       displayBtn.className = "part-toggle part-display"
@@ -172,15 +184,6 @@ renderPartsList = ->
       soundBtn.title = t "parts.soundTitle"
       soundBtn.setAttribute "aria-label", t("parts.soundAria", {part: partLabel})
       soundBtn.setAttribute "aria-pressed", String played
-      sizeSel = document.createElement "select"
-      sizeSel.className = "part-size"
-      for pct in [PART_SIZE_MIN..PART_SIZE_MAX] by PART_SIZE_STEP
-        opt = document.createElement "option"
-        opt.value = pct
-        opt.textContent = "#{pct} %"
-        sizeSel.appendChild opt
-      sizeSel.value = partSizes[partLabel] ? DEFAULT_PART_SIZE
-      sizeSel.disabled = not displayed
       volumeSel = document.createElement "select"
       volumeSel.className = "part-volume"
       volumeSel.title = t "parts.volumeTitle"
@@ -192,19 +195,40 @@ renderPartsList = ->
         volumeSel.appendChild opt
       volumeSel.value = partVolumes[partLabel] ? DEFAULT_PART_VOLUME
       volumeSel.disabled = not played
-      displayGroup.appendChild displayBtn
-      displayGroup.appendChild sizeSel
-      soundGroup.appendChild soundBtn
-      soundGroup.appendChild volumeSel
-      row.appendChild nameEl
-      row.appendChild displayGroup
-      row.appendChild soundGroup
+      controls.appendChild displayBtn
+      controls.appendChild soundBtn
+      controls.appendChild volumeSel
+      details = document.createElement "div"
+      details.className = "part-details"
+      details.id = "part-details-#{index}"
+      sizeField = document.createElement "label"
+      sizeField.className = "part-detail-field"
+      sizeLabel = document.createElement "span"
+      sizeLabel.className = "part-detail-label"
+      sizeLabel.textContent = t "parts.sizeLabel"
+      sizeSel = document.createElement "select"
+      sizeSel.className = "part-size"
+      for pct in [PART_SIZE_MIN..PART_SIZE_MAX] by PART_SIZE_STEP
+        opt = document.createElement "option"
+        opt.value = pct
+        opt.textContent = "#{pct} %"
+        sizeSel.appendChild opt
+      sizeSel.value = partSizes[partLabel] ? DEFAULT_PART_SIZE
+      sizeSel.disabled = not displayed
+      sizeField.appendChild sizeLabel
+      sizeField.appendChild sizeSel
+      details.appendChild sizeField
       # Instrument de la voix : « Partition » puis les 128 programmes GM, par
       # famille de huit. La batterie n'en reçoit pas ; les choix par voix
       # restent mémorisés et sont seulement désactivés par « Piano seulement ».
       programSel = null
       unless percussion.has partLabel
         scoreProgram = sourcePrograms[partLabel] ? 0
+        programField = document.createElement "label"
+        programField.className = "part-detail-field"
+        programLabel = document.createElement "span"
+        programLabel.className = "part-detail-label"
+        programLabel.textContent = t "parts.instrumentLabel"
         programSel = document.createElement "select"
         programSel.className = "part-program"
         programSel.title = t "parts.programTitle"
@@ -225,7 +249,27 @@ renderPartsList = ->
         chosen = partPrograms[partLabel]
         programSel.value = if chosen? then String(chosen) else ""
         programSel.disabled = pianoOnly
-        row.appendChild programSel
+        programField.appendChild programLabel
+        programField.appendChild programSel
+        details.appendChild programField
+      expandBtn.setAttribute "aria-controls", details.id
+      setExpanded = (expanded) ->
+        details.classList.toggle "hidden", not expanded
+        expandBtn.setAttribute "aria-expanded", String expanded
+        labelKey = if expanded then "parts.collapseAria" else "parts.expandAria"
+        expandBtn.title = t labelKey, {part: partLabel}
+        expandBtn.setAttribute "aria-label", expandBtn.title
+        caret.textContent = if expanded then "▾" else "▸"
+      setExpanded expandedVoiceLabels.has partLabel
+      expandBtn.addEventListener "click", (e) ->
+        e.stopPropagation()
+        expanded = expandBtn.getAttribute("aria-expanded") isnt "true"
+        if expanded then expandedVoiceLabels.add partLabel else expandedVoiceLabels.delete partLabel
+        setExpanded expanded
+      # Un appui sur la ligne (hors contrôle) déplie ou replie aussi.
+      row.addEventListener "click", (e) ->
+        return if e.target.closest "button, select, input, label, a"
+        expandBtn.click()
       # Affichage : rendu seul, appliqué à la fermeture. La voix reste jouée.
       displayBtn.addEventListener "click", ->
         now = displayBtn.getAttribute("aria-pressed") isnt "true"
@@ -265,6 +309,9 @@ renderPartsList = ->
           savePartSettings()
           engine = audioEngine()
           engine?.setVoiceProgram partLabel, (if raw is "" then null else parseInt raw)
+      row.appendChild expandBtn
+      row.appendChild controls
+      row.appendChild details
       list.appendChild row
   updatePartsDisabled()
   renderPartsBulkSelects()
@@ -436,6 +483,15 @@ closeSettings = ->
     partsChanged = false
     reloadScore displayedPage() if fileLoaded and currentSources?.length
 
+# L'installation n'est proposée que lorsque l'écran d'import la propose aussi
+# (section visible, donc application non installée et navigateur compatible).
+syncInstallRow = ->
+  group = $("settings-install-group")
+  return unless group
+  source = $("install-section")
+  available = source? and not source.classList.contains "hidden"
+  group.classList.toggle "hidden", not available
+
 # Settings overlay controls
 setupSettings = ->
   # Show current storage usage
@@ -448,14 +504,15 @@ setupSettings = ->
         if storageInfo
           storageInfo.textContent = "#{usageMB}MB / #{quotaMB}MB"
 
-          # Change color based on usage
+          # Couleur selon l'occupation : teintes foncées, lisibles sur fond
+          # blanc et sur les thèmes clairs.
           usagePercent = (estimate.usage / estimate.quota) * 100
           if usagePercent > 80
-            storageInfo.style.color = '#f44336'  # Red
+            storageInfo.style.color = '#b71c1c'
           else if usagePercent > 60
-            storageInfo.style.color = '#ff9800'  # Orange
+            storageInfo.style.color = '#8a4b00'
           else
-            storageInfo.style.color = '#4caf50'  # Green
+            storageInfo.style.color = '#1b5e20'
 
   $("btn-settings").addEventListener "click", ->
     $("settings-overlay").classList.remove "hidden"
@@ -464,8 +521,17 @@ setupSettings = ->
     renderTranspositionUi()
     ensureFileTempo()
     updateStorageInfo()
+    syncInstallRow()
 
   $("settings-close").addEventListener "click", closeSettings
+
+  # Le bouton d'installation des réglages déclenche celui de l'écran d'import,
+  # seul détenteur de l'invite différée du navigateur.
+  installBtn = $("settings-install-btn")
+  if installBtn
+    installBtn.addEventListener "click", ->
+      $("btn-install")?.click()
+      setTimeout syncInstallRow, 500
 
   # Applique la taille choisie à toutes les voix (les voix masquées restent
   # masquées) ; le rendu attend la fermeture des réglages.
@@ -494,7 +560,7 @@ setupSettings = ->
 
   # Zoom slider: live label, apply on release
   $("zoom-range").addEventListener "input", (e) ->
-    $("zoom-value").textContent = parseInt e.target.value
+    $("zoom-value").textContent = formatPercent e.target.value
 
   $("zoom-range").addEventListener "change", (e) ->
     val = parseInt e.target.value

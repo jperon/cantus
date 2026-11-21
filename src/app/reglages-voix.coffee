@@ -28,6 +28,9 @@ TRANSPOSE_MAX = 12
 DEFAULT_PART_SIZE = 100
 DEFAULT_PART_VOLUME = 50
 
+# Valeur d'un réglage en pourcentage, unité comprise (« 40 % »).
+formatPercent = (value) -> "#{parseInt value, 10} %"
+
 # Bornes et pas des réglages par voix, repris par les menus « Tailles à » et
 # « Volumes à ».
 PART_SIZE_MIN = 50
@@ -68,7 +71,7 @@ applyTapSize = (size) ->
 applyZoom = (zoom) ->
   currentScale = zoom
   $("zoom-range").value = zoom
-  $("zoom-value").textContent = zoom
+  $("zoom-value").textContent = formatPercent zoom
 
 applyScrollSettings = (unit, overlap) ->
   currentScrollUnit = unit or "page"
@@ -111,7 +114,7 @@ applyMasterVolume = (volume) ->
   range = $("master-volume-range")
   range.value = value if range
   label = $("master-volume-value")
-  label.textContent = value if label
+  label.textContent = formatPercent value if label
 
 applyAllSettings = ->
   settings = loadSettings()

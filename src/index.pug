@@ -42,119 +42,128 @@ html(lang="en")
     #settings-overlay.hidden
       #settings-header
         h2(data-i18n="settings.title") Settings
-        button#settings-close(data-i18n-aria-label="settings.close" aria-label="Close settings") ✕
-      .settings-group
-        label.settings-label(data-i18n="settings.zoom") Zoom
-        .settings-row
-          span#zoom-value 40
-          input#zoom-range(type="range" min="30" max="80" step="5" value="40")
-      .settings-group
-        label.settings-label(for="language-select" data-i18n="settings.language") Language
-        .settings-row
-          select#language-select
-      .settings-pair
+        button#settings-close(type="button" data-i18n-aria-label="settings.close" aria-label="Close settings") ✕
+      section.settings-section(aria-labelledby="settings-display-title")
+        h3#settings-display-title.settings-section-title(data-i18n="settings.sectionDisplay") Display
+        .settings-group
+          label.settings-label(for="zoom-range" data-i18n="settings.zoom") Zoom
+          .settings-row.settings-slider-row
+            input#zoom-range.settings-range(type="range" min="30" max="80" step="5" value="40" aria-label="Score zoom in percent" data-i18n-aria-label="settings.zoomAria")
+            span#zoom-value.settings-value 40 %
+        .settings-group
+          span.settings-label(data-i18n="settings.layout") Layout
+          .settings-row(role="group" aria-label="Layout" data-i18n-aria-label="settings.layout")
+            button.layout-btn.active(type="button" data-layout="auto" data-i18n="layout.auto") Auto
+            button.layout-btn(type="button" data-layout="horizontal" data-i18n="layout.horizontal") Horizontal
+            button.layout-btn(type="button" data-layout="vertical" data-i18n="layout.vertical") Vertical
+        .settings-group
+          span.settings-label(data-i18n="settings.scroll") Scrolling
+          .settings-row(role="group" aria-label="Scrolling" data-i18n-aria-label="settings.scroll")
+            button.scroll-unit-btn.active(type="button" data-unit="page" data-i18n="scroll.page") Per page
+            button.scroll-unit-btn(type="button" data-unit="system" data-i18n="scroll.system") Per system
+          #overlap-row.settings-row
+            label.settings-inline-label(for="overlap-select" data-i18n="settings.overlap") Overlap
+            select#overlap-select.settings-select
+              option(value="0") 0 %
+              option(value="10") 10 %
+              option(value="20") 20 %
+              option(value="30") 30 %
+              option(value="40") 40 %
+              option(value="50") 50 %
+        .settings-group
+          span.settings-label(data-i18n="settings.theme") Theme
+          .settings-row(role="group" aria-label="Theme" data-i18n-aria-label="settings.theme")
+            button.theme-btn.active(type="button" data-theme="white" data-i18n="theme.white") White
+            button.theme-btn(type="button" data-theme="sepia" data-i18n="theme.sepia") Sepia
+            button.theme-btn(type="button" data-theme="dark" data-i18n="theme.dark") Dark
+        .settings-group
+          span.settings-label(data-i18n="settings.tapZone") Tap zone
+          .settings-row(role="group" aria-label="Tap zone" data-i18n-aria-label="settings.tapZone")
+            button.tap-btn(type="button" data-size="20" data-i18n="tap.small") Small
+            button.tap-btn.active(type="button" data-size="30" data-i18n="tap.normal") Normal
+            button.tap-btn(type="button" data-size="40" data-i18n="tap.large") Large
+        .settings-group
+          label.settings-label(for="transpose-visual" data-i18n="settings.transposeVisualSection") Score transposition
+          .settings-row
+            select#transpose-visual.transpose-select.settings-select(data-i18n-aria-label="settings.transposeVisualAria")
+      section.settings-section(aria-labelledby="settings-playback-title")
+        h3#settings-playback-title.settings-section-title(data-i18n="settings.sectionPlayback") Playback
         .settings-group
           label.settings-label(for="master-volume-range" data-i18n="settings.masterVolume") Master volume
-          .settings-row
-            span#master-volume-value 80
-            input#master-volume-range(type="range" min="0" max="100" step="5" value="80" aria-label="Master volume" data-i18n-aria-label="settings.masterVolume")
+          .settings-row.settings-slider-row
+            input#master-volume-range.settings-range(type="range" min="0" max="100" step="5" value="80" aria-label="Master volume" data-i18n-aria-label="settings.masterVolume")
+            span#master-volume-value.settings-value 80 %
         .settings-group
           label.settings-label(for="tempo-input" data-i18n="settings.tempo") Playback tempo
-          .settings-row
-            input#tempo-input.settings-number(type="number" min="20" max="300" step="1" value="80" inputmode="numeric" aria-label="Playback tempo per minute")
+          .settings-row.settings-tempo
+            input#tempo-input.settings-number(type="number" min="20" max="300" step="1" value="80" inputmode="numeric" aria-label="Playback tempo per minute" data-i18n-aria-label="settings.tempoAria")
             span#tempo-unit.tempo-unit(title="quarter note") ♩
-            span /min
+            span.tempo-per-min /min
             button#tempo-reset.settings-btn.tempo-reset(type="button" title="Reset to the file tempo" data-i18n-title="settings.tempoResetTitle" data-i18n="settings.tempoReset" disabled) File tempo
-          p#tempo-hint.settings-hint(data-i18n="tempo.pending") Determining the file tempo…
-      .settings-group
-        label.settings-label(data-i18n="settings.transposition") Transposition
-        .settings-row.settings-transpose
-          label.transpose-field
-            span.transpose-label(data-i18n="settings.transposeVisual") Score
-            select#transpose-visual.transpose-select(data-i18n-aria-label="settings.transposeVisualAria")
-          label.transpose-field
-            span.transpose-label(data-i18n="settings.transposeAudio") Sound
-            select#transpose-audio.transpose-select(data-i18n-aria-label="settings.transposeAudioAria")
-      #parts-group.settings-group.hidden
-        label.settings-label(data-i18n="settings.parts") Parts
-        #parts-list
-        .settings-row.settings-parts-bulk
-          label.bulk-field
-            span.bulk-label(data-i18n="settings.partsSizes") Sizes to
-            select#parts-sizes-reset.bulk-select(data-i18n-aria-label="settings.partsSizesAria")
-          label.bulk-field
-            span.bulk-label(data-i18n="settings.partsVolumes") Volumes to
-            select#parts-volumes-reset.bulk-select(data-i18n-aria-label="settings.partsVolumesAria")
-      .settings-group
-        label.settings-label(data-i18n="settings.playback") Playback
-        .settings-row
-          label.settings-check
-            input#follow-playback(type="checkbox" checked)
-            span(data-i18n="settings.followPlayback") Follow scrolling
-          label.settings-check
-            input#expand-repeats(type="checkbox" checked)
-            span(data-i18n="settings.expandRepeats") Expand repeats
-          label.settings-check
-            input#piano-only(type="checkbox")
-            span(data-i18n="settings.pianoOnly") Piano only
+          p#tempo-hint.settings-hint.settings-tempo-hint(data-i18n="tempo.pending") Determining the file tempo…
+        .settings-group
+          label.settings-label(for="transpose-audio" data-i18n="settings.transposeAudioSection") Sound transposition
+          .settings-row
+            select#transpose-audio.transpose-select.settings-select(data-i18n-aria-label="settings.transposeAudioAria")
+        .settings-group
+          .settings-row.settings-checks
+            label.settings-check
+              input#piano-only(type="checkbox")
+              span(data-i18n="settings.pianoOnly") Piano only
+            label.settings-check
+              input#follow-playback(type="checkbox" checked)
+              span(data-i18n="settings.followPlayback") Follow scrolling
+            label.settings-check
+              input#expand-repeats(type="checkbox" checked)
+              span(data-i18n="settings.expandRepeats") Expand repeats
           p.settings-hint(data-i18n="settings.expandRepeatsHint") Unchecked: linear playback in written order (no repeats, D.C./D.S., coda or endings).
-      .settings-group
-        label.settings-label(data-i18n="settings.theme") Theme
-        .settings-row
-          button.theme-btn.active(data-theme="white" data-i18n="theme.white") White
-          button.theme-btn(data-theme="sepia" data-i18n="theme.sepia") Sepia
-          button.theme-btn(data-theme="dark" data-i18n="theme.dark") Dark
-      .settings-group
-        label.settings-label(data-i18n="settings.tapZone") Tap zone
-        .settings-row
-          button.tap-btn(data-size="20" data-i18n="tap.small") Small
-          button.tap-btn.active(data-size="30" data-i18n="tap.normal") Normal
-          button.tap-btn(data-size="40" data-i18n="tap.large") Large
-      .settings-group
-        label.settings-label(data-i18n="settings.layout") Layout
-        .settings-row(role="group" aria-label="Layout" data-i18n-aria-label="settings.layout")
-          button.layout-btn.active(data-layout="auto" data-i18n="layout.auto") Auto
-          button.layout-btn(data-layout="horizontal" data-i18n="layout.horizontal") Horizontal
-          button.layout-btn(data-layout="vertical" data-i18n="layout.vertical") Vertical
-      .settings-group
-        label.settings-label(data-i18n="settings.scroll") Scrolling
-        .settings-row
-          button.scroll-unit-btn.active(data-unit="page" data-i18n="scroll.page") Per page
-          button.scroll-unit-btn(data-unit="system" data-i18n="scroll.system") Per system
-        .settings-row#overlap-row
-          span(data-i18n="settings.overlap") Overlap
-          select#overlap-select
-            option(value="0") 0 %
-            option(value="10") 10 %
-            option(value="20") 20 %
-            option(value="30") 30 %
-            option(value="40") 40 %
-            option(value="50") 50 %
-      .settings-group
-        label.settings-label(data-i18n="settings.storage") Storage
-        .settings-row
-          span#storage-info 0MB / 16MB
-          button#btn-storage(data-i18n="settings.clearCache") Clear cache
-      .settings-group
-        label.settings-label(data-i18n="settings.about") About
-        .settings-row
-          span(data-i18n="settings.version") Cantus v1.0 - MusicXML Reader
-        .settings-row
-          span#build-date
-        .settings-row
-          small(data-i18n="settings.license") Free software under the GNU GPL v3 or later, with no warranty.
-        .settings-row
-          small
-            a(href="https://github.com/jperon/cantus" target="_blank" rel="noopener" data-i18n="settings.sourceCode") Source code
-          small
-            a(href="https://github.com/jperon/cantus/blob/master/THIRD-PARTY.md" target="_blank" rel="noopener" data-i18n="settings.thirdParty") Third-party components
-        .settings-row
-          small
-            span(data-i18n="settings.soundfontCredit") TimGM6mb General MIDI soundfont, SpessaSynth synthesis —
-            = ' '
-            a(href="https://www.gnu.org/licenses/old-licenses/gpl-2.0.html" target="_blank" rel="noopener") GPL-2.0
-            = ' · '
-            a(href="https://www.apache.org/licenses/LICENSE-2.0" target="_blank" rel="noopener") Apache-2.0
+      section#parts-group.settings-section.hidden(aria-labelledby="settings-parts-title")
+        h3#settings-parts-title.settings-section-title(data-i18n="settings.parts") Parts
+        .settings-group
+          #parts-list
+          .settings-row.settings-parts-bulk
+            label.bulk-field
+              span.bulk-label(data-i18n="settings.partsSizes") Sizes to
+              select#parts-sizes-reset.bulk-select.settings-select(data-i18n-aria-label="settings.partsSizesAria")
+            label.bulk-field
+              span.bulk-label(data-i18n="settings.partsVolumes") Volumes to
+              select#parts-volumes-reset.bulk-select.settings-select(data-i18n-aria-label="settings.partsVolumesAria")
+      section.settings-section(aria-labelledby="settings-application-title")
+        h3#settings-application-title.settings-section-title(data-i18n="settings.sectionApplication") Application
+        .settings-group
+          label.settings-label(for="language-select" data-i18n="settings.language") Language
+          .settings-row
+            select#language-select.settings-select
+        .settings-group
+          span.settings-label(data-i18n="settings.storage") Storage
+          .settings-row
+            span#storage-info 0MB / 16MB
+            button#btn-storage.settings-btn(type="button" data-i18n="settings.clearCache") Clear cache
+        #settings-install-group.settings-group.hidden
+          span.settings-label(data-i18n="settings.installation") Installation
+          .settings-row
+            button#settings-install-btn.settings-btn.settings-install(type="button" data-i18n="import.install") Install Cantus
+          p.settings-hint.settings-install-hint(data-i18n="import.installSubtitle") Turn Cantus into a native app
+        .settings-group.settings-about
+          span.settings-label(data-i18n="settings.about") About
+          .settings-row
+            span(data-i18n="settings.version") Cantus v1.0 - MusicXML Reader
+          .settings-row
+            span#build-date
+          .settings-row
+            small(data-i18n="settings.license") Free software under the GNU GPL v3 or later, with no warranty.
+          .settings-row
+            small
+              a(href="https://github.com/jperon/cantus" target="_blank" rel="noopener" data-i18n="settings.sourceCode") Source code
+            small
+              a(href="https://github.com/jperon/cantus/blob/master/THIRD-PARTY.md" target="_blank" rel="noopener" data-i18n="settings.thirdParty") Third-party components
+          .settings-row
+            small
+              span(data-i18n="settings.soundfontCredit") TimGM6mb General MIDI soundfont, SpessaSynth synthesis —
+              = ' '
+              a(href="https://www.gnu.org/licenses/old-licenses/gpl-2.0.html" target="_blank" rel="noopener") GPL-2.0
+              = ' · '
+              a(href="https://www.apache.org/licenses/LICENSE-2.0" target="_blank" rel="noopener") Apache-2.0
     #library-overlay.hidden
       #library-header
         h2(data-i18n="library.title") Library

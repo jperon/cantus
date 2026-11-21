@@ -329,7 +329,10 @@ html, body {
   display: flex;
   flex-direction: column;
   overflow-y: auto;
+  overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
+  color: #222;
+  padding-bottom: 16px;
 }
 
 #settings-overlay.hidden {
@@ -337,134 +340,245 @@ html, body {
 }
 
 #settings-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 20px;
-  border-bottom: 1px solid #eee;
+  gap: 12px;
+  padding: 10px 16px;
+  background: #fff;
+  border-bottom: 1px solid #ddd;
 }
 
 #settings-header h2 {
-  font-size: 18px;
-  font-weight: 600;
+  font-size: 20px;
+  font-weight: 700;
+  color: #111;
 }
 
 #settings-close {
-  background: none;
-  border: none;
-  font-size: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  padding: 0;
+  background: #f5f5f5;
+  border: 1px solid #bbb;
+  border-radius: 8px;
+  font-size: 20px;
+  line-height: 1;
+  color: #222;
   cursor: pointer;
-  color: #666;
-  padding: 4px 8px;
+}
+
+/* Sections : un titre fort sépare les quatre familles de réglages. */
+.settings-section {
+  display: block;
+}
+
+.settings-section-title {
+  margin: 0;
+  padding: 16px 16px 8px;
+  font-size: 17px;
+  font-weight: 700;
+  color: #111;
+  background: #f2f2f2;
+  border-top: 2px solid #ddd;
+  border-bottom: 1px solid #ddd;
+}
+
+.settings-section:first-of-type .settings-section-title {
+  border-top: none;
 }
 
 .settings-group {
-  padding: 16px 20px;
-  border-bottom: 1px solid #f0f0f0;
+  padding: 12px 16px;
+  border-bottom: 1px solid #e9e9e9;
 }
 
 .settings-label {
   display: block;
   font-size: 14px;
-  font-weight: 600;
-  color: #333;
-  margin-bottom: 10px;
-}
-
-/* Volume général et tempo de lecture : sur une même ligne quand la largeur le
-   permet, l'un sous l'autre sinon. Le retour à la ligne est automatique. */
-.settings-pair {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: stretch;
-}
-
-.settings-pair > .settings-group {
-  flex: 1 1 300px;
-  min-width: 0;
+  font-weight: 700;
+  color: #222;
+  margin-bottom: 8px;
 }
 
 .settings-row {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 10px;
-}
-
-/* Transpositions visuelle et auditive : deux champs compacts à la suite, à
-   gauche, cible tactile de 44 px, libellé tronqué plutôt que ligne repliée. */
-.settings-transpose {
-  gap: 12px;
-  flex-wrap: wrap;
-  justify-content: flex-start;
-}
-
-.settings-transpose .transpose-field {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex: 0 0 auto;
   min-width: 0;
+}
+
+.settings-inline-label {
+  flex: 0 0 auto;
   font-size: 14px;
-  color: #333;
+  font-weight: 700;
+  color: #222;
 }
 
-.settings-transpose .transpose-label {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.settings-transpose select.transpose-select {
+.settings-value {
   flex: 0 0 auto;
-  min-width: 4.5em;
+  min-width: 3.5em;
+  text-align: right;
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #111;
+}
+
+/* Curseurs : la piste reste fine, mais toute la hauteur de 44 px est
+   cliquable. Aucune transition (liseuse à encre électronique). */
+.settings-range {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 44px;
+  margin: 0;
+  accent-color: #222;
+  background: transparent;
+}
+
+/* Listes déroulantes : un seul style, une hauteur tactile de 44 px. */
+.settings-select,
+#language-select,
+#overlap-select,
+#parts-list select {
   min-height: 44px;
-  padding: 6px 4px;
-  font-size: 14px;
-  border: 1px solid #ddd;
-  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 15px;
+  line-height: 1.2;
+  border: 1px solid #bbb;
+  border-radius: 8px;
   background: #f5f5f5;
-  color: #333;
+  color: #222;
 }
 
-/* Menus « Tailles à » et « Volumes à » : libellé et pourcentage par champ,
-   cible tactile de 44 px comme les transpositions. */
-.settings-parts-bulk {
-  gap: 12px;
-  flex-wrap: wrap;
-  justify-content: flex-start;
+#language-select {
+  width: 100%;
+  max-width: 360px;
 }
 
-.settings-parts-bulk .bulk-field {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex: 0 0 auto;
-  min-width: 0;
-  font-size: 14px;
-  color: #333;
-}
-
-.settings-parts-bulk .bulk-label {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+#overlap-select {
+  flex: 0 1 auto;
+  min-width: 7em;
 }
 
 .settings-parts-bulk select.bulk-select {
   flex: 0 0 auto;
   min-width: 5.5em;
+}
+
+/* Boutons de choix et boutons d'action : même hauteur, même contour. */
+.theme-btn, .tap-btn, .scroll-unit-btn, .layout-btn, .settings-btn {
+  flex: 1 1 auto;
   min-height: 44px;
-  padding: 6px 4px;
+  padding: 8px 12px;
   font-size: 14px;
-  border: 1px solid #ddd;
-  border-radius: 6px;
+  font-weight: 600;
+  border: 1px solid #bbb;
+  border-radius: 8px;
   background: #f5f5f5;
+  color: #222;
+  cursor: pointer;
+}
+
+.theme-btn.active, .tap-btn.active, .scroll-unit-btn.active, .layout-btn.active {
+  background: #222;
+  color: #fff;
+  border-color: #222;
+}
+
+.settings-row .settings-btn {
+  margin-top: 0;
+}
+
+/* Un bouton actif reste clairement actif (bord et texte forts), un bouton
+   désactivé est estompé : « Tempo du fichier » ne se confond plus avec lui. */
+.settings-btn:not(:disabled) {
+  background: #fff;
+  border-color: #222;
+  color: #111;
+}
+
+.settings-btn:disabled {
+  opacity: 0.45;
+  background: #eee;
+  border-color: #ddd;
+  color: #666;
+  cursor: default;
+}
+
+#tempo-input.settings-number {
+  flex: 0 0 auto;
+  width: 5em;
+  min-height: 44px;
+  padding: 8px;
+  font-size: 15px;
+  border: 1px solid #bbb;
+  border-radius: 8px;
+  background: #f5f5f5;
+  color: #222;
+}
+
+.tempo-unit {
+  font-family: "FreeSerif", "Noto Music", "DejaVu Sans", serif;
+  font-size: 19px;
+  line-height: 1;
+}
+
+.tempo-per-min {
+  font-size: 14px;
   color: #333;
 }
 
-#parts-group.hidden {
+.settings-btn.tempo-reset {
+  flex: 0 0 auto;
+  padding: 8px 12px;
+}
+
+/* Cases à cocher : la ligne entière est une cible de 44 px. */
+.settings-checks {
+  align-items: stretch;
+}
+
+.settings-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 2px;
+  font-size: 14px;
+  color: #222;
+  cursor: pointer;
+}
+
+.settings-check input {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  accent-color: #222;
+}
+
+.settings-hint {
+  margin: 4px 0 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: #555;
+}
+
+.settings-tempo-hint,
+.settings-install-hint {
+  margin-left: 0;
+}
+
+#parts-group.hidden,
+#settings-install-group.hidden {
   display: none;
 }
 
@@ -472,21 +586,55 @@ html, body {
   display: none;
 }
 
-/* Liste des voix : grille partagée par toutes les lignes. La première colonne
-   (nom) prend la largeur du nom le plus long — et se tronque si la place
-   manque —, les deux suivantes (👁+taille, 🔊+volume) viennent juste après,
-   sans étirement jusqu'au bord. */
+/* Liste des voix : une ligne compacte par voix (nom, 👁, 🔊, volume), les
+   réglages fins (taille, instrument) repliés sous la ligne. */
 #parts-list {
-  display: grid;
-  grid-template-columns: minmax(0, max-content) auto auto minmax(0, max-content);
-  justify-content: start;
-  align-items: center;
-  column-gap: 16px;
-  row-gap: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 #parts-list .part-row {
-  display: contents;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 6px 8px;
+  background: #fafafa;
+  border: 1px solid #ddd;
+  border-radius: 10px;
+}
+
+#parts-list .part-expand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 44px;
+  padding: 4px 6px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: #222;
+  font-size: 15px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+#parts-list .part-expand:focus-visible {
+  outline: 2px solid #222;
+  outline-offset: 2px;
+}
+
+#parts-list .part-caret {
+  flex: 0 0 auto;
+  width: 1em;
+  text-align: center;
+  font-size: 15px;
+  line-height: 1;
 }
 
 #parts-list .part-name {
@@ -494,20 +642,18 @@ html, body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 14px;
-  color: #333;
 }
 
-/* Interrupteur et son sélecteur : un groupe insécable. */
-#parts-list .part-group {
+#parts-list .part-controls {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex-wrap: nowrap;
+  flex: 0 0 auto;
+  margin-left: auto;
 }
 
 /* Interrupteurs tactiles : cible de 44 px, état actif plein, état éteint
-   estompé. Un tap à côté de la ligne ne bascule rien (pas de <label>). */
+   estompé. Un tap à côté ne bascule rien (pas de <label> englobant). */
 #parts-list .part-toggle {
   display: inline-flex;
   align-items: center;
@@ -518,143 +664,94 @@ html, body {
   padding: 0;
   font-size: 20px;
   line-height: 1;
-  border: 1px solid #bbb;
+  border: 1px solid #aaa;
   border-radius: 8px;
   background: #fff;
-  color: #333;
+  color: #222;
   cursor: pointer;
 }
 
 #parts-list .part-toggle[aria-pressed="false"] {
   opacity: 0.45;
-  background: #eee;
+  background: #e8e8e8;
 }
 
 #parts-list .part-toggle:disabled {
-  opacity: 0.25;
+  opacity: 0.3;
   cursor: default;
 }
 
-#parts-list select {
-  font-size: 13px;
-  padding: 6px 4px;
-  color: #333;
-}
-
 #parts-list select.part-volume {
-  min-width: 88px;
+  flex: 0 0 auto;
+  width: 5.5em;
 }
 
-/* Instrument de la voix : largeur fixe pour ne pas étirer la ligne ; les
-   sélecteurs sont désactivés ensemble par « Piano seulement ». */
+#parts-list .part-details {
+  display: flex;
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  min-width: 0;
+  padding: 6px 2px 4px;
+  border-top: 1px solid #e3e3e3;
+}
+
+#parts-list .part-details.hidden {
+  display: none;
+}
+
+#parts-list .part-detail-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 14px;
+  color: #222;
+}
+
+#parts-list .part-detail-label {
+  flex: 0 0 auto;
+  font-weight: 700;
+}
+
+#parts-list select.part-size {
+  flex: 0 0 auto;
+  width: 5.5em;
+}
+
 #parts-list select.part-program {
-  width: 220px;
+  flex: 1 1 220px;
+  width: auto;
+  min-width: 0;
   max-width: 100%;
 }
 
 #parts-list select.part-program:disabled {
-  opacity: 0.5;
+  opacity: 0.55;
   cursor: default;
 }
 
-.settings-check {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 40px;
+#storage-info {
+  flex: 0 1 auto;
   font-size: 14px;
-  color: #333;
-  cursor: pointer;
+  font-weight: 600;
+  color: #222;
 }
 
-.settings-check input {
-  width: 20px;
-  height: 20px;
-  accent-color: #333;
+.settings-install {
+  flex: 1 1 220px;
 }
 
-.settings-hint {
-  margin: 0 0 4px 28px;
+.settings-about small {
   font-size: 12px;
-  color: #666;
+  line-height: 1.4;
+  color: #555;
 }
 
-#zoom-range {
-  flex: 1;
-  height: 4px;
-  accent-color: #333;
-}
-
-/* Le curseur de volume occupe sa colonne, comme celui du zoom sur toute la
-   largeur : sinon la moitié de la ligne resterait vide à côté du tempo. */
-#master-volume-range {
-  flex: 1;
-  min-width: 0;
-}
-
-#zoom-value {
-  font-size: 14px;
-  color: #666;
-  min-width: 28px;
-  text-align: center;
-}
-
-.theme-btn, .tap-btn, .scroll-unit-btn, .layout-btn, .settings-btn {
-  flex: 1;
-  padding: 8px 4px;
-  font-size: 13px;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  background: #f5f5f5;
-  color: #333;
-  cursor: pointer;
-}
-
-.settings-btn {
-  margin-top: 10px;
-}
-
-#tempo-input.settings-number {
-  width: 5em;
-  padding: 6px 8px;
-  font-size: 14px;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  background: #f5f5f5;
-  color: #333;
-}
-
-.tempo-unit {
-  font-family: "FreeSerif", "Noto Music", "DejaVu Sans", serif;
-  font-size: 19px;
-  line-height: 1;
-}
-
-.settings-btn.tempo-reset {
-  flex: 0 0 auto;
-  margin-top: 0;
-  padding: 8px 12px;
-}
-
-.settings-btn:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.theme-btn.active, .tap-btn.active, .scroll-unit-btn.active, .layout-btn.active {
-  background: #333;
-  color: #fff;
-  border-color: #333;
-}
-
-#overlap-select {
-  flex: 1;
-  padding: 8px 4px;
-  font-size: 13px;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  background: #f5f5f5;
-  color: #333;
+.settings-about a {
+  color: #1a4f9c;
+  overflow-wrap: anywhere;
 }
 
 body.theme-sepia {
