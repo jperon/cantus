@@ -23,7 +23,9 @@ async function newDownloadPage(browser, url, pageName) {
 
 // Ouvre le dialogue, attend la liste des formats proposés par le worker.
 async function openExport(page) {
-  await page.click('#btn-export');
+  await page.click('#btn-menu');
+  await page.waitForSelector('#command-menu:not(.hidden)', { timeout: 10000 });
+  await page.click('#menu-export');
   await page.waitForFunction(
     () => !document.getElementById('export-overlay').classList.contains('hidden'),
     null,
@@ -61,11 +63,11 @@ async function runPage(browser, url, pageName, results) {
     await L.waitBackgroundLoaded(page, 180000);
     L.record(results, '12. Partition .mscz ouverte', pageName,
       first.svgCount > 0 ? 'OK' : 'ÉCHEC', `1er SVG en ${first.ms} ms`);
-    const label = await page.getAttribute('#btn-export', 'aria-label');
-    const title = await page.getAttribute('#btn-export', 'title');
-    L.record(results, '12. Bouton Exporter visible, libellés traduits', pageName,
-      label === 'Exporter' && title === 'Exporter' ? 'OK' : 'ÉCHEC',
-      `aria-label « ${label} », title « ${title} »`);
+    const label = await page.$eval('#menu-export', (el) => el.textContent.trim());
+    const menuTitle = await page.getAttribute('#btn-menu', 'title');
+    L.record(results, '12. Entrée Exporter du menu, libellés traduits', pageName,
+      label === 'Exporter' && menuTitle === 'Menu' ? 'OK' : 'ÉCHEC',
+      `entrée « ${label} », menu « ${menuTitle} »`);
 
     // Choisit un instrument pour la première voix non percussive.
     await L.openSettings(page);

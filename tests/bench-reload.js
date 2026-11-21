@@ -214,7 +214,8 @@ async function measurePlay(page, timeout = 60000) {
   }, null, { timeout, polling: 10 });
   const after = await readProbe(page);
   const playing = await state(page);
-  await page.click('#transport-stop');
+  await page.evaluate(() => document.activeElement?.blur?.());
+  await page.keyboard.press('s');
   await waitState(page, 'stopped');
   return {
     playingMs: round(after.playingAt - after.clickAt, 1),

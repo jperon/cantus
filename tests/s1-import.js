@@ -154,7 +154,7 @@ async function runPage(browser, url, pageName, results) {
         first.svgCount > 0 && nav.rightChanged && nav.tapChanged ? 'OK' : 'ÉCHEC',
         `affiche en ${first.ms} ms, ${info.total} pages, flèches ${nav.initial}→${nav.afterRight}, tap →${nav.afterTap}`);
       // Aller jusqu'à la page 6 (le fichier en a 8) puis mémoriser
-      await page.click('.nav-btn[data-action="start"]').catch(() => {});
+      await L.gotoPage(page, 1);
       await L.resetScrollTop(page);
       for (let i = 0; i < 5; i++) { await L.pressArrow(page, 'right'); await page.waitForTimeout(700); }
       const before = await L.pageInfo(page);
@@ -300,7 +300,7 @@ async function runPage(browser, url, pageName, results) {
       await page.waitForTimeout(800);
       for (let i = 0; i < 2; i++) { await L.pressArrow(page, 'right'); await page.waitForTimeout(800); }
       const before = await L.pageInfo(page);
-      await page.click('.nav-btn[data-action="start"]');
+      await L.gotoPage(page, 1);
       await page.waitForTimeout(1200);
       const after = await L.pageInfo(page);
       const ok = after.page === 1;

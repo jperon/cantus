@@ -124,16 +124,21 @@ async function horizontalScrollPos(page) {
   });
 }
 
-// La barre de progression a été supprimée : le déplacement se fait en
-// cliquant sur le libellé de temps, proportionnellement à la position du clic
-// (même geste que l'utilisateur, sans passer par un élément qui n'existe plus).
+// Déplacement dans la lecture par la barre de position (curseur natif) :
+// même geste qu'un glissement, sans dépendre des coordonnées du pouce.
 async function seekFraction(page, fraction) {
-  const rect = await page.$eval('#transport-time', (el) => {
-    const r = el.getBoundingClientRect();
-    return { x: r.x, y: r.y, width: r.width, height: r.height };
-  });
-  if (!rect.width) throw new Error('libellé de temps invisible : seek impossible');
-  await page.mouse.click(rect.x + fraction * rect.width, rect.y + rect.height / 2);
+  await page.$eval('#transport-seek', (el, ratio) => {
+    el.value = String(Math.round(Math.max(0, Math.min(1, ratio)) * 1000));
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  }, fraction);
+  await page.waitForTimeout(150);
+}
+
+// Remise au début par le raccourci clavier « s » (le bouton ■ a disparu).
+async function stopPlayback(page) {
+  await page.evaluate(() => document.activeElement?.blur?.());
+  await page.keyboard.press('s');
 }
 
 function alignedOnSystem(snapshot) {
@@ -241,7 +246,7 @@ module.exports = {
   L, PAGES, MOVEMENTS_FIXTURE, ENCHAINEMENT_FIXTURE,
   WAIT, bounded, waitReady, waitFirstSvg, waitBackgroundLoaded, reloadPage,
   state, waitState, transportHidden, positionGrowing, horizontalScrollPos,
-  seekFraction, alignedOnSystem, storedParts, partVolumeValues, playbackSample,
+  seekFraction, stopPlayback, alignedOnSystem, storedParts, partVolumeValues, playbackSample,
   displayedPageNumber, waitLibraryReady,
   startBudget, main,
 };

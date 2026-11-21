@@ -65,7 +65,7 @@ async function walk(page) {
     return info.page >= info.total && half === 0;
   };
   const start = async () => {
-    await page.click('.nav-btn[data-action="start"]');
+    await L.gotoPage(page, 1);
     await page.waitForFunction(() => {
       const match = /^1\s*\//.exec(document.getElementById('page-number')?.textContent || '');
       return !!match && !!document.querySelector('#page-current .scroll-page[data-page="1"] svg');
@@ -151,7 +151,7 @@ async function runPage(browser, url, pageName, results) {
     // mise en page naturelle revient (moins de pages, dont certaines à deux
     // systèmes) et le réglage est conservé. Revenir au début : le parcours
     // précédent a laissé la vue sur la dernière page.
-    await page.click('.nav-btn[data-action="start"]');
+    await L.gotoPage(page, 1);
     await page.waitForFunction(() => {
       const match = /^1\s*\//.exec(document.getElementById('page-number')?.textContent || '');
       return !!match && !!document.querySelector('#page-current .scroll-page[data-page="1"] svg');
@@ -225,7 +225,7 @@ async function runPage(browser, url, pageName, results) {
     await page.waitForTimeout(400);
     await L.openLibraryEntry(page, 0);
     await waitRendered(page);
-    await page.click('.nav-btn[data-action="start"]');
+    await L.gotoPage(page, 1);
     await page.waitForFunction(() => {
       const match = /^1\s*\//.exec(document.getElementById('page-number')?.textContent || '');
       return !!match && !!document.querySelector('#page-current .scroll-page[data-page="1"] svg');

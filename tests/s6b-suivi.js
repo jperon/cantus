@@ -7,7 +7,7 @@ const L = C.L;
 const {
   WAIT, bounded, waitReady, waitFirstSvg, waitBackgroundLoaded, reloadPage,
   state, waitState, transportHidden, positionGrowing, horizontalScrollPos,
-  seekFraction, alignedOnSystem, storedParts, partVolumeValues, playbackSample,
+  seekFraction, stopPlayback, alignedOnSystem, storedParts, partVolumeValues, playbackSample,
   displayedPageNumber, waitLibraryReady,
 } = C;
 
@@ -121,7 +121,7 @@ async function runPage(browser, url, pageName, results) {
         oneHalfMax && halfTransitions >= 1 ? 'OK' : 'ÉCHEC',
         `${changes.length - 1} changements (${perMinute(changes.length - 1)}/min) dont ${pageChanges} changements de page ` +
         `et ${halfTransitions} demi-pages (${perMinute(halfTransitions)}/min) ; ancien suivi page entière : ${perMinute(pageChanges)}/min`);
-      await page.click('#transport-stop');
+      await stopPlayback(page);
     } catch (e) {
       L.record(results, '6. Suivi horizontal', pageName, 'ÉCHEC', 'exception du test : ' + e.message);
     }
@@ -214,7 +214,7 @@ async function runPage(browser, url, pageName, results) {
         `page ${playingStartPage} → ${targetPlayingPage}, cible ${targetPlaying} ms, ` +
         `position atteinte ${reachedPlaying ? reachedPlaying.position : 'aucune'} ms ` +
         `(constatée ${playingAfter.position} ms), état ${playingAfter.state}`);
-      await page.click('#transport-stop');
+      await stopPlayback(page);
       await waitState(page, 'stopped');
 
       // 3. Lecture arrêtée + page suivante : la position est calée sur le début
@@ -264,7 +264,7 @@ async function runPage(browser, url, pageName, results) {
 
       // 5. Suivi désactivé : la cale manuelle reste active (comportement
       // indépendant du réglage followPlayback).
-      await page.click('#transport-stop');
+      await stopPlayback(page);
       await waitState(page, 'stopped');
       await L.openSettings(page);
       await page.$eval('#follow-playback', (el) => {
@@ -289,7 +289,7 @@ async function runPage(browser, url, pageName, results) {
         followOffOk ? 'OK' : 'ÉCHEC',
         `page ${followOffStartPage} → ${followOffPage}, arrêté ${followOffSeek.position} ms, ` +
         `lecture ${followOffPlay.position} ms (cible ${targetFollowOff} ms)`);
-      await page.click('#transport-stop');
+      await stopPlayback(page);
       // Réactiver le suivi pour ne pas laisser de réglage inattendu
       await L.openSettings(page);
       await page.$eval('#follow-playback', (el) => {
@@ -388,7 +388,7 @@ async function runPage(browser, url, pageName, results) {
       }
       L.record(results, '6. Voix groupée masquée : le défilement suit la lecture', pageName,
         appData.syncMarksCount === before.syncMarks.length && followOk ? 'OK' : 'ÉCHEC', detail);
-      await page.click('#transport-stop');
+      await stopPlayback(page);
     } catch (e) {
       L.record(results, '6. Voix groupée masquée', pageName, 'ÉCHEC', 'exception du test : ' + e.message);
     }

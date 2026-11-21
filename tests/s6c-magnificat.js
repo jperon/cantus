@@ -7,7 +7,7 @@ const L = C.L;
 const {
   WAIT, bounded, waitReady, waitFirstSvg, waitBackgroundLoaded, reloadPage,
   state, waitState, transportHidden, positionGrowing, horizontalScrollPos,
-  seekFraction, alignedOnSystem, storedParts, partVolumeValues, playbackSample,
+  seekFraction, stopPlayback, alignedOnSystem, storedParts, partVolumeValues, playbackSample,
   displayedPageNumber, waitLibraryReady, MOVEMENTS_FIXTURE,
 } = C;
 
@@ -183,7 +183,7 @@ async function runPage(browser, url, pageName, results) {
 
       // Suivi désactivé : la lecture ne doit provoquer aucun seek ni changement
       // de page automatique.
-      await page.click('#transport-stop');
+      await stopPlayback(page);
       await waitState(page, 'stopped');
       await L.openSettings(page);
       await page.$eval('#follow-playback', (el) => {
@@ -208,7 +208,7 @@ async function runPage(browser, url, pageName, results) {
         followOffEnd.page === followOffStart.page && followOffEnd.seeks === 0 && followOffEnd.pos > 1000 ? 'OK' : 'ÉCHEC',
         `page ${followOffStart.page} → ${followOffEnd.page}, position ${followOffEnd.pos} ms, ` +
         `${followOffEnd.seeks} seek(s)`);
-      await page.click('#transport-stop');
+      await stopPlayback(page);
       await waitState(page, 'stopped');
       await L.openSettings(page);
       await page.$eval('#follow-playback', (el) => {

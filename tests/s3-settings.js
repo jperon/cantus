@@ -313,7 +313,7 @@ async function runBackNavigation(browser, url, pageName, results) {
   try {
     await importLoaded(page, L.FILES.telemannXml);
     const start = await L.pageInfo(page);
-    await page.click('.nav-btn[data-action="next-5"]');
+    await L.gotoPage(page, start.total);
     await page.waitForTimeout(1200);
     const jump = await L.pageInfo(page);
     const seen = [jump.page];
@@ -346,7 +346,7 @@ async function runWheelBack(browser, url, pageName, results) {
   const { page, ctx, errors } = await L.newPage(browser, url, { pageName });
   try {
     await importLoaded(page, L.FILES.bachXml, 300000);
-    await page.click('.nav-btn[data-action="next-5"]');
+    await L.gotoPage(page, 6);
     await page.waitForTimeout(1200);
     const jump = await L.pageInfo(page);
     const before = await visibleTopPage(page);
@@ -512,9 +512,9 @@ async function runPartSizeCacheRace(browser, url, pageName, results) {
     // Aller sur des pages non encore rendues, puis changer deux tailles avant
     // que leurs SVG n'arrivent (worker ralenti).
     await page.evaluate(() => { window.__workerDelay = 1500; });
-    await page.click('.nav-btn[data-action="next-5"]');
+    await L.gotoPage(page, 6);
     await page.waitForTimeout(200);
-    await page.click('.nav-btn[data-action="next-5"]');
+    await L.gotoPage(page, 11);
     await page.waitForTimeout(200);
     await L.openSettings(page);
     await expandPart(page, 0);
@@ -891,17 +891,17 @@ async function runLanguage(browser, url, pageName, results) {
       title: document.title,
       heading: document.querySelector('#import-section h1')?.textContent,
       subtitle: document.querySelector('#import-section p')?.textContent,
-      settingsTitle: document.getElementById('btn-settings')?.title,
+      menuSettings: document.getElementById('menu-settings')?.textContent?.trim(),
       description: document.querySelector('meta[name="description"]')?.content || '',
       navigatorLanguage: navigator.language,
       stored: localStorage.getItem('musica-language'),
     }));
     L.record(results, '3. Langue : anglais par défaut sans préférence (navigateur anglais)', pageName,
       en.lang === 'en' && en.title === 'MusicXML Reader' && en.heading === 'MusicXML Reader' &&
-        en.subtitle === 'Open a MusicXML file to get started' && en.settingsTitle === 'Settings' &&
+        en.subtitle === 'Open a MusicXML file to get started' && en.menuSettings === 'Settings' &&
         en.stored === null && /offline MusicXML reader/.test(en.description) ? 'OK' : 'ÉCHEC',
       `navigator ${en.navigatorLanguage}, <html lang> « ${en.lang} », titre « ${en.title} », ` +
-      `sous-titre « ${en.subtitle} », réglages « ${en.settingsTitle} », préférence ${en.stored}`);
+      `sous-titre « ${en.subtitle} », réglages « ${en.menuSettings} », préférence ${en.stored}`);
 
     // Un fichier est nécessaire pour que le bouton Réglages soit visible.
     await L.importFile(page, L.FILES.telemannXml);
@@ -995,7 +995,7 @@ async function runFolderVoices(browser, url, pageName, results) {
     await page.click('.nav-btn[data-action="next-mov"]'); await page.waitForTimeout(2500);
     const m2a = await L.staffCount(page);
     const m2pos = await L.pageInfo(page);
-    await page.click('.nav-btn[data-action="start"]'); await page.waitForTimeout(1500);
+    await L.gotoPage(page, 1); await page.waitForTimeout(1500);
     await L.openSettings(page);
     const rows = await L.partRows(page);
     await page.click('#parts-list .part-display >> nth=0');

@@ -221,7 +221,11 @@ async function deleteLibraryEntry(page, index = 0) {
 
 async function openSettings(page) {
   const visible = await page.evaluate(() => !document.getElementById('settings-overlay').classList.contains('hidden'));
-  if (!visible) await page.click('#btn-settings');
+  if (!visible) {
+    await page.click('#btn-menu');
+    await page.waitForSelector('#command-menu:not(.hidden)', { timeout: 10000 });
+    await page.click('#menu-settings');
+  }
   await page.waitForFunction(() => !document.getElementById('settings-overlay').classList.contains('hidden'), null, { timeout: 10000 });
 }
 
@@ -313,8 +317,19 @@ async function staffCount(page) {
 }
 
 async function tap(page, side) {
-  const box = { x: side === 'left' ? 60 : 440, y: 450 };
-  await page.mouse.click(box.x, box.y);
+  const x = side === 'left' ? 60 : side === 'right' ? 440 : 250;
+  await page.mouse.click(x, 450);
+}
+
+// Saut de page par le sélecteur « 1/12 » : champ numérique, curseur, Valider.
+async function gotoPage(page, number) {
+  await page.click('#page-number');
+  await page.waitForSelector('#page-jump:not(.hidden)', { timeout: 10000 });
+  await page.fill('#page-jump-input', String(number));
+  await page.click('#page-jump-confirm');
+  await page.waitForFunction(() => document.getElementById('page-jump').classList.contains('hidden'),
+    null, { timeout: 10000 });
+  await page.waitForTimeout(300);
 }
 
 async function pressArrow(page, dir) {
@@ -383,7 +398,7 @@ module.exports = {
   waitBackgroundLoaded, importFile, importFiles, importFolder,
   openLibrary, libraryEntries, openLibraryEntry, deleteLibraryEntry,
   openSettings, closeSettings, staffHeights, partRows,
-  markSvg, markerPresent, tap, pressArrow, waitPageChange,
+  markSvg, markerPresent, tap, pressArrow, waitPageChange, gotoPage,
   scrollState, resetScrollTop, staffCount,
   summarize, record,
   stats: () => ({ assertions, failures }),

@@ -7,7 +7,7 @@ const L = C.L;
 const {
   WAIT, bounded, waitReady, waitFirstSvg, waitBackgroundLoaded, reloadPage,
   state, waitState, transportHidden, positionGrowing, horizontalScrollPos,
-  seekFraction, alignedOnSystem, storedParts, partVolumeValues, playbackSample,
+  seekFraction, stopPlayback, alignedOnSystem, storedParts, partVolumeValues, playbackSample,
   displayedPageNumber, waitLibraryReady, ENCHAINEMENT_FIXTURE,
 } = C;
 
@@ -39,46 +39,104 @@ async function runPage(browser, url, pageName, results) {
   const { page, ctx, errors } = await L.newPage(browser, url, { pageName });
   try {
     await waitReady(page);
-    const hiddenBefore = await transportHidden(page);
-    L.record(results, '6. Transport masqué avant tout import', pageName,
-      hiddenBefore ? 'OK' : 'ÉCHEC', `hidden = ${hiddenBefore}`);
+    const barVisible = () => page.evaluate(() => {
+      const bar = document.getElementById('command-bar');
+      return !!bar && !bar.classList.contains('hidden');
+    });
+    const visibleBefore = await barVisible();
+    L.record(results, '6. Barre du bas masquée avant tout import', pageName,
+      !visibleBefore ? 'OK' : 'ÉCHEC', `visible = ${visibleBefore}`);
 
     await L.importFile(page, L.FILES.telemannXml);
     await waitFirstSvg(page);
     await waitBackgroundLoaded(page);
     await page.waitForTimeout(800);
-    const hiddenAfter = await transportHidden(page);
-    L.record(results, '6. Transport visible une fois la partition affichée', pageName,
-      !hiddenAfter ? 'OK' : 'ÉCHEC', `hidden = ${hiddenAfter}`);
+    const visibleAfter = await barVisible();
+    L.record(results, '6. Barre du bas visible une fois la partition affichée', pageName,
+      visibleAfter ? 'OK' : 'ÉCHEC', `visible = ${visibleAfter}`);
 
-    // Structure : une seule rangée en bas, trois zones, plus de barre de
-    // progression. Le libellé de temps est le seul affichage de position.
-    const layout = await page.evaluate(() => {
-      const rect = (id) => {
-        const el = document.getElementById(id);
-        if (!el) return null;
-        const r = el.getBoundingClientRect();
-        return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, centerY: r.top + r.height / 2 };
-      };
-      const left = rect('transport');
-      const center = rect('nav-buttons');
-      const right = rect('command-actions');
-      const sameRow = [left, center, right].every((r) =>
-        r && Math.abs(r.centerY - left.centerY) <= 3);
-      const noOverlap = left && center && right &&
-        left.right <= center.left + 1 && center.right <= right.left + 1;
+    // Touche au centre : masquer / afficher, le contenu récupère la hauteur.
+    const heights = await page.evaluate(() => ({
+      reader: Math.round(document.getElementById('reader').getBoundingClientRect().height),
+      viewport: innerHeight,
+    }));
+    await page.mouse.click(250, 300);
+    await page.waitForTimeout(250);
+    const afterHide = await page.evaluate(() => ({
+      visible: !document.getElementById('command-bar').classList.contains('hidden'),
+      reader: Math.round(document.getElementById('reader').getBoundingClientRect().height),
+    }));
+    await page.mouse.click(250, 300);
+    await page.waitForTimeout(250);
+    const afterShow = await page.evaluate(() => ({
+      visible: !document.getElementById('command-bar').classList.contains('hidden'),
+      reader: Math.round(document.getElementById('reader').getBoundingClientRect().height),
+    }));
+    L.record(results, '6. Touche au centre : barre masquée, contenu agrandi, puis barre revenue', pageName,
+      !afterHide.visible && afterShow.visible && afterHide.reader === heights.viewport &&
+        afterShow.reader === heights.reader && heights.reader < heights.viewport ? 'OK' : 'ÉCHEC',
+      `lecteur ${heights.reader}→${afterHide.reader}→${afterShow.reader} px (écran ${heights.viewport}), ` +
+      `barre ${visibleAfter ? 'visible' : 'masquée'}→${afterHide.visible ? 'visible' : 'masquée'}→${afterShow.visible ? 'visible' : 'masquée'}`);
+
+    // Sélecteur de page : l'indicateur « 1/12 » ouvre champ + curseur.
+    await page.click('#page-number');
+    const jump = await page.evaluate(() => {
+      const box = document.getElementById('page-jump');
+      const input = document.getElementById('page-jump-input');
+      const range = document.getElementById('page-jump-range');
       return {
-        sameRow,
-        noOverlap,
-        seek: !!document.getElementById('transport-seek'),
-        time: document.getElementById('transport-time')?.textContent || '',
-        bar: !!document.getElementById('command-bar'),
+        open: !box.classList.contains('hidden'),
+        role: box.getAttribute('role'),
+        value: input?.value,
+        total: document.getElementById('page-jump-total')?.textContent,
+        max: range?.max,
       };
     });
-    L.record(results, '6. Barre unique : MIDI à gauche, pages au centre, actions à droite', pageName,
-      layout.bar && layout.sameRow && layout.noOverlap && !layout.seek ? 'OK' : 'ÉCHEC',
-      `même ligne ${layout.sameRow}, sans chevauchement ${layout.noOverlap}, ` +
-      `barre de progression ${layout.seek ? 'présente' : 'supprimée'}`);
+    await page.keyboard.press('Escape');
+    const jumpClosed = await page.evaluate(() => document.getElementById('page-jump').classList.contains('hidden'));
+    L.record(results, '6. Indicateur de page : sélecteur (champ, curseur, Échap)', pageName,
+      jump.open && jump.role === 'dialog' && jump.value === '1' && Number(jump.max) > 0 &&
+        /\d+/.test(jump.total || '') && jumpClosed ? 'OK' : 'ÉCHEC',
+      JSON.stringify({ ...jump, jumpClosed }));
+
+    // Structure : barre opaque, trois zones (transport, navigation, actions),
+    // curseur de position présent, tout dans la largeur de l'écran même à
+    // 500 px (la barre de position passe sur sa propre ligne).
+    const layout = await page.evaluate(() => {
+      const el = (id) => document.getElementById(id);
+      const inside = (node) => {
+        if (!node) return false;
+        const r = node.getBoundingClientRect();
+        return r.left >= -0.5 && r.right <= window.innerWidth + 0.5 &&
+          r.top >= 0 && r.bottom <= window.innerHeight + 0.5;
+      };
+      const bar = el('command-bar');
+      const br = bar.getBoundingClientRect();
+      const bg = getComputedStyle(bar).backgroundColor;
+      const transparent = /rgba\([^)]*,\s*0(\.\d+)?\)/.test(bg);
+      const controls = ['transport-play', 'transport-seek', 'transport-time',
+        'page-number', 'btn-library', 'btn-menu'];
+      const navs = [...document.querySelectorAll('#nav-buttons .nav-btn')]
+        .map((b) => b.dataset.action);
+      return {
+        bar: !!bar,
+        hidden: bar.classList.contains('hidden'),
+        fits: br.left >= -0.5 && br.right <= window.innerWidth + 0.5 &&
+          br.bottom >= window.innerHeight - 1 && br.top >= 0,
+        opaque: !transparent,
+        background: bg,
+        controlsOk: controls.every((id) => inside(el(id))),
+        navs,
+        seek: !!el('transport-seek'),
+        time: el('transport-time')?.textContent || '',
+      };
+    });
+    L.record(results, '6. Barre du bas : opaque, dans l’écran, curseur de position et menu', pageName,
+      layout.bar && !layout.hidden && layout.fits && layout.opaque && layout.controlsOk &&
+        layout.seek && layout.navs.join(',') === 'prev-mov,next-mov' ? 'OK' : 'ÉCHEC',
+      `dans l’écran ${layout.fits}, fond ${layout.background} (opaque ${layout.opaque}), ` +
+      `curseur ${layout.seek ? 'présent' : 'absent'}, commandes ${layout.controlsOk}, ` +
+      `mouvements ${layout.navs.join('/')}`);
 
     // Lecture
     const timeBefore = await page.textContent('#transport-time');
@@ -239,7 +297,7 @@ async function runPage(browser, url, pageName, results) {
     await page.click('#transport-play');
     await waitState(page, 'playing');
     await page.waitForTimeout(400);
-    await page.click('#transport-stop');
+    await stopPlayback(page);
     await waitState(page, 'stopped');
     const stopped = await state(page);
     L.record(results, '6. Arrêt : état stopped et position 0', pageName,
@@ -329,7 +387,7 @@ async function runPage(browser, url, pageName, results) {
       el.dispatchEvent(new Event('change', { bubbles: true }));
     });
     await L.closeSettings(page);
-    await page.click('#transport-stop');
+    await stopPlayback(page);
     await waitState(page, 'stopped');
   } catch (e) {
     L.record(results, '6. Transport audio', pageName, 'ÉCHEC', 'exception du test : ' + e.message);
@@ -464,7 +522,7 @@ async function runPage(browser, url, pageName, results) {
       L.record(results, '6. Voix absente du MIDI : libellé toléré, aucun GainNode', pageName,
         unknownVoice.gain === null && unknownVoice.state === 'playing' ? 'OK' : 'ÉCHEC',
         `gain ${unknownVoice.gain}, état ${unknownVoice.state}`);
-      await page.click('#transport-stop');
+      await stopPlayback(page);
       await waitState(page, 'stopped');
 
       // Stockage sans champ `volumes` : volume de voix par défaut (50 %)
@@ -556,7 +614,7 @@ async function runPage(browser, url, pageName, results) {
         `lecture ${rowsHidden[0]?.played ? 'active' : 'coupée'}, gain ${hidden.gain}, ` +
         `pistes [${hidden.tracks.join(',')}], notes préparées ${hidden.preparedVoice}/${hidden.preparedTotal}, ` +
         `notes ordonnancées ${hidden.scheduledTotal}, MIDI ${hidden.midiBytes} o, état ${hidden.state}`);
-      await page.click('#transport-stop');
+      await stopPlayback(page);
       await waitState(page, 'stopped');
 
       // 2) Affichée mais coupée : le rendu la garde, le moteur la tait.
@@ -603,7 +661,7 @@ async function runPage(browser, url, pageName, results) {
         `lecture ${rowsMuted[0]?.played ? 'active' : 'coupée'}, gain ${muted.gain}, ` +
         `notes préparées ${muted.preparedVoice}/${muted.preparedTotal}, ordonnancées ${muted.scheduledTotal}, ` +
         `SVG marqué conservé ${markerKept}, état ${muted.state}`);
-      await page.click('#transport-stop');
+      await stopPlayback(page);
       await waitState(page, 'stopped');
 
       // 3) Persistance : la voix reste affichée et coupée après rechargement.
@@ -714,7 +772,7 @@ async function runPage(browser, url, pageName, results) {
       L.record(results, '6. Transposition auditive 0 : hauteurs d’origine rétablies à chaud', pageName,
         resetOk ? 'OK' : 'ÉCHEC', `${resetLog.length} note(s), hauteurs d’origine : ${resetOk}`);
       await L.closeSettings(page);
-      await page.click('#transport-stop');
+      await stopPlayback(page);
       await waitState(page, 'stopped');
 
       // Visuelle +2 : le rendu est transposé à la fermeture seulement, et les
@@ -752,7 +810,7 @@ async function runPage(browser, url, pageName, results) {
         soundUnchanged ? 'OK' : 'ÉCHEC',
         `${visual.log.length} note(s) à l’unisson, notes préparées identiques : ` +
         `${JSON.stringify(visual.notes) === JSON.stringify(base.notes)}`);
-      await page.click('#transport-stop');
+      await stopPlayback(page);
       await waitState(page, 'stopped');
     } catch (e) {
       L.record(results, '6. Transpositions', pageName, 'ÉCHEC', 'exception du test : ' + e.message);
@@ -833,7 +891,7 @@ async function runPage(browser, url, pageName, results) {
       // (b) Saut pendant la lecture vers le mouvement 2 : la lecture reprend
       // sur la mesure visée, avec les notes de ce mouvement (pas celles du
       // début du fichier).
-      await page.click('#transport-stop');
+      await stopPlayback(page);
       await waitState(page, 'stopped');
       await page.evaluate(() => window.goToPage(1));
       await page.waitForTimeout(400);
@@ -871,7 +929,7 @@ async function runPage(browser, url, pageName, results) {
 
       // (c) Saut à l'arrêt puis lecture : elle part de la page visée, pas du
       // début du mouvement.
-      await page.click('#transport-stop');
+      await stopPlayback(page);
       await waitState(page, 'stopped');
       await page.evaluate((p) => window.goToPage(p), starts[1]);
       await page.waitForTimeout(400);
@@ -896,7 +954,7 @@ async function runPage(browser, url, pageName, results) {
         `état ${stoppedJump.state.state}, mouvement ${stoppedJump.state.movementId}, ` +
         `position affichée ${stoppedJump.state.displayPosition} ms (offset ${stoppedJump.state.offset}), ` +
         `hauteurs jouées [${stoppedJump.pitches.join(',')}]`);
-      await page.click('#transport-stop');
+      await stopPlayback(page);
       await waitState(page, 'stopped');
     } catch (e) {
       L.record(results, '6. Enchaînement des mouvements', pageName, 'ÉCHEC', 'exception du test : ' + e.message);

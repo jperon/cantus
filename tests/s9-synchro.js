@@ -36,13 +36,12 @@ async function runPage(browser, url, pageName, results) {
       `${probe.syncMarksCount} marqueur(s), ${withXmlId} avec xmlId, durée ${probe.duration} ms`);
 
     for (const frac of FRACTIONS) {
-      // Déplacement dans la lecture par clic sur le libellé de temps.
+      // Déplacement dans la lecture par la barre de position.
       await page.evaluate((ratio) => {
-        const el = document.getElementById('transport-time');
-        const r = el.getBoundingClientRect();
-        el.dispatchEvent(new MouseEvent('click', {
-          bubbles: true, clientX: r.left + ratio * r.width,
-        }));
+        const el = document.getElementById('transport-seek');
+        el.value = String(Math.round(ratio * 1000));
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
       }, frac);
       await page.waitForTimeout(900);
 
