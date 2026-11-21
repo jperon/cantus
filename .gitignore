@@ -12,3 +12,5 @@ dist/
 
 # Environnement direnv du flake (use flake).
 /.direnv/
+# Fichiers de travail de tools/build-soundfont.py (téléchargements, rendus).
+/.tmp-sf/
