@@ -19,7 +19,10 @@
 #   destroy()
 #
 # Les dépendances du navigateur (window.__musicaMidi, window.__musicaSpessa et
-# la soundfont) sont lues paresseusement au premier play(). Le synthétiseur
+# la soundfont) sont préchargées en tâche de fond dès load(), qui crée aussi
+# l'AudioContext (suspendu tant qu'aucun geste utilisateur ne le reprend). Le
+# premier play() attend que le moteur soit prêt et ne le recharge jamais. Le
+# synthétiseur
 # SpessaSynth (spessasynth_lib) est embarqué par build.js ; le fichier SF3 est
 # servi depuis soundfonts/ (build normal) ou inliné en base64 (SPA), et le
 # processeur AudioWorklet depuis soundfonts/ (build normal) ou inliné (SPA).
@@ -401,6 +404,15 @@ createEngine = (initialOptions = {}) ->
     staffLabels: []
     position: 0
     startCtxTime: 0
+    # Faux tant que ensureEngine() n'a pas résolu : l'horloge et l'ordonnanceur
+    # ne démarrent qu'à ce moment-là (voir api.play), la position reste alors
+    # figée sur `from`. Sans ce drapeau, api.position() avancerait pendant le
+    # chargement du moteur.
+    clockStarted: false
+    # Jeton de génération : incrémenté par play, pause, stop et load, pour
+    # qu'un démarrage différé (attente du moteur) périmé ne relance pas
+    # l'horloge après un changement de transport.
+    playToken: 0
     noteIndex: 0
     # Journal d'ordonnancement activé à la demande (diagnostic et tests) :
     # null tant qu'aucune sonde ne le demande, pour ne pas croître sans fin.
@@ -573,8 +585,9 @@ createEngine = (initialOptions = {}) ->
         .then (buffer) -> synth.soundBankManager.addSoundBank buffer, 'main'
         .then -> synth.isReady
         .then -> synth
-    # La bascule doit être rapide et transparente : au-delà du délai, on
-    # n'attend plus la banque et on joue avec l'oscillateur.
+    # La bascule doit rester transparente même sur un appareil lent (liseuse) :
+    # au-delà du délai, on n'attend plus la banque et on joue avec
+    # l'oscillateur. Le délai est large pour laisser sa chance à la banque SF3.
     new Promise (resolve) ->
       settled = false
       timer = setTimeout (->
@@ -587,6 +600,12 @@ createEngine = (initialOptions = {}) ->
           try synth?.destroy()
           catch
             null
+          # Chargement périmé (rechargement de partition) : on libère l'attente
+          # au lieu de laisser le minuteur de repli courir dans le vide.
+          return if settled
+          settled = true
+          clearTimeout timer
+          resolve null
           return
         settled = true
         clearTimeout timer
@@ -640,6 +659,9 @@ createEngine = (initialOptions = {}) ->
       return state.enginePromise
     ctx = state.ctx
     generation = state.engineGeneration
+    # Un seul chargement à la fois : le préchargement de load() et le play()
+    # qui suit partagent la même promesse, le worklet et la banque ne sont
+    # jamais rechargés.
     state.enginePromise = loadSoundfont(ctx).then (synth) ->
       return state.engineMode if generation isnt state.engineGeneration
       if synth
@@ -795,6 +817,7 @@ createEngine = (initialOptions = {}) ->
   finish = ->
     return unless state.playing
     state.playing = false
+    state.clockStarted = false
     state.position = state.duration
     clearTimer()
     cancelAll()
@@ -802,7 +825,7 @@ createEngine = (initialOptions = {}) ->
     callback? state.position
 
   tick = ->
-    return unless state.playing and state.ctx
+    return unless state.playing and state.ctx and state.clockStarted
     ctx = state.ctx
     now = ctx.currentTime
     current = now - state.startCtxTime
@@ -875,10 +898,23 @@ createEngine = (initialOptions = {}) ->
     state.noteLog = null
     state.dispatchJitter = []
     # La banque reste chargée d'un mouvement à l'autre : seul un moteur
-    # absent (premier play, ou échec précédent) est relancé.
-    resetEngine() unless state.synth
+    # retombé sur l'oscillateur (banque absente ou illisible) est retenté. Un
+    # chargement en cours est conservé : ensureEngine rend la même promesse.
+    resetEngine() if state.engineMode is 'oscillator'
     buildGraph() if state.ctx
     setupSynth state.synth if state.synth
+    # Préchargement systématique : l'AudioContext est créé dès le chargement
+    # de la partition. Sans geste utilisateur il reste « suspended », ce qui
+    # n'empêche ni addModule ni la lecture de la banque ; play() le reprend.
+    # Le worklet et la banque SF3 se chargent en tâche de fond pour que le
+    # premier play() trouve le moteur prêt ou déjà en cours de chargement.
+    try
+      ensureContext()
+    catch err
+      # WebAudio absent : play() signalera l'erreur ; le chargement reste
+      # utilisable pour l'affichage et le rendu de la partition.
+      console.warn "Audio : contexte indisponible au chargement : #{err?.message or err}" if console?.warn?
+    ensureEngine() if state.ctx
     normalized
 
   api.play = (fromSeconds = 0, options = {}) ->
@@ -889,28 +925,42 @@ createEngine = (initialOptions = {}) ->
     ctx = ensureContext()
     api.resume()
     cancelAll()
-    state.noteIndex = 0
+    token = ++state.playToken
     from = Number fromSeconds
     from = 0 unless isFinite from
     from = clampTime from
     state.position = from
-    state.startCtxTime = ctx.currentTime - from
-    state.noteIndex = noteIndexAt state.notes, from
     state.playing = true
-    ensureEngine()
-    startTimer()
+    # L'horloge ne démarre qu'une fois le moteur prêt : tant que
+    # state.engineMode est null, scheduleNote jouerait l'oscillateur de repli.
+    # La position reste figée sur `from` pendant l'attente, et un pause, stop,
+    # seek ou play survenu entre-temps est respecté via `token`.
+    state.clockStarted = false
+    state.noteIndex = noteIndexAt state.notes, from
+    ensureEngine().then ->
+      return unless token is state.playToken and state.playing
+      # `state.position` peut avoir changé (seek) pendant le chargement du
+      # moteur : le départ réel se cale sur la position courante.
+      state.startCtxTime = ctx.currentTime - state.position
+      state.noteIndex = noteIndexAt state.notes, state.position
+      state.clockStarted = true
+      startTimer()
     api
 
   api.pause = ->
     return api unless state.playing
     state.position = clampTime api.position()
     state.playing = false
+    state.playToken += 1
+    state.clockStarted = false
     clearTimer()
     cancelAll()
     api
 
   api.stop = ->
     state.playing = false
+    state.playToken += 1
+    state.clockStarted = false
     clearTimer()
     cancelAll()
     state.position = 0
@@ -921,13 +971,15 @@ createEngine = (initialOptions = {}) ->
     value = clampTime seconds
     state.position = value
     state.noteIndex = noteIndexAt state.notes, value
-    if state.playing and state.ctx
+    if state.playing and state.ctx and state.clockStarted
       cancelAll()
       state.startCtxTime = state.ctx.currentTime - value
     api
 
   api.position = ->
-    return state.position unless state.playing and state.ctx
+    # Pendant l'attente du moteur, l'horloge n'a pas démarré : la position est
+    # celle fixée par play (ou par un seek), pas le temps écoulé.
+    return state.position unless state.playing and state.ctx and state.clockStarted
     Math.max 0, state.ctx.currentTime - state.startCtxTime
 
   api.isPlaying = -> state.playing
