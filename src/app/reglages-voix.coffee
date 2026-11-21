@@ -15,7 +15,7 @@ getMovementForPage = (globalPage) ->
   null
 
 # Settings defaults
-defaultSettings = { zoom: 40, theme: "white", tapSize: 30, scrollUnit: "page", overlap: 0, layout: "auto", masterVolume: 80, followPlayback: true, expandRepeats: true }
+defaultSettings = { zoom: 40, theme: "white", tapSize: 30, scrollUnit: "page", overlap: 0, layout: "auto", masterVolume: 80, followPlayback: true, expandRepeats: true, pianoOnly: false }
 
 # Bornes des transpositions visuelle et auditive, en demi-tons.
 TRANSPOSE_MIN = -12
@@ -79,6 +79,13 @@ applyExpandRepeats = (enabled) ->
   box = $("expand-repeats")
   box.checked = expandRepeats if box
 
+applyPianoOnly = (enabled) ->
+  pianoOnly = enabled isnt false
+  box = $("piano-only")
+  box.checked = pianoOnly if box
+  engine = audioEngine()
+  engine?.setPianoOnly pianoOnly
+
 applyMasterVolume = (volume) ->
   value = parseInt volume
   value = 80 unless isFinite value
@@ -100,12 +107,13 @@ applyAllSettings = ->
   applyMasterVolume settings.masterVolume
   applyFollowPlayback settings.followPlayback
   applyExpandRepeats settings.expandRepeats
+  applyPianoOnly settings.pianoOnly
 
-# Applique les volumes et les voix coupées au moteur audio, par libellé.
-# C'est le seul réglage de voix audible : le masquage ne touche que le rendu.
-# Les libellés inconnus du mouvement chargé sont acceptés sans erreur : une
-# voix coupée peut avoir disparu du MIDI, et le volume reste mémorisé pour son
-# retour. Aucun re-rendu n'est déclenché ici.
+# Applique les volumes, les voix coupées et les choix d'instrument au moteur
+# audio, par libellé. C'est le seul réglage de voix audible : le masquage ne
+# touche que le rendu. Les libellés inconnus du mouvement chargé sont acceptés
+# sans erreur : une voix coupée peut avoir disparu du MIDI, et le volume reste
+# mémorisé pour son retour. Aucun re-rendu n'est déclenché ici.
 applyVoiceAudio = (labels) ->
   engine = audioEngine()
   return unless engine?.setVoiceVolume?
@@ -117,21 +125,26 @@ applyVoiceAudio = (labels) ->
     list.push label
   add label for label in (labels ? [])
   add label for label in Object.keys partVolumes
+  add label for label in Object.keys partPrograms
   add label for label in Array.from mutedParts
+  engine.setPianoOnly pianoOnly if engine.setPianoOnly?
   for label in list
     volume = parseInt partVolumes[label] ? 100
     volume = 100 unless isFinite volume
     engine.setVoiceVolume label, volume
     engine.setVoiceMuted label, mutedParts.has(label) if engine.setVoiceMuted?
+    engine.setVoiceProgram label, (partPrograms[label] ? null) if engine.setVoiceProgram?
 
 # Réglages de voix propres à chaque fichier : voix masquées (rendu), voix
-# coupées (lecture), tailles et volumes. Le champ `muted` absent vaut aucune
-# voix coupée ; `volumes` absent vaut 100 % partout.
+# coupées (lecture), tailles, volumes et instruments choisis. Le champ `muted`
+# absent vaut aucune voix coupée ; `volumes` absent vaut 100 % partout ;
+# `programs` absent vaut l'instrument de la partition pour toutes les voix.
 loadPartSettings = ->
   hiddenParts = new Set()
   mutedParts = new Set()
   partSizes = {}
   partVolumes = {}
+  partPrograms = {}
   return unless currentFileId
   try
     saved = localStorage.getItem "musica-hidden-parts-#{currentFileId}"
@@ -145,6 +158,10 @@ loadPartSettings = ->
       mutedParts = new Set data.muted or []
       partSizes = data.sizes or {}
       partVolumes = data.volumes or {}
+      partPrograms = {}
+      for own label, value of (data.programs ? {})
+        program = parseInt value, 10
+        partPrograms[label] = program if isFinite(program) and program >= 0 and program <= 127
   catch
     # localStorage unavailable (file:// on some browsers)
 
@@ -156,6 +173,7 @@ savePartSettings = ->
       muted: Array.from mutedParts
       sizes: partSizes
       volumes: partVolumes
+      programs: partPrograms
     localStorage.setItem "musica-hidden-parts-#{currentFileId}", JSON.stringify(data)
   catch
     # localStorage unavailable (file:// on some browsers)

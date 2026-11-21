@@ -31,9 +31,11 @@ hiddenParts = new Set()  # Libellés des voix masquées au rendu, pour le fichie
 mutedParts = new Set()  # Libellés des voix coupées à la lecture (audio seul)
 partSizes = {}  # Libellé de voix -> taille en % (100 = taille normale)
 partVolumes = {}  # Libellé de voix -> volume en % (100 = volume normal)
+partPrograms = {}  # Libellé de voix -> programme GM choisi (absence = partition)
 partsChanged = false  # Réglages de voix modifiés, à appliquer à la fermeture
 followPlaybackEnabled = true  # Suivi du défilement pendant la lecture
 expandRepeats = true  # Dérouler les reprises (false : lecture linéaire écrite)
+pianoOnly = false  # Toutes les voix mélodiques au piano (réglage global)
 # Tempo de lecture : réglage propre au fichier (localStorage), prioritaire sur
 # le tempo du fichier ; fileTempo garde le tempo initial découvert dans les
 # données de lecture ({bpm, explicit, fileId}) pour afficher le défaut.

@@ -35,6 +35,88 @@ setupResize = ->
       reloadScore displayedPage()
     , 300
 
+# Noms General MIDI standard, en anglais et jamais traduits : un tableau
+# unique indexé par le numéro de programme (0..127). Les familles de huit
+# programmes sont les seuls libellés traduits.
+GM_PROGRAMS = [
+  'Acoustic Grand Piano', 'Bright Acoustic Piano', 'Electric Grand Piano', 'Honky-tonk Piano',
+  'Electric Piano 1', 'Electric Piano 2', 'Harpsichord', 'Clavinet',
+  'Celesta', 'Glockenspiel', 'Music Box', 'Vibraphone',
+  'Marimba', 'Xylophone', 'Tubular Bells', 'Dulcimer',
+  'Drawbar Organ', 'Percussive Organ', 'Rock Organ', 'Church Organ',
+  'Reed Organ', 'Accordion', 'Harmonica', 'Tango Accordion',
+  'Acoustic Guitar (nylon)', 'Acoustic Guitar (steel)', 'Electric Guitar (jazz)', 'Electric Guitar (clean)',
+  'Electric Guitar (muted)', 'Overdriven Guitar', 'Distortion Guitar', 'Guitar Harmonics',
+  'Acoustic Bass', 'Electric Bass (finger)', 'Electric Bass (pick)', 'Fretless Bass',
+  'Slap Bass 1', 'Slap Bass 2', 'Synth Bass 1', 'Synth Bass 2',
+  'Violin', 'Viola', 'Cello', 'Contrabass',
+  'Tremolo Strings', 'Pizzicato Strings', 'Orchestral Harp', 'Timpani',
+  'String Ensemble 1', 'String Ensemble 2', 'Synth Strings 1', 'Synth Strings 2',
+  'Choir Aahs', 'Voice Oohs', 'Synth Voice', 'Orchestra Hit',
+  'Trumpet', 'Trombone', 'Tuba', 'Muted Trumpet',
+  'French Horn', 'Brass Section', 'Synth Brass 1', 'Synth Brass 2',
+  'Soprano Sax', 'Alto Sax', 'Tenor Sax', 'Baritone Sax',
+  'Oboe', 'English Horn', 'Bassoon', 'Clarinet',
+  'Piccolo', 'Flute', 'Recorder', 'Pan Flute',
+  'Blown Bottle', 'Shakuhachi', 'Whistle', 'Ocarina',
+  'Lead 1 (square)', 'Lead 2 (sawtooth)', 'Lead 3 (calliope)', 'Lead 4 (chiff)',
+  'Lead 5 (charang)', 'Lead 6 (voice)', 'Lead 7 (fifths)', 'Lead 8 (bass + lead)',
+  'Pad 1 (new age)', 'Pad 2 (warm)', 'Pad 3 (polysynth)', 'Pad 4 (choir)',
+  'Pad 5 (bowed)', 'Pad 6 (metallic)', 'Pad 7 (halo)', 'Pad 8 (sweep)',
+  'FX 1 (rain)', 'FX 2 (soundtrack)', 'FX 3 (crystal)', 'FX 4 (atmosphere)',
+  'FX 5 (brightness)', 'FX 6 (goblins)', 'FX 7 (echoes)', 'FX 8 (sci-fi)',
+  'Sitar', 'Banjo', 'Shamisen', 'Koto',
+  'Kalimba', 'Bag pipe', 'Fiddle', 'Shanai',
+  'Tinkle Bell', 'Agogo', 'Steel Drums', 'Woodblock',
+  'Taiko Drum', 'Melodic Tom', 'Synth Drum', 'Reverse Cymbal',
+  'Guitar Fret Noise', 'Breath Noise', 'Seashore', 'Bird Tweet',
+  'Telephone Ring', 'Helicopter', 'Applause', 'Gunshot'
+]
+
+GM_FAMILY_KEYS = [
+  'gm.family.piano', 'gm.family.chromatic', 'gm.family.organ', 'gm.family.guitar',
+  'gm.family.bass', 'gm.family.strings', 'gm.family.ensemble', 'gm.family.brass',
+  'gm.family.reed', 'gm.family.pipe', 'gm.family.synthLead', 'gm.family.synthPad',
+  'gm.family.synthEffects', 'gm.family.ethnic', 'gm.family.percussive', 'gm.family.soundEffects'
+]
+
+# Programmes GM d'origine des voix, lus dans le MusicXML. <midi-program> est
+# numéroté à partir de 1 ; son absence vaut 0, comme le programme par défaut du
+# moteur. Sert seulement à l'étiquette « Partition (…) ».
+partSourcePrograms = ->
+  programs = {}
+  for index in [0...(currentSources?.length or 0)]
+    info = sourceCache.get index
+    continue unless info
+    map = partLabels info.splitInfo.doc
+    for part in Array.from info.splitInfo.doc.querySelectorAll "score-part"
+      label = map[part.getAttribute "id"]
+      continue unless label?
+      continue if programs[label]?
+      raw = parseInt part.querySelector("midi-instrument midi-program")?.textContent
+      programs[label] = if isFinite(raw) then Math.max(0, Math.min(127, raw - 1)) else 0
+  programs
+
+# Libellés des voix de batterie : canal MIDI 10 déclaré dans le MusicXML, ou
+# canal 9 dans le plan de canaux du moteur une fois des données de lecture
+# chargées. Aucune de ces voix ne reçoit de sélecteur d'instrument.
+partPercussionLabels = ->
+  labels = new Set()
+  for index in [0...(currentSources?.length or 0)]
+    info = sourceCache.get index
+    continue unless info
+    map = partLabels info.splitInfo.doc
+    for part in Array.from info.splitInfo.doc.querySelectorAll "score-part"
+      label = map[part.getAttribute "id"]
+      continue unless label?
+      channel = parseInt part.querySelector("midi-instrument midi-channel")?.textContent
+      labels.add label if channel is 10
+  engine = audioEngine()
+  assignments = if engine?.getChannelAssignments? then engine.getChannelAssignments() else []
+  for entry in assignments
+    labels.add entry.label if entry.percussion and entry.label?
+  labels
+
 # Remplit la liste des voix avec l'union, dans l'ordre d'apparition, des voix
 # de toutes les sources déjà converties de l'entrée (pas de re-parse). Chaque
 # fichier renumérote ses parties à partir de P1 : les voix sont identifiées par
@@ -61,6 +143,8 @@ renderPartsList = ->
       labels.push label
   group.classList.toggle "hidden", labels.length < 2
   list.innerHTML = ""
+  sourcePrograms = partSourcePrograms()
+  percussion = partPercussionLabels()
   for partLabel in labels
     do (partLabel) ->
       displayed = not hiddenParts.has partLabel
@@ -115,6 +199,33 @@ renderPartsList = ->
       row.appendChild nameEl
       row.appendChild displayGroup
       row.appendChild soundGroup
+      # Instrument de la voix : « Partition » puis les 128 programmes GM, par
+      # famille de huit. La batterie n'en reçoit pas ; les choix par voix
+      # restent mémorisés et sont seulement désactivés par « Piano seulement ».
+      programSel = null
+      unless percussion.has partLabel
+        scoreProgram = sourcePrograms[partLabel] ? 0
+        programSel = document.createElement "select"
+        programSel.className = "part-program"
+        programSel.title = t "parts.programTitle"
+        programSel.setAttribute "aria-label", t("parts.programAria", {part: partLabel})
+        scoreOpt = document.createElement "option"
+        scoreOpt.value = ""
+        scoreOpt.textContent = "#{t('parts.programScore')} (#{GM_PROGRAMS[scoreProgram]})"
+        programSel.appendChild scoreOpt
+        for familyKey, family in GM_FAMILY_KEYS
+          optGroup = document.createElement "optgroup"
+          optGroup.label = t familyKey
+          for program in [family * 8 ... family * 8 + 8]
+            opt = document.createElement "option"
+            opt.value = String program
+            opt.textContent = GM_PROGRAMS[program]
+            optGroup.appendChild opt
+          programSel.appendChild optGroup
+        chosen = partPrograms[partLabel]
+        programSel.value = if chosen? then String(chosen) else ""
+        programSel.disabled = pianoOnly
+        row.appendChild programSel
       # Affichage : rendu seul, appliqué à la fermeture. La voix reste jouée.
       displayBtn.addEventListener "click", ->
         now = displayBtn.getAttribute("aria-pressed") isnt "true"
@@ -147,6 +258,13 @@ renderPartsList = ->
         # Application immédiate au moteur : jamais de partsChanged ni de rendu
         engine = audioEngine()
         engine?.setVoiceVolume partLabel, pct
+      if programSel
+        programSel.addEventListener "change", ->
+          raw = programSel.value
+          if raw is "" then delete partPrograms[partLabel] else partPrograms[partLabel] = parseInt raw
+          savePartSettings()
+          engine = audioEngine()
+          engine?.setVoiceProgram partLabel, (if raw is "" then null else parseInt raw)
       list.appendChild row
   updatePartsDisabled()
   updatePartsSizesReset()
@@ -416,6 +534,18 @@ setupSettings = ->
       settings.expandRepeats = enabled
       saveSettings settings
       resetPlayback()
+
+  # Piano seulement : réglage global, appliqué à chaud sans effacer les choix
+  # d'instrument par voix (les sélecteurs restent visibles mais désactivés).
+  pianoBox = $("piano-only")
+  if pianoBox
+    pianoBox.addEventListener "change", (e) ->
+      enabled = e.target.checked
+      applyPianoOnly enabled
+      settings = loadSettings()
+      settings.pianoOnly = enabled
+      saveSettings settings
+      renderPartsList()
 
   # Volume général : appliqué en direct, conservé à la fin du glissement
   volumeRange = $("master-volume-range")
