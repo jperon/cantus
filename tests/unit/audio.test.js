@@ -170,6 +170,36 @@ test('trackProgram : programme borné à 0..127, piano par défaut', () => {
   assert.strictEqual(audio.trackProgram({ program: -4 }), 0);
 });
 
+test('effectiveTrackProgram : partition, choix de voix, pianoOnly, batterie', () => {
+  const flute = { index: 0, channel: 0, program: 73 };
+  const drums = { index: 1, channel: 9, program: 8 };
+  const programs = { Flûte: 52 };
+  // Absence de choix : programme de la partition ; choix par libellé ; une
+  // autre voix n'hérite pas du choix.
+  assert.strictEqual(audio.effectiveTrackProgram(flute, 'Flûte', {}, false), 73, 'partition');
+  assert.strictEqual(audio.effectiveTrackProgram(flute, 'Flûte', programs, false), 52, 'choix de la voix');
+  assert.strictEqual(audio.effectiveTrackProgram(flute, 'Hautbois', programs, false), 73, 'autre voix');
+  // pianoOnly prime sur le choix, sans l'effacer (le choix reste dans la table).
+  assert.strictEqual(audio.effectiveTrackProgram(flute, 'Flûte', programs, true), 0, 'piano seulement');
+  assert.strictEqual(programs.Flûte, 52, 'le choix de voix est conservé');
+  // Batterie : programme de la partition, choix et pianoOnly ignorés.
+  assert.strictEqual(audio.effectiveTrackProgram(drums, 'Batterie', programs, true), 8, 'batterie');
+  assert.strictEqual(audio.effectiveTrackProgram(drums, 'Batterie', { Batterie: 52 }, false), 8, 'batterie, choix ignoré');
+});
+
+test('effectiveTrackProgram : programme absent, choix hors bornes ou invalide', () => {
+  const track = { index: 2, channel: 0 };
+  assert.strictEqual(audio.effectiveTrackProgram(track, 'Piano', {}, false), 0, 'programme absent');
+  assert.strictEqual(audio.effectiveTrackProgram(track, 'Piano', { Piano: 200 }, false), 127, 'borne haute');
+  assert.strictEqual(audio.effectiveTrackProgram(track, 'Piano', { Piano: -3.7 }, false), 0, 'borne basse et arrondi');
+  assert.strictEqual(audio.effectiveTrackProgram(track, 'Piano', { Piano: 'x' }, false), 0, 'choix invalide');
+  assert.strictEqual(
+    audio.effectiveTrackProgram({ ...track, program: 41 }, 'Piano', { Piano: null }, false),
+    41,
+    'null vaut instrument de la partition'
+  );
+});
+
 // --- Ordonnanceur ----------------------------------------------------------
 
 const notes = [

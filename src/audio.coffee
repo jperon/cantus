@@ -14,9 +14,19 @@
 #   setTranspose(semitones)      -> décalage des hauteurs jouées (percussions exclues)
 #   setVoiceVolume(label, v)     -> 0..100, par libellé de voix
 #   setVoiceMuted(label, m)      -> true : silence réel
+#   setVoiceProgram(label, p)    -> programme GM 0..127 de la voix, null = celui
+#                                   de la partition ; appliqué par programChange
+#   setPianoOnly(enabled)        -> force le programme 0 sur les voix mélodiques
+#                                   (la batterie garde le sien), sans effacer les
+#                                   choix par voix
+#   getChannelAssignments()      -> diagnostic : canaux, programmes effectifs
 #   getVoiceGain(label)          -> gain courant du GainNode de la voix (ou null)
 #   resume()                     -> reprend l'AudioContext (politique autoplay)
 #   destroy()
+#
+# Le programme effectif d'une piste est calculé par effectiveTrackProgram :
+# batterie inchangée, sinon 0 quand pianoOnly est actif, sinon le choix de la
+# voix, sinon le programme de la partition (0 à défaut).
 #
 # Les dépendances du navigateur (window.__musicaMidi, window.__musicaSpessa et
 # la soundfont) sont préchargées en tâche de fond dès load(), qui crée aussi
@@ -97,6 +107,25 @@ trackProgram = (track) ->
   program = Number track?.program
   return DEFAULT_PROGRAM unless isFinite program
   Math.min 127, Math.max 0, Math.floor program
+
+# Choix d'instrument d'une voix (libellé -> programme GM). Une absence, une
+# valeur non numérique ou null vaut « instrument de la partition ».
+voiceProgramChoice = (programs, label) ->
+  program = (programs ? {})[label]
+  return null unless program?
+  value = Number program
+  return null unless isFinite value
+  Math.min 127, Math.max 0, Math.floor value
+
+# Programme GM effectif d'une piste. La batterie garde toujours le programme de
+# sa partition (le canal 9 joue le kit GM) ; pour les autres, « piano
+# seulement » prime sur le choix de la voix, qui prime sur la partition.
+effectiveTrackProgram = (track, label, programs, pianoOnly) ->
+  return trackProgram track if Number(track?.channel) is DRUM_CHANNEL
+  return DEFAULT_PROGRAM if pianoOnly
+  choice = voiceProgramChoice programs, label
+  return choice if choice?
+  trackProgram track
 
 # Répartit les pistes jouées sur les canaux MIDI de SpessaSynth :
 #   - une piste par canal mélodique tant qu'il y en a au plus 15 ;
@@ -423,6 +452,11 @@ createEngine = (initialOptions = {}) ->
     masterVolume: DEFAULT_VOLUME
     voiceVolumes: {}
     voiceMuted: {}
+    # Choix d'instrument par libellé de voix (programme GM 0..127) et option
+    # globale « piano seulement ». Ils survivent aux chargements : c'est
+    # l'application qui les réapplique après chaque load().
+    voicePrograms: {}
+    pianoOnly: false
     # Transposition auditive (demi-tons) : appliquée aux notes programmées à
     # partir de maintenant, sans modifier les notes chargées. Les pistes de
     # percussion n'en dépendent pas.
@@ -615,6 +649,36 @@ createEngine = (initialOptions = {}) ->
         settled = true
         clearTimeout timer
         resolve null
+
+  # Programme effectif d'un canal : celui de sa première piste, dont le
+  # libellé porte le choix de voix éventuel. Les pistes d'une même voix
+  # partagent déjà le canal et le programme.
+  channelProgram = (entry) ->
+    trackIndex = entry.tracks[0]
+    label = state.trackMap.byTrack[trackIndex]
+    effectiveTrackProgram state.tracks[trackIndex], label, state.voicePrograms, state.pianoOnly
+
+  # Recalcule les programmes du plan après un chargement, sans rien envoyer :
+  # setupSynth envoie ensuite chaque programme du plan.
+  planChannelPrograms = ->
+    for entry in state.channelPlan
+      entry.program = channelProgram entry
+
+  # Applique les choix au synthétiseur en cours. Seuls les canaux dont le
+  # programme change reçoivent un programChange : un réglage identique ne
+  # relance donc pas le preset en cours de lecture.
+  refreshChannelPrograms = ->
+    for entry in state.channelPlan
+      program = channelProgram entry
+      continue if program is entry.program
+      entry.program = program
+      continue unless state.synth
+      try
+        state.synth.programChange entry.channel, program
+        state.programChanges.push {channel: entry.channel, program}
+      catch
+        null
+    api
 
   # Envoie les programme GM de chaque canal et raccorde les sorties de canal
   # aux GainNode de piste. Une seule connexion par canal : les pistes d'une
@@ -890,6 +954,7 @@ createEngine = (initialOptions = {}) ->
     plan = assignTrackChannels state.tracks, state.trackMap.byTrack
     state.channelByTrack = plan.byTrack
     state.channelPlan = plan.channels
+    planChannelPrograms()
     if plan.overflow > 0
       console.warn "Audio : #{plan.overflow} voix sans canal MIDI propre, programme partagé"
     state.loaded = true
@@ -1048,6 +1113,26 @@ createEngine = (initialOptions = {}) ->
       gain.gain.setTargetAtTime voiceGainValue(state.voiceVolumes[label] ? DEFAULT_VOLUME, state.voiceMuted[label]), state.ctx.currentTime, 0.01
     api
 
+  # Choix d'instrument d'une voix, appliqué immédiatement sur son canal (y
+  # compris pendant la lecture). `null` revient à l'instrument de la partition.
+  api.setVoiceProgram = (label, program) ->
+    return api unless label?
+    if program?
+      value = Number program
+      if isFinite value
+        state.voicePrograms[label] = Math.min 127, Math.max 0, Math.floor value
+      else
+        delete state.voicePrograms[label]
+    else
+      delete state.voicePrograms[label]
+    refreshChannelPrograms()
+
+  # « Piano seulement » : toutes les voix mélodiques passent au programme 0,
+  # sans modifier les choix par voix (ils reprennent quand on décoche).
+  api.setPianoOnly = (enabled) ->
+    state.pianoOnly = !!enabled
+    refreshChannelPrograms()
+
   api.destroy = ->
     api.stop()
     disconnectGraph()
@@ -1098,6 +1183,8 @@ createEngine = (initialOptions = {}) ->
   api.clampVolume = clampVolume
   api.resolveTrackMap = resolveTrackMap
   api.trackProgram = trackProgram
+  api.voiceProgramChoice = voiceProgramChoice
+  api.effectiveTrackProgram = effectiveTrackProgram
   api.assignTrackChannels = assignTrackChannels
   api.noteIndexAt = noteIndexAt
   api.notesToSchedule = notesToSchedule
