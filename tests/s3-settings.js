@@ -29,10 +29,12 @@ async function expandPart(page, index = 0) {
   await page.waitForTimeout(100);
 }
 
-// Ouvre les réglages sans dépendre de la barre du bas, hors périmètre de ce
-// scénario et trop large pour un écran de 390 px.
+// Ouvre les réglages sur un écran étroit par le menu ⋯ de la barre du bas
+// (le bouton ⚙ n'existe plus).
 async function openSettingsNarrow(page) {
-  await page.evaluate(() => document.getElementById('btn-settings').click());
+  await page.click('#btn-menu');
+  await page.waitForSelector('#command-menu:not(.hidden)', { timeout: 10000 });
+  await page.click('#menu-settings');
   await page.waitForFunction(
     () => !document.getElementById('settings-overlay').classList.contains('hidden'),
     null, { timeout: 10000 }
