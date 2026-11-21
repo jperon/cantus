@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Construit dist/ puis lance les scénarios de la campagne de tests.
 # Usage : tests/run.sh [s1-import.js ...] (défaut : tous)
-# Variable JOBS : nombre de scénarios lancés en parallèle (défaut 3, 1 = série).
+# Variable JOBS : nombre de scénarios lancés en parallèle (défaut 1 = série).
+# Variable LOAD_MAX : avant chaque scénario, attendre que la charge sur 1 min
+# par cœur repasse sous ce seuil (défaut 2.5 ; 0 = pas d'attente).
 set -u
 cd "$(dirname "$0")/.."
 
@@ -14,7 +16,8 @@ fi
 CHROMIUM=${CHROMIUM:-/run/current-system/sw/bin/chromium}
 export CHROMIUM
 
-JOBS=${JOBS:-3}
+JOBS=${JOBS:-1}
+LOAD_MAX=${LOAD_MAX:-2.5}
 if ! [[ $JOBS =~ ^[1-9][0-9]*$ ]]; then
   echo "JOBS doit être un entier >= 1 (reçu : « $JOBS »)" >&2
   exit 2
@@ -80,6 +83,22 @@ done
 # parent les affiche.
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
+
+# Attend que la machine soit assez peu chargée (plusieurs campagnes tournent
+# souvent en même temps : agents, worktrees, autres projets).
+wait_load() {
+  local cores load last=-60
+  cores=$(nproc)
+  while :; do
+    load=$(awk -v c="$cores" -v m="$LOAD_MAX" '{ l = $1 / c; if (m > 0 && l > m) printf "%.1f", l }' /proc/loadavg)
+    [ -z "$load" ] && return
+    if [ $(( SECONDS - last )) -ge 60 ]; then
+      echo "   ... attente : charge $load/cœur > $LOAD_MAX"
+      last=$SECONDS
+    fi
+    sleep 15
+  done
+}
 
 # Lance un scénario (en tâche de fond quand il est appelé avec `&`). Le
 # sous-shell ne peut pas modifier les variables du parent : code et durée
@@ -159,6 +178,7 @@ while [ "${#pending[@]}" -gt 0 ] || [ "${#launched[@]}" -gt 0 ]; do
     script=${pending[0]}
     pending=("${pending[@]:1}")
     launched+=("$script")
+    wait_load
     echo
     echo "   ... $script lancé (JOBS=$JOBS)"
     run_bg "$script" &
@@ -183,6 +203,7 @@ if [ "${#serial_scripts[@]}" -gt 0 ]; then
 fi
 for script in "${serial_scripts[@]}"; do
   echo
+  wait_load
   echo "   ... $script lancé (série)"
   run_bg "$script"
   report "$script"
