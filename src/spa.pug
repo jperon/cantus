@@ -130,9 +130,11 @@ html(lang="en")
             a(href="https://github.com/jperon/cantus/blob/master/THIRD-PARTY.md" target="_blank" rel="noopener" data-i18n="settings.thirdParty") Third-party components
         .settings-row
           small
-            span(data-i18n="settings.soundfontCredit") FluidR3 piano samples by Frank Wen, MIDI.js rendering by Benjamin Gleitzman —
+            span(data-i18n="settings.soundfontCredit") TimGM6mb General MIDI soundfont, SpessaSynth synthesis —
             = ' '
-            a(href="https://creativecommons.org/licenses/by/3.0/" target="_blank" rel="noopener") CC-BY 3.0
+            a(href="https://www.gnu.org/licenses/old-licenses/gpl-2.0.html" target="_blank" rel="noopener") GPL-2.0
+            = ' · '
+            a(href="https://www.apache.org/licenses/LICENSE-2.0" target="_blank" rel="noopener") Apache-2.0
     #library-overlay.hidden
       #library-header
         h2(data-i18n="library.title") Library
@@ -165,9 +167,15 @@ html(lang="en")
     script.
       window.__musicaBuildDate = "#{buildDate}"
       window.__musicaScoretkAvailable = #{scoretkAvailable ? 'true' : 'false'}
+      window.__musicaSoundfontAvailable = #{soundfontsAvailable ? 'true' : 'false'}
     if scoretkInline
       script#scoretk-wasm-src(type="text/plain") !{scoretkInline.glue}
       script#scoretk-wasm-b64(type="text/plain") !{scoretkInline.wasm}
+    if soundfontB64
+      script#soundfont-b64(type="text/plain") !{soundfontB64}
+    //- Processeur AudioWorklet inliné : évalué depuis une URL blob au premier
+    //- play(), faute d'accès fichier en file://.
+    script#spessasynth-worklet-src(type="text/plain") !{spessaWorklet}
     script#worker-src(type="text/js-worker") !{workerSource}
     script !{workerSetup}
     script !{fflateSetup}
@@ -179,21 +187,19 @@ html(lang="en")
     script !{formatsJs}
     script !{timelineJs}
     script !{i18nJs}
+    script !{spessaJs}
     script !{audioJs}
     script !{playbackJs}
-    if soundfontSamples
-      //- Asset inerte : le SPA en file:// ne peut pas fetch, et l'évaluer avant
-      //- la lib soundfont-player n'aurait aucun intérêt.
-      script#soundfont-src(type="text/plain") !{soundfontSamples}
-    script !{soundfontPlayerJs}
-    if soundfontSamples
-      //- Exécute l'asset inerte : définit MIDI.Soundfont dans le contexte global
+    if soundfontB64
+      //- Banque inlinée : le moteur la décode au premier play().
       script.
         (function() {
-          var src = document.getElementById('soundfont-src');
-          if (!src) return;
-          var script = document.createElement('script');
-          script.textContent = src.textContent;
-          document.head.appendChild(script);
+          var src = document.getElementById('soundfont-b64');
+          if (src) window.__musicaSoundfontB64 = src.textContent.trim();
         })();
+    script.
+      (function() {
+        var src = document.getElementById('spessasynth-worklet-src');
+        if (src) window.__musicaSpessaWorkletText = src.textContent;
+      })();
     script !{appJs}
