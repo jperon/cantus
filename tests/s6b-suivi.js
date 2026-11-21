@@ -235,7 +235,9 @@ async function runPage(browser, url, pageName, results) {
       await page.click('#transport-play');
       await waitState(page, 'playing');
       const resumed = await state(page);
-      const resumedOk = Math.abs(resumed.position - targetStopped) <= 150;
+      // L'horloge du moteur avance entre beginPlayback et la lecture de
+      // l'état (attente « playing » par sondage) : tolérer cette avance.
+      const resumedOk = Math.abs(resumed.position - targetStopped) <= 600;
       L.record(results, '6. Lecture après cale : démarre au début de la page affichée', pageName,
         resumedOk ? 'OK' : 'ÉCHEC',
         `position ${resumed.position} ms (cible ${targetStopped} ms), état ${resumed.state}`);
@@ -284,7 +286,7 @@ async function runPage(browser, url, pageName, results) {
       const followOffPlay = await state(page);
       const followOffOk = followOffPage === targetFollowOffPage && followOffSeek.state === 'stopped' &&
         Math.abs(followOffSeek.position - targetFollowOff) <= 150 &&
-        Math.abs(followOffPlay.position - targetFollowOff) <= 150;
+        Math.abs(followOffPlay.position - targetFollowOff) <= 600;
       L.record(results, '6. followPlayback=false : la cale manuelle sur la page reste active', pageName,
         followOffOk ? 'OK' : 'ÉCHEC',
         `page ${followOffStartPage} → ${followOffPage}, arrêté ${followOffSeek.position} ms, ` +

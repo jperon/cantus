@@ -495,10 +495,11 @@ findLastCompleteSvg = ->
   lastCompleteSvg = null
   for svg in svgs
     svgRect = svg.getBoundingClientRect()
-    svgBottom = svgRect.bottom
-
+    # Une page entièrement au-dessus de la zone visible n'est pas une page
+    # « visible » : la ignorer, sinon la cible resterait la page courante.
+    continue if svgRect.bottom <= slotRect.top
     # Check if SVG is completely visible
-    if svgBottom <= viewBottom
+    if svgRect.bottom <= viewBottom
       lastCompleteSvg = svg
     else
       break  # Stop as soon as we find a partially visible SVG
@@ -572,6 +573,7 @@ verticalTarget = (dir) ->
       if lastComplete
         index = Array.prototype.indexOf.call svgs, lastComplete
         target = svgTop svgs[index + 1] if index + 1 < svgs.length
+      target = null unless target? and target > current + SYSTEM_TOLERANCE
       # Aucune page entièrement visible (page plus haute que la zone de
       # lecture, cas de la barre du bas) : viser le début de la page suivante
       # plutôt qu'une demi-page, sinon « par page » ne changerait jamais de
@@ -580,7 +582,6 @@ verticalTarget = (dir) ->
         for svg in svgs when svgTop(svg) > current + SYSTEM_TOLERANCE
           target = svgTop svg
           break
-      target = null unless target? and target > current + SYSTEM_TOLERANCE
     else
       for svg in svgs when svgTop(svg) < current - SYSTEM_TOLERANCE
         target = svgTop svg
