@@ -36,7 +36,8 @@ renderLibrary = ->
 
 showLibrary = ->
   # Retour à la bibliothèque : la lecture s'arrête et le contexte audio est
-  # libéré.
+  # libéré. La barre du bas s'efface sous le panneau plein écran.
+  hideCommandBar()
   hideTransport()
   resetPlayback()
   renderLibrary()
@@ -44,6 +45,7 @@ showLibrary = ->
 
 hideLibrary = ->
   $("library-overlay").classList.add "hidden"
+  showCommandBar() if fileLoaded
 
 openFromLibrary = (id) ->
   hideLibrary()
@@ -109,16 +111,16 @@ setupNavigation = ->
         e.preventDefault()
         action = btn.dataset.action
         switch action
-          when "start" then goToStart()
-          when "end" then goToEnd()
           when "prev-mov" then goToPrevMovement()
           when "next-mov" then goToNextMovement()
-          when "prev-5" then goBack5()
-          when "next-5" then goForward5()
 
   # Keyboard navigation
   document.addEventListener "keydown", (e) ->
     return unless fileLoaded
+    return if isFormField e.target
+    # Espace activé sur un contrôle de la barre : laisser le bouton faire son
+    # action au lieu de tourner la page en plus.
+    return if e.key is " " and e.target.closest?("#command-bar, #command-menu, #page-jump")
     switch e.key
       when "ArrowRight", " "
         e.preventDefault()

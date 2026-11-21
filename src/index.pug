@@ -189,23 +189,30 @@ html(lang="en")
     #page-indicator
     #loading-indicator.hidden
       .spinner-small
-    #command-bar
+    #command-bar.hidden
       #transport.transport-group.hidden(role="group" aria-label="Audio playback" data-i18n-aria-label="transport.group")
         button#transport-play.transport-btn(type="button" title="Play / pause (p)" data-i18n-title="transport.playPauseTitle" aria-label="Play" data-i18n-aria-label="transport.playAria") ▶
-        button#transport-stop.transport-btn(type="button" title="Stop (s)" data-i18n-title="transport.stopTitle" aria-label="Stop" data-i18n-aria-label="transport.stop") ■
-        span#transport-time(title="Click to seek in the playback" data-i18n-title="transport.timeTitle") 0:00 / 0:00
+        input#transport-seek.transport-seek(type="range" min="0" max="1000" step="1" value="0" aria-label="Playback position" data-i18n-aria-label="transport.seekAria")
+        span#transport-time 0:00 / 0:00
       #nav-buttons.nav-group
-        button.nav-btn(data-action="start" title="Start" data-i18n-title="nav.start") ⏮
-        button.nav-btn(data-action="prev-mov" title="Previous movement" data-i18n-title="nav.prevMovement") ◀◀
-        button.nav-btn(data-action="prev-5" title="5 pages back" data-i18n-title="nav.prev5") −5
-        span#page-number
-        button.nav-btn(data-action="next-5" title="5 pages forward" data-i18n-title="nav.next5") +5
-        button.nav-btn(data-action="next-mov" title="Next movement" data-i18n-title="nav.nextMovement") ▶▶
-        button.nav-btn(data-action="end" title="End" data-i18n-title="nav.end") ⏭
+        button.nav-btn(type="button" data-action="prev-mov" title="Previous movement" data-i18n-title="nav.prevMovement" aria-label="Previous movement" data-i18n-aria-label="nav.prevMovement") ⏮
+        button#page-number(type="button" title="Go to a page" data-i18n-title="nav.pageSelectorTitle" aria-label="Go to a page" data-i18n-aria-label="nav.pageSelectorTitle" aria-haspopup="dialog") 1/1
+        button.nav-btn(type="button" data-action="next-mov" title="Next movement" data-i18n-title="nav.nextMovement" aria-label="Next movement" data-i18n-aria-label="nav.nextMovement") ⏭
       #command-actions.icons-group
         button#btn-library.hidden(type="button" title="Library" data-i18n-title="nav.library" aria-label="Library" data-i18n-aria-label="nav.library") ☰
-        button#btn-export.hidden(type="button" title="Export" data-i18n-title="nav.export" aria-label="Export" data-i18n-aria-label="nav.export") ⇩
-        button#btn-settings.hidden(type="button" title="Settings" data-i18n-title="nav.settings" aria-label="Settings" data-i18n-aria-label="nav.settings") ⚙
+        button#btn-menu.hidden(type="button" title="Menu" data-i18n-title="nav.menu" aria-label="Menu" data-i18n-aria-label="nav.menu" aria-haspopup="menu" aria-expanded="false") ⋯
+    #command-menu.hidden(role="menu" aria-labelledby="btn-menu" aria-label="Score actions" data-i18n-aria-label="nav.menuLabel")
+      button#menu-export(type="button" role="menuitem" data-i18n="nav.export") Export
+      button#menu-settings(type="button" role="menuitem" data-i18n="nav.settings") Settings
+    #page-jump.hidden(role="dialog" aria-modal="true" aria-labelledby="page-jump-title")
+      h2#page-jump-title(data-i18n="nav.pageSelectorTitle") Go to a page
+      .page-jump-row
+        input#page-jump-input(type="number" min="1" step="1" inputmode="numeric" aria-label="Page number" data-i18n-aria-label="nav.pageInputAria")
+        span#page-jump-total / 1
+      input#page-jump-range(type="range" min="1" max="1" step="1" value="1" aria-label="Page" data-i18n-aria-label="nav.pageRangeAria")
+      .page-jump-actions
+        button#page-jump-cancel.settings-btn(type="button" data-i18n="nav.pageCancel") Cancel
+        button#page-jump-confirm.settings-btn(type="button" data-i18n="nav.pageGo") Go
     script.
       window.__musicaBuildDate = "#{buildDate}"
       window.__musicaScoretkAvailable = #{scoretkAvailable ? 'true' : 'false'}

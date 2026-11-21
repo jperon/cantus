@@ -33,7 +33,7 @@ html, body {
 #reader {
   position: relative;
   width: 100%;
-  height: 100%;
+  height: calc(100% - var(--command-bar-height, 0px));
 }
 
 #score-container {
@@ -302,22 +302,18 @@ html, body {
   pointer-events: auto;
 }
 
-#btn-library,
-#btn-export,
-#btn-settings {
-  background: rgba(255,255,255,0.85);
-  border: 1px solid #ddd;
-  border-radius: 1vh;
-  padding: 0.7vh 1vh;
-  font-size: 2.2vh;
+#btn-library {
+  background: #ffffff;
+  border: 1px solid #888;
+  border-radius: 8px;
+  padding: 0;
+  font-size: 20px;
   cursor: pointer;
-  color: #333;
+  color: #111;
   line-height: 1;
 }
 
-#btn-library.hidden,
-#btn-export.hidden,
-#btn-settings.hidden {
+#btn-library.hidden {
   display: none;
 }
 
@@ -831,10 +827,10 @@ body.theme-dark .install-subtitle {
 }
 
 body.theme-dark #btn-library,
-body.theme-dark #btn-settings {
-  background: rgba(26,26,26,0.85);
-  border-color: #444;
-  color: #ddd;
+body.theme-dark #btn-menu {
+  background: #262626;
+  border-color: #666;
+  color: #eee;
 }
 
 body.theme-dark #page-indicator {
@@ -1084,9 +1080,10 @@ body.theme-dark .spinner-small {
   border-top-color: #ccc;
 }
 
-/* Barre de commandes unique en bas de l'écran : MIDI à gauche, pages au
-   centre, actions (bibliothèque, réglages) à droite. Les trois zones partagent
-   la même ligne ; la grille garde le groupe de pages réellement centré. */
+/* Barre du bas : opaque (jamais transparente sur la partition), dans la
+   largeur de l'écran, sans animation. Trois zones : transport à gauche,
+   mouvement précédent / indicateur de page / mouvement suivant au centre,
+   bibliothèque et menu à droite. */
 #command-bar {
   position: fixed;
   left: 0;
@@ -1094,177 +1091,360 @@ body.theme-dark .spinner-small {
   bottom: 0;
   z-index: 30;
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
-  column-gap: 0.4vh;
-  padding: 0.5vh 0.6vh calc(0.5vh + env(safe-area-inset-bottom, 0px));
-  pointer-events: none;
+  gap: 8px;
+  padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0px));
+  background: #ffffff;
+  border-top: 1px solid #ccc;
+  color: #111;
 }
 
-#command-bar > * {
-  pointer-events: auto;
-}
-
-#nav-buttons {
-  display: flex;
-  align-items: center;
-  justify-self: center;
-  gap: 0.35vh;
-  opacity: 0.6;
-  transition: opacity 0.2s;
-}
-
-#nav-buttons:hover {
-  opacity: 1;
-}
-
-.nav-btn {
-  width: 5vh;
-  height: 5vh;
-  font-size: 2vh;
-  background: rgba(255,255,255,0.95);
-  border: 1px solid #999;
-  border-radius: 1vh;
-  cursor: pointer;
-  color: #000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-}
-
-.nav-btn:active {
-  background: #f0f0f0;
-  color: #000;
-}
-
-.nav-btn:disabled {
-  opacity: 0.3;
-  cursor: default;
-}
-
-body.theme-dark #nav-buttons .nav-btn {
-  background: rgba(26,26,26,0.85);
-  border-color: #444;
-  color: #ddd;
-}
-
-body.theme-dark #nav-buttons .nav-btn:active {
-  background: #333;
-}
-
-#page-number {
-  min-width: 6vh;
-  height: 5vh;
-  font-size: 2vh;
-  background: rgba(255,255,255,0.85);
-  border: 1px solid #ddd;
-  border-radius: 1vh;
-  color: #333;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 500;
-}
-
-body.theme-dark #page-number {
-  background: rgba(26,26,26,0.85);
-  border-color: #444;
-  color: #ddd;
+#command-bar.hidden {
+  display: none;
 }
 
 #transport {
   display: flex;
   align-items: center;
-  justify-self: start;
-  gap: 0.6vh;
-  padding: 0.4vh 0.7vh;
-  max-width: 100%;
-  background: rgba(255,255,255,0.92);
-  border: 1px solid #ddd;
-  border-radius: 1vh;
-  opacity: 0.85;
-  transition: opacity 0.2s;
-}
-
-#transport:hover {
-  opacity: 1;
+  gap: 8px;
+  min-width: 0;
 }
 
 #transport.hidden {
   display: none;
 }
 
-.transport-btn {
-  width: 3.8vh;
-  height: 3.8vh;
-  font-size: 1.7vh;
-  background: #f5f5f5;
-  border: 1px solid #999;
-  border-radius: 0.8vh;
-  cursor: pointer;
-  color: #000;
+.transport-btn,
+.nav-btn,
+#page-number,
+#btn-library,
+#btn-menu,
+#command-menu button,
+#page-jump button {
   display: flex;
   align-items: center;
   justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 8px;
+  background: #ffffff;
+  border: 1px solid #888;
+  border-radius: 8px;
+  color: #111;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.transport-btn,
+.nav-btn,
+#btn-library,
+#btn-menu {
+  width: 44px;
   padding: 0;
-  flex-shrink: 0;
 }
 
-.transport-btn:active {
-  background: #e0e0e0;
+.nav-btn {
+  font-size: 20px;
 }
 
-.transport-btn:disabled {
+#page-number {
+  min-width: 58px;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+#btn-library,
+#btn-menu {
+  font-size: 20px;
+}
+
+#btn-library.hidden,
+#btn-menu.hidden {
+  display: none;
+}
+
+.transport-btn:active,
+.nav-btn:active,
+#page-number:active,
+#btn-library:active,
+#btn-menu:active,
+#command-menu button:active,
+#page-jump button:active {
+  background: #e8e8e8;
+}
+
+.transport-btn:disabled,
+.nav-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+#command-bar button:focus-visible,
+#command-menu button:focus-visible,
+#page-jump button:focus-visible,
+#page-jump input:focus-visible,
+#transport-seek:focus-visible {
+  outline: 2px solid #333;
+  outline-offset: 1px;
+}
+
+#transport-seek {
+  flex: 1 1 96px;
+  min-width: 56px;
+  height: 44px;
+  margin: 0;
+  accent-color: #222;
+  cursor: pointer;
+}
+
+#transport-seek:disabled {
   opacity: 0.4;
   cursor: default;
 }
 
 #transport-time {
-  font-size: 1.6vh;
-  color: #333;
-  min-width: 10ch;
+  flex: 0 0 auto;
+  font-size: 13px;
+  color: #111;
   text-align: center;
   font-variant-numeric: tabular-nums;
-  cursor: pointer;
-  user-select: none;
   white-space: nowrap;
 }
 
-body.theme-sepia #transport {
-  background: rgba(244,236,216,0.95);
-  border-color: #d8cbb0;
+#nav-buttons {
+  display: flex;
+  align-items: center;
+  justify-self: center;
+  gap: 6px;
 }
 
-body.theme-sepia #transport-time {
+#command-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+/* Menu ⋯ : panneau opaque au-dessus de la barre. */
+#command-menu {
+  position: fixed;
+  right: 8px;
+  bottom: calc(var(--command-bar-height, 0px) + 8px);
+  z-index: 40;
+  min-width: 180px;
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+  background: #ffffff;
+  border: 1px solid #888;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+}
+
+#command-menu.hidden {
+  display: none;
+}
+
+#command-menu button {
+  width: 100%;
+  justify-content: flex-start;
+  border: none;
+  border-radius: 6px;
+  font-size: 15px;
+  text-align: left;
+}
+
+#command-menu button:focus-visible {
+  outline: 2px solid #333;
+  outline-offset: -2px;
+}
+
+/* Sélecteur de page : champ numérique + curseur, Valider / Annuler. */
+#page-jump {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(var(--command-bar-height, 0px) + 8px);
+  z-index: 40;
+  width: min(320px, calc(100vw - 16px));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  background: #ffffff;
+  border: 1px solid #888;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+}
+
+#page-jump.hidden {
+  display: none;
+}
+
+#page-jump h2 {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.page-jump-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+#page-jump-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 44px;
+  padding: 0 8px;
+  font-size: 16px;
+  color: #111;
+  background: #ffffff;
+  border: 1px solid #888;
+  border-radius: 8px;
+}
+
+#page-jump-total {
+  font-size: 15px;
+  color: #111;
+  font-variant-numeric: tabular-nums;
+}
+
+#page-jump-range {
+  width: 100%;
+  height: 44px;
+  margin: 0;
+  accent-color: #222;
+}
+
+.page-jump-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+#page-jump button {
+  font-size: 15px;
+}
+
+/* Écrans étroits : la barre de position prend sa propre ligne au-dessus des
+   boutons ; aucun débordement horizontal. */
+@media (max-width: 560px) {
+  #command-bar {
+    grid-template-columns: 1fr auto;
+    grid-template-areas:
+      "transport transport"
+      "nav actions";
+    gap: 6px;
+    padding: 6px 6px calc(6px + env(safe-area-inset-bottom, 0px));
+  }
+
+  #transport {
+    grid-area: transport;
+    width: 100%;
+  }
+
+  #nav-buttons {
+    grid-area: nav;
+    justify-self: start;
+    gap: 4px;
+  }
+
+  #command-actions {
+    grid-area: actions;
+  }
+
+  #transport-time {
+    font-size: 12px;
+  }
+}
+
+/* Thème sépia : fond opaque de la même famille que la partition. */
+body.theme-sepia #command-bar,
+body.theme-sepia #command-menu,
+body.theme-sepia #page-jump {
+  background: #f4ecd8;
+  border-color: #b9a173;
   color: #2c1810;
 }
 
-body.theme-dark #transport {
-  background: rgba(26,26,26,0.9);
-  border-color: #444;
+body.theme-sepia .transport-btn,
+body.theme-sepia .nav-btn,
+body.theme-sepia #page-number,
+body.theme-sepia #btn-library,
+body.theme-sepia #btn-menu,
+body.theme-sepia #command-menu button,
+body.theme-sepia #page-jump button,
+body.theme-sepia #page-jump-input {
+  background: #f4ecd8;
+  border-color: #9c8355;
+  color: #2c1810;
 }
 
-body.theme-dark .transport-btn {
-  background: #333;
+body.theme-sepia #transport-time,
+body.theme-sepia #page-jump-total {
+  color: #2c1810;
+}
+
+body.theme-sepia #transport-seek,
+body.theme-sepia #page-jump-range {
+  accent-color: #2c1810;
+}
+
+/* Thème sombre : fond opaque, contraste fort, cohérent avec le reste. */
+body.theme-dark #command-bar,
+body.theme-dark #command-menu,
+body.theme-dark #page-jump {
+  background: #1a1a1a;
   border-color: #555;
-  color: #ddd;
+  color: #eee;
 }
 
-body.theme-dark .transport-btn:active {
-  background: #444;
+body.theme-dark .transport-btn,
+body.theme-dark .nav-btn,
+body.theme-dark #page-number,
+body.theme-dark #btn-library,
+body.theme-dark #btn-menu,
+body.theme-dark #command-menu button,
+body.theme-dark #page-jump button,
+body.theme-dark #page-jump-input {
+  background: #262626;
+  border-color: #666;
+  color: #eee;
 }
 
-body.theme-dark #transport-time {
-  color: #ddd;
+body.theme-dark .transport-btn:active,
+body.theme-dark .nav-btn:active,
+body.theme-dark #page-number:active,
+body.theme-dark #btn-library:active,
+body.theme-dark #btn-menu:active,
+body.theme-dark #command-menu button:active,
+body.theme-dark #page-jump button:active {
+  background: #3a3a3a;
 }
 
-/* Écrans étroits : la barre reste sur une seule ligne ; les boutons MIDI et
-   les icônes se resserrent, le libellé de temps devient plus petit. Rien ne
-   change au-delà. */
+body.theme-dark #transport-time,
+body.theme-dark #page-jump-total {
+  color: #eee;
+}
+
+body.theme-dark #transport-seek,
+body.theme-dark #page-jump-range {
+  accent-color: #ddd;
+}
+
+body.theme-dark #command-bar button:focus-visible,
+body.theme-dark #command-menu button:focus-visible,
+body.theme-dark #page-jump button:focus-visible,
+body.theme-dark #page-jump input:focus-visible,
+body.theme-dark #transport-seek:focus-visible {
+  outline-color: #eee;
+}
+
+/* Écrans étroits : voix sur deux lignes dans les réglages. */
 @media (max-width: 419px) {
-  /* Voix : nom sur sa ligne, puis [👁 taille] et [🔊 volume] côte à côte,
-     l'un sous l'autre si la place manque. Les groupes restent insécables. */
   #parts-list {
     display: flex;
     flex-direction: column;
@@ -1288,103 +1468,5 @@ body.theme-dark #transport-time {
   #parts-list select.part-program {
     flex: 1 1 100%;
     width: 100%;
-  }
-}
-
-@media (max-width: 700px) {
-  #command-bar {
-    column-gap: 2px;
-    padding: 3px 4px calc(3px + env(safe-area-inset-bottom, 0px));
-  }
-
-  #transport {
-    gap: 4px;
-    padding: 2px 4px;
-  }
-
-  .transport-btn {
-    width: 34px;
-    height: 34px;
-    font-size: 15px;
-    border-radius: 6px;
-  }
-
-  #transport-time {
-    font-size: 12px;
-    min-width: 0;
-  }
-
-  #nav-buttons {
-    gap: 2px;
-  }
-
-  .nav-btn {
-    width: 34px;
-    height: 34px;
-    font-size: 15px;
-    border-radius: 6px;
-  }
-
-  #page-number {
-    min-width: 38px;
-    height: 34px;
-    font-size: 14px;
-    border-radius: 6px;
-  }
-
-  #btn-library,
-  #btn-settings {
-    padding: 6px 8px;
-    font-size: 18px;
-    border-radius: 6px;
-  }
-}
-
-/* En dessous de 560 px, tout doit encore tenir sur une ligne à trois zones :
-   les boutons se resserrent sans descendre sous 30 px de côté. */
-@media (max-width: 560px) {
-  #transport {
-    gap: 3px;
-    padding: 2px 3px;
-  }
-
-  .transport-btn {
-    width: 30px;
-    height: 30px;
-    font-size: 14px;
-  }
-
-  #transport-time {
-    font-size: 11px;
-  }
-
-  #nav-buttons {
-    gap: 1px;
-  }
-
-  .nav-btn {
-    width: 32px;
-    height: 32px;
-    font-size: 14px;
-  }
-
-  #page-number {
-    min-width: 34px;
-    height: 32px;
-    font-size: 13px;
-  }
-
-  #btn-library,
-  #btn-settings {
-    padding: 5px 6px;
-    font-size: 17px;
-  }
-}
-
-/* Très étroit : le libellé de temps s'efface pour laisser la priorité aux
-   contrôles de page plutôt que de les écraser ou de les faire chevaucher. */
-@media (max-width: 480px) {
-  #transport-time {
-    display: none;
   }
 }

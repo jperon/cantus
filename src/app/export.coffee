@@ -148,7 +148,7 @@ performExport = ->
     confirmBtn.disabled = false
 
 setupExport = ->
-  $("btn-export")?.addEventListener "click", openExportDialog
+  $("menu-export")?.addEventListener "click", openExportDialog
   $("export-close")?.addEventListener "click", closeExportDialog
   $("export-cancel")?.addEventListener "click", closeExportDialog
   $("export-confirm")?.addEventListener "click", performExport

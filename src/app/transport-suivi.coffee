@@ -6,6 +6,10 @@
 
 audioEngine = -> window.__musicaAudio
 
+# Vrai pendant un glissement du curseur de position : le libellé et le curseur
+# suivent alors le geste, pas la tête de lecture.
+transportSeeking = false
+
 formatTime = (ms) ->
   total = Math.max 0, Math.round((Number(ms) or 0) / 1000)
   minutes = Math.floor total / 60
@@ -15,10 +19,12 @@ formatTime = (ms) ->
 showTransport = ->
   el = $("transport")
   el?.classList.remove "hidden"
+  updateCommandBarSpace()
 
 hideTransport = ->
   el = $("transport")
   el?.classList.add "hidden"
+  updateCommandBarSpace()
 
 # Position affichée : le moteur fait foi pendant la lecture
 currentPlaybackPosition = ->
@@ -38,6 +44,7 @@ displayPosition = ->
 renderTransport = ->
   time = $("transport-time")
   playBtn = $("transport-play")
+  seek = $("transport-seek")
   duration = displayDuration()
   rawPosition = displayPosition()
   position = Math.max 0, rawPosition
@@ -48,7 +55,18 @@ renderTransport = ->
   playback.position = Math.max 0, local
   playing = playback.state is "playing"
   loading = playback.state is "loading"
-  time.textContent = "#{formatTime position} / #{formatTime duration}" if time
+  # Le curseur couvre le mouvement chargé (seule portée que le moteur sait
+  # déplacer) ; le libellé de temps reste cumulé sur la source entière.
+  sliderDuration = Math.max 0, playback.duration or 0
+  # Pendant un glissement du curseur, la position affichée suit le doigt et
+  # non la lecture : la boucle de rendu ne doit pas ramener le curseur.
+  unless transportSeeking
+    time.textContent = "#{formatTime position} / #{formatTime duration}" if time
+    if seek
+      seek.value = if sliderDuration > 0 then Math.round(local / sliderDuration * 1000) else 0
+      seek.setAttribute "aria-valuetext", "#{formatTime local} / #{formatTime sliderDuration}"
+  if seek
+    seek.disabled = sliderDuration <= 0
   if playBtn
     playBtn.textContent = if playing then "❚❚" else "▶"
     playBtn.setAttribute "aria-label", t(if playing then "transport.pauseAria" else "transport.playAria")
@@ -584,18 +602,27 @@ isFormField = (el) ->
 
 setupTransport = ->
   $("transport-play")?.addEventListener "click", togglePlayPause
-  $("transport-stop")?.addEventListener "click", stopPlayback
 
-  # Clic sur le libellé de temps : seek proportionnel dans le mouvement chargé
-  # (seul moyen de déplacement fin ; la barre de progression a été retirée).
-  # Un saut vers un autre mouvement se fait par la navigation de pages.
-  time = $("transport-time")
-  time?.addEventListener "click", (e) ->
+  # Barre de position : le libellé suit le glissement, le moteur ne bouge
+  # qu'au relâchement (change), y compris au clavier (flèches).
+  seek = $("transport-seek")
+  seek?.addEventListener "pointerdown", -> transportSeeking = true
+  seek?.addEventListener "input", ->
+    transportSeeking = true
     duration = Math.max 0, playback.duration or 0
-    return unless duration > 0
-    rect = time.getBoundingClientRect()
-    ratio = if rect.width > 0 then (e.clientX - rect.left) / rect.width else 0
-    seekPlayback Math.max(0, Math.min(1, ratio)) * duration
+    time = $("transport-time")
+    if duration > 0 and time
+      value = Math.max 0, Math.min 1000, Number(seek.value) or 0
+      position = (Number(playback.offset) or 0) + value / 1000 * duration
+      time.textContent = "#{formatTime position} / #{formatTime displayDuration()}"
+  seek?.addEventListener "change", ->
+    transportSeeking = false
+    duration = Math.max 0, playback.duration or 0
+    if duration > 0
+      value = Math.max 0, Math.min 1000, Number(seek.value) or 0
+      seekPlayback value / 1000 * duration
+    renderTransport()
+  seek?.addEventListener "blur", -> transportSeeking = false
 
   engine = audioEngine()
   engine?.onEnd ->

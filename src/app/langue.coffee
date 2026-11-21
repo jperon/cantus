@@ -50,6 +50,7 @@ refreshDynamicTexts = ->
     el.textContent = t "loading"
   renderBuildDate()
   renderTransport()
+  updateCommandBarSpace()
   unless $("settings-overlay")?.classList.contains "hidden"
     renderPartsList()
     renderTempoUi()

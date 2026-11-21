@@ -15,17 +15,189 @@ hideError = ->
 showImport = ->
   $("import-section").classList.remove "hidden"
   $("btn-library").classList.add "hidden"
-  $("btn-settings").classList.add "hidden"
+  $("btn-menu").classList.add "hidden"
   hideTransport()
   resetPlayback()
+  hideCommandBar()
 
 hideImport = ->
   $("import-section").classList.add "hidden"
 
 showLibraryBtn = ->
+  # Hors partition chargée, l'écran d'accueil reste sans barre : les boutons
+  # de la barre ne sont révélés qu'avec un score affiché.
+  return unless fileLoaded
   $("btn-library").classList.remove "hidden"
-  $("btn-export").classList.remove "hidden"
-  $("btn-settings").classList.remove "hidden"
+  $("btn-menu").classList.remove "hidden"
+  showCommandBar()
+
+# --- Barre du bas ----------------------------------------------------------
+# Elle n'existe pas hors partition chargée. Une touche au centre de la
+# partition la masque ou la réveille ; le contenu récupère alors sa hauteur
+# (la zone de lecture est réduite de la hauteur mesurée de la barre).
+updateCommandBarSpace = ->
+  bar = $("command-bar")
+  height = if bar and not bar.classList.contains("hidden") then bar.offsetHeight else 0
+  document.documentElement.style.setProperty "--command-bar-height", "#{height}px"
+
+showCommandBar = ->
+  $("command-bar")?.classList.remove "hidden"
+  updateCommandBarSpace()
+
+hideCommandBar = ->
+  closeCommandMenu()
+  closePageJump()
+  $("command-bar")?.classList.add "hidden"
+  updateCommandBarSpace()
+
+toggleCommandBar = ->
+  return unless fileLoaded
+  if $("command-bar")?.classList.contains "hidden"
+    showCommandBar()
+  else
+    hideCommandBar()
+
+# Actions secondaires : menu déroulant accessible (clavier, Échap, clic
+# extérieur) qui remplace les anciens boutons Exporter et Réglages de la barre.
+closeCommandMenu = (focusButton = false) ->
+  menu = $("command-menu")
+  return unless menu
+  wasOpen = not menu.classList.contains "hidden"
+  menu.classList.add "hidden"
+  $("btn-menu")?.setAttribute "aria-expanded", "false"
+  $("btn-menu")?.focus() if focusButton and wasOpen
+
+openCommandMenu = ->
+  menu = $("command-menu")
+  return unless menu
+  closePageJump()
+  menu.classList.remove "hidden"
+  $("btn-menu")?.setAttribute "aria-expanded", "true"
+  menu.querySelector("[role=menuitem]")?.focus()
+
+toggleCommandMenu = ->
+  if $("command-menu")?.classList.contains "hidden" then openCommandMenu() else closeCommandMenu()
+
+# Petit sélecteur de page : champ numérique et curseur synchronisés, Valider /
+# Annuler, Échap. Il s'ouvre depuis l'indicateur « 1/12 ».
+closePageJump = ->
+  $("page-jump")?.classList.add "hidden"
+
+openPageJump = ->
+  return unless fileLoaded and pageCount > 0
+  closeCommandMenu()
+  page = Math.max 1, Math.min pageCount, displayedPage()
+  input = $("page-jump-input")
+  range = $("page-jump-range")
+  input.max = pageCount
+  input.value = page
+  range.max = pageCount
+  range.value = page
+  $("page-jump-total").textContent = "/ #{pageCount}"
+  $("page-jump").classList.remove "hidden"
+  input.focus()
+  try
+    input.select()
+  catch
+    null
+
+syncPageJump = (source) ->
+  input = $("page-jump-input")
+  range = $("page-jump-range")
+  return unless input and range
+  if source is input
+    value = parseInt input.value
+    return unless isFinite value
+    value = Math.max 1, Math.min pageCount, value
+    input.value = value
+    range.value = value
+  else
+    input.value = range.value
+
+applyPageJump = ->
+  value = parseInt $("page-jump-input").value
+  return unless isFinite value
+  value = Math.max 1, Math.min pageCount, value
+  closePageJump()
+  goToPage value
+
+nodeContains = (container, target) -> !!container and (container is target or container.contains target)
+
+setupCommandBar = ->
+  $("btn-menu")?.addEventListener "click", (e) ->
+    e.stopPropagation()
+    toggleCommandMenu()
+
+  $("menu-export")?.addEventListener "click", ->
+    closeCommandMenu()
+    openExportDialog()
+
+  $("menu-settings")?.addEventListener "click", ->
+    closeCommandMenu()
+    openSettings()
+
+  menu = $("command-menu")
+  menu?.addEventListener "keydown", (e) ->
+    items = Array.from menu.querySelectorAll "[role=menuitem]"
+    return if items.length is 0
+    index = items.indexOf document.activeElement
+    switch e.key
+      when "ArrowDown"
+        e.preventDefault()
+        items[(index + 1) % items.length].focus()
+      when "ArrowUp"
+        e.preventDefault()
+        items[(index - 1 + items.length) % items.length].focus()
+      when "Home"
+        e.preventDefault()
+        items[0].focus()
+      when "End"
+        e.preventDefault()
+        items[items.length - 1].focus()
+      when "Escape"
+        e.preventDefault()
+        closeCommandMenu true
+
+  $("page-number")?.addEventListener "click", (e) ->
+    e.stopPropagation()
+    openPageJump()
+
+  $("page-jump-input")?.addEventListener "input", -> syncPageJump $("page-jump-input")
+  $("page-jump-range")?.addEventListener "input", -> syncPageJump $("page-jump-range")
+  $("page-jump-confirm")?.addEventListener "click", applyPageJump
+  $("page-jump-cancel")?.addEventListener "click", -> closePageJump()
+  $("page-jump")?.addEventListener "keydown", (e) ->
+    switch e.key
+      when "Escape"
+        e.preventDefault()
+        closePageJump()
+      when "Enter"
+        e.preventDefault()
+        applyPageJump()
+
+  # Clic extérieur et Échap ferment les panneaux ; le focus revient au bouton
+  # du menu quand c'est lui qui l'a ouvert.
+  document.addEventListener "click", (e) ->
+    closeCommandMenu() if not nodeContains $("command-menu"), e.target
+    closePageJump() if not nodeContains $("page-jump"), e.target
+  document.addEventListener "keydown", (e) ->
+    return unless e.key is "Escape"
+    if not $("command-menu")?.classList.contains "hidden"
+      e.preventDefault()
+      closeCommandMenu true
+    else if not $("page-jump")?.classList.contains "hidden"
+      e.preventDefault()
+      closePageJump()
+
+  # Touche au centre de la partition : masquer / afficher la barre. Les zones
+  # gauche et droite (#tap-left, #tap-right) gardent le changement de page.
+  $("page-current")?.addEventListener "click", (e) ->
+    return unless fileLoaded
+    width = window.innerWidth
+    return if e.clientX < width * 0.3 or e.clientX > width * 0.7
+    toggleCommandBar()
+
+  window.addEventListener "resize", -> updateCommandBarSpace()
 
 # Page shown in the indicator: in vertical mode, the page containing the top of
 # the visible area (at the very end, the last rendered page: it may be shorter
@@ -488,14 +660,6 @@ goToPage = (page) ->
   return unless fileLoaded and page >= 1 and page <= pageCount
   setScrollPos (page - 1) * 2
 
-goToStart = ->
-  return unless fileLoaded
-  setScrollPos 0
-
-goToEnd = ->
-  return unless fileLoaded
-  setScrollPos maxScrollPos()
-
 goToPrevMovement = ->
   return unless fileLoaded
   currentIdx = getCurrentMovementIndex()
@@ -509,18 +673,4 @@ goToNextMovement = ->
   return if currentIdx >= movements.length - 1
   startPage = getMovementStartPage(currentIdx + 1)
   setScrollPos (startPage - 1) * 2
-
-goBack5 = ->
-  return unless fileLoaded
-  if scrollMode is "vertical"
-    goToPage Math.max(1, displayedPage() - 5)
-  else
-    setScrollPos Math.max(0, scrollPos - 10)
-
-goForward5 = ->
-  return unless fileLoaded
-  if scrollMode is "vertical"
-    goToPage Math.min(pageCount, displayedPage() + 5)
-  else
-    setScrollPos Math.min(maxScrollPos(), scrollPos + 10)
 

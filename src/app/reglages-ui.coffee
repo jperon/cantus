@@ -492,36 +492,39 @@ syncInstallRow = ->
   available = source? and not source.classList.contains "hidden"
   group.classList.toggle "hidden", not available
 
+# Affiche l'occupation du stockage dans les réglages.
+updateStorageInfo = ->
+  if navigator.storage?.estimate?
+    navigator.storage.estimate().then (estimate) ->
+      usageMB = (estimate.usage / 1024 / 1024).toFixed(2)
+      quotaMB = (estimate.quota / 1024 / 1024).toFixed(0)
+      storageInfo = $("storage-info")
+      if storageInfo
+        storageInfo.textContent = "#{usageMB}MB / #{quotaMB}MB"
+
+        # Couleur selon l'occupation : teintes foncées, lisibles sur fond
+        # blanc et sur les thèmes clairs.
+        usagePercent = (estimate.usage / estimate.quota) * 100
+        if usagePercent > 80
+          storageInfo.style.color = '#b71c1c'
+        else if usagePercent > 60
+          storageInfo.style.color = '#8a4b00'
+        else
+          storageInfo.style.color = '#1b5e20'
+
+# Ouvre le panneau des réglages depuis le menu ⋯ de la barre du bas.
+openSettings = ->
+  $("settings-overlay").classList.remove "hidden"
+  renderPartsList()
+  renderTempoUi()
+  renderTranspositionUi()
+  ensureFileTempo()
+  updateStorageInfo()
+  syncInstallRow()
+
 # Settings overlay controls
 setupSettings = ->
-  # Show current storage usage
-  updateStorageInfo = ->
-    if navigator.storage?.estimate?
-      navigator.storage.estimate().then (estimate) ->
-        usageMB = (estimate.usage / 1024 / 1024).toFixed(2)
-        quotaMB = (estimate.quota / 1024 / 1024).toFixed(0)
-        storageInfo = $("storage-info")
-        if storageInfo
-          storageInfo.textContent = "#{usageMB}MB / #{quotaMB}MB"
-
-          # Couleur selon l'occupation : teintes foncées, lisibles sur fond
-          # blanc et sur les thèmes clairs.
-          usagePercent = (estimate.usage / estimate.quota) * 100
-          if usagePercent > 80
-            storageInfo.style.color = '#b71c1c'
-          else if usagePercent > 60
-            storageInfo.style.color = '#8a4b00'
-          else
-            storageInfo.style.color = '#1b5e20'
-
-  $("btn-settings").addEventListener "click", ->
-    $("settings-overlay").classList.remove "hidden"
-    renderPartsList()
-    renderTempoUi()
-    renderTranspositionUi()
-    ensureFileTempo()
-    updateStorageInfo()
-    syncInstallRow()
+  $("menu-settings").addEventListener "click", openSettings
 
   $("settings-close").addEventListener "click", closeSettings
 
