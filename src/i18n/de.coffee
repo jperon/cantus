@@ -58,7 +58,7 @@ registerLanguage 'de', 'Deutsch',
   'settings.license': 'Freie Software unter der GNU GPL v3 oder später, ohne jegliche Gewährleistung.'
   'settings.sourceCode': 'Quelltext'
   'settings.thirdParty': 'Komponenten von Drittanbietern'
-  'settings.soundfontCredit': 'FluidR3-Klaviersamples von Frank Wen, MIDI.js-Wiedergabe von Benjamin Gleitzman —'
+  'settings.soundfontCredit': 'TimGM6mb-General-MIDI-Bank, SpessaSynth-Synthese —'
 
   'library.title': 'Bibliothek'
   'library.close': 'Bibliothek schließen'

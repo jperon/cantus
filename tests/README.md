@@ -115,9 +115,11 @@ un contrat imaginé (`pauseBefore`, `from`/`to`/`offset`) ne prouve rien.
 
 - `tests/unit/midi.test.js` — parseur SMF (`src/midi.coffee`).
 - `tests/unit/audio.test.js` — logique audio pure : volumes, mapping des voix,
-  ordonnancement, normalisation de `playbackData`.
-- `tests/unit/audio-load.test.js` — chargement du soundfont une seule fois,
-  mesuré avec un faux `AudioContext` pour 1 et 3 pistes.
+  répartition des pistes sur les canaux et programmes GM, ordonnancement,
+  normalisation de `playbackData`.
+- `tests/unit/audio-load.test.js` — chargement de la banque SpessaSynth une
+  seule fois, mesuré avec un faux `AudioContext` et un faux synthétiseur pour
+  1 et 3 pistes (programmes, canaux, repli oscillateur).
 - `tests/unit/playback.test.js` — résolution des marqueurs de synchronisation
   et suivi de page/système (`src/playback.coffee`).
 - `tests/unit/timeline.test.js` — slices de mouvement, segments de lecture,
@@ -126,20 +128,25 @@ un contrat imaginé (`pauseBefore`, `from`/`to`/`offset`) ne prouve rien.
 - `tests/unit/i18n.test.js` — interpolation, pluriel, replis et cohérence
   stricte des clés et des `{paramètres}` entre les dictionnaires.
 
-## Sonde audio (aperçu soundfont)
+## Sonde audio (aperçu SpessaSynth)
 
 Pas de scénario dédié : la plomberie se vérifie dans la console de la page
 construite.
 
-- build normal : `typeof window.Soundfont` vaut `function` (UMD inliné) et,
-  après chargement différé, `window.MIDI.Soundfont.acoustic_grand_piano`
-  contient 13 notes (`C2`…`C6`), servies depuis `soundfonts/` ;
-- SPA : les mêmes globals sont définis, l'asset étant inliné dans
-  `<script id="soundfont-src" type="text/plain">` puis évalué avant
-  `app.js`.
+- build normal : `typeof window.__musicaSpessa.WorkletSynthesizer` vaut
+  `function` (bundle ES inliné), la banque est servie depuis
+  `soundfonts/TimGM6mb.sf3` et le processeur AudioWorklet depuis
+  `soundfonts/spessasynth_processor.min.js` ;
+- SPA : les mêmes globals sont définis ; la banque est inlinée en base64 dans
+  `<script id="soundfont-b64" type="text/plain">` et le worklet dans
+  `<script id="spessasynth-worklet-src" type="text/plain">`, chargé depuis une
+  URL blob au premier `play()`.
 
-Si `pwa/soundfonts/piano-fluidr3-13notes.js` est absent, le build passe
-(tolérance) et ces globals ne sont simplement pas définis.
+Après lecture, `window.__musicaAudio.getEngineMode()` vaut `soundfont` (ou
+`oscillator` en repli), `getChannelAssignments()` décrit les canaux et
+programmes GM, et `getTimingStats()` donne la gigue mesurée de
+l'ordonnanceur. Si `pwa/soundfonts/TimGM6mb.sf3` est absent, le build passe
+(tolérance) et le moteur se rabat sur l'oscillateur.
 
 ## Scénarios
 
@@ -247,14 +254,15 @@ Le panneau Réglages expose :
 - **Vider le cache** : purge les caches de rendu SVG et de données de lecture,
   sans toucher aux fichiers de la bibliothèque.
 
-## Régénérer les échantillons audio
+## Régénérer la banque audio
 
 ```sh
-curl -sS -o /tmp/piano-mp3.js \
-  https://raw.githubusercontent.com/gleitz/midi-js-soundfonts/gh-pages/FluidR3_GM/acoustic_grand_piano-mp3.js
-node tools/build-soundfont-subset.js /tmp/piano-mp3.js \
-  pwa/soundfonts/piano-fluidr3-13notes.js
+nix-shell -p python3Packages.numpy vorbis-tools --run \
+  "python3 tools/build-soundfont.py"
 ```
+
+Le script produit `pwa/soundfonts/TimGM6mb.sf3` (voir `pwa/soundfonts/README.md`
+et `THIRD-PARTY.md`).
 
 ## Notes
 

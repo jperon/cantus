@@ -58,7 +58,7 @@ registerLanguage 'fr', 'Français',
   'settings.license': 'Logiciel libre sous licence GNU GPL v3 ou ultérieure, sans aucune garantie.'
   'settings.sourceCode': 'Code source'
   'settings.thirdParty': 'Composants tiers'
-  'settings.soundfontCredit': 'Échantillons piano FluidR3 par Frank Wen, rendu MIDI.js par Benjamin Gleitzman —'
+  'settings.soundfontCredit': 'Banque General MIDI TimGM6mb, synthèse SpessaSynth —'
 
   'library.title': 'Bibliothèque'
   'library.close': 'Fermer la bibliothèque'

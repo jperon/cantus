@@ -15,7 +15,8 @@ Cette PWA implémente une stratégie "Local First" complète pour garantir une e
 - Worker Verovio (`worker.js`, `verovio.js`, `verovio-toolkit-wasm.js`)
 - Manifest PWA et icônes
 - Favicon
-- Échantillons audio (`soundfonts/piano-fluidr3-13notes.js`), en optionnel non
+- Banque audio (`soundfonts/TimGM6mb.sf3`) et processeur AudioWorklet de
+  SpessaSynth (`soundfonts/spessasynth_processor.min.js`), en optionnel non
   bloquant : sans eux, la lecture se rabat sur l'oscillateur.
 
 ### Caches de rendu préservés

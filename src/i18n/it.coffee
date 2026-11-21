@@ -58,7 +58,7 @@ registerLanguage 'it', 'Italiano',
   'settings.license': 'Software libero con licenza GNU GPL v3 o successiva, senza alcuna garanzia.'
   'settings.sourceCode': 'Codice sorgente'
   'settings.thirdParty': 'Componenti di terze parti'
-  'settings.soundfontCredit': 'Campioni di pianoforte FluidR3 di Frank Wen, rendering MIDI.js di Benjamin Gleitzman —'
+  'settings.soundfontCredit': 'Banco General MIDI TimGM6mb, sintesi SpessaSynth —'
 
   'library.title': 'Biblioteca'
   'library.close': 'Chiudi la biblioteca'
