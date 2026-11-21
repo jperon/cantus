@@ -925,6 +925,9 @@ createEngine = (initialOptions = {}) ->
     ctx = ensureContext()
     api.resume()
     cancelAll()
+    # Aucun ordonnanceur ne doit survivre au redémarrage : l'ancien est coupé
+    # tout de suite, le nouveau ne part qu'une fois le moteur prêt.
+    clearTimer()
     token = ++state.playToken
     from = Number fromSeconds
     from = 0 unless isFinite from
