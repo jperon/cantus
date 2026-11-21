@@ -92,6 +92,7 @@ registerLanguage 'es', 'Español',
   'errors.invalidMusicXml': 'Archivo MusicXML no válido: {error}'
   'errors.sharedNotFound': 'Archivo compartido no encontrado'
   'errors.sharedRead': 'No se ha podido leer el archivo compartido: {error}'
+  'errors.launchRead': 'No se ha podido leer el archivo abierto: {error}'
   'errors.fileRead': 'No se ha podido leer el archivo: {error}'
   'errors.folderRead': 'No se ha podido leer la carpeta: {error}'
   'errors.noCompatibleFile': 'Ningún archivo compatible ({extensions})'

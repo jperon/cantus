@@ -92,6 +92,7 @@ registerLanguage 'it', 'Italiano',
   'errors.invalidMusicXml': 'File MusicXML non valido: {error}'
   'errors.sharedNotFound': 'File condiviso non trovato'
   'errors.sharedRead': 'Impossibile leggere il file condiviso: {error}'
+  'errors.launchRead': 'Impossibile leggere il file aperto: {error}'
   'errors.fileRead': 'Impossibile leggere il file: {error}'
   'errors.folderRead': 'Impossibile leggere la cartella: {error}'
   'errors.noCompatibleFile': 'Nessun file compatibile ({extensions})'

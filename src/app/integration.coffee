@@ -86,6 +86,21 @@ handleProtocolParameters = ->
     console.log "Shared file detected: #{sharedToken}"
     importSharedEntry sharedToken
 
+# Lancement par « Ouvrir avec Cantus » : Chromium confie au consumer les
+# fichiers ouverts via les file_handlers du manifeste. Les lancements sont mis
+# en file d'attente tant qu'aucun consumer n'est enregistré.
+setupLaunchQueue = ->
+  return unless 'launchQueue' of window
+  window.launchQueue.setConsumer (params) ->
+    files = params?.files or []
+    return unless files.length > 0
+    try
+      imported = await Promise.all files.map (handle) -> handle.getFile()
+      handleImportFiles imported
+    catch error
+      console.error "Launch file read error:", error
+      showError t("errors.launchRead", {error: error?.message or error})
+
 # Fetch file from remote URL
 fetchFileFromUrl = (url) ->
   console.log "Fetching remote file: #{url}"

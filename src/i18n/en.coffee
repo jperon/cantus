@@ -94,6 +94,7 @@ registerLanguage 'en', 'English',
   'errors.invalidMusicXml': 'Invalid MusicXML file: {error}'
   'errors.sharedNotFound': 'Shared file not found'
   'errors.sharedRead': 'Could not read the shared file: {error}'
+  'errors.launchRead': 'Could not read the launched file: {error}'
   'errors.fileRead': 'Could not read the file: {error}'
   'errors.folderRead': 'Could not read the folder: {error}'
   'errors.noCompatibleFile': 'No compatible file ({extensions})'

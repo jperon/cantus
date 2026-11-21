@@ -16,6 +16,8 @@ document.addEventListener "DOMContentLoaded", ->
 
   # Handle protocol handlers and file parameters
   handleProtocolParameters()
+  # Fichiers ouverts via les file_handlers du manifeste (lancement PWA)
+  setupLaunchQueue()
 
   # Un défilement manuel (molette, tactile) est le seul à pouvoir charger la
   # page précédente : la navigation programme elle aussi des `scroll`. En haut
