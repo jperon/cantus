@@ -84,6 +84,15 @@ async function runPage(browser, url, pageName, results) {
     const timeBefore = await page.textContent('#transport-time');
     await page.click('#transport-play');
     await waitState(page, 'playing');
+    // Le premier play() attend la résolution du moteur (worklet + banque SF3)
+    // avant de démarrer l'horloge, pour ne jamais jouer l'oscillateur de
+    // repli. La position reste figée jusque-là : on attend le mode avant de
+    // mesurer sa progression.
+    await bounded('moteur audio prêt', 20000, page.waitForFunction(
+      () => window.__musicaAudio.getEngineMode() !== null,
+      null,
+      { timeout: 20000, polling: 50 }
+    ));
     const growth = await positionGrowing(page, 1000);
     const timeAfter = await page.textContent('#transport-time');
     L.record(results, '6. Lecture : état playing et position qui progresse', pageName,
