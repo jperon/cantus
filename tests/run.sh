@@ -56,7 +56,8 @@ echo "== Build SPA =="
 if [ "$#" -eq 0 ]; then
   set -- s1-import.js s2-folder.js s3-settings.js s4-offline.js s5-nopkg.js \
     s6a-transport.js s6b-suivi.js s6c-magnificat.js s6d-reprises.js s6e-robustesse.js \
-    s7-share.js s8-boucle.js s9-synchro.js s10-horizontal.js s11-launch.js
+    s7-share.js s8-boucle.js s9-synchro.js s10-horizontal.js s11-launch.js \
+    s12-export.js
 fi
 
 # Deux lots :
