@@ -22,6 +22,19 @@ async function waitRerender(page, timeout = 120000) {
   await page.waitForTimeout(500);
 }
 
+// Attend qu'au moins `minimum` notes aient été confiées à l'ordonnanceur.
+// La fixture Telemann est peu dense : une attente fixe de 0,7 à 1,1 s peut
+// tomber entre deux notes. L'attente est bornée, et l'assertion qui suit
+// vérifie toujours qu'au moins une note a été ordonnancée.
+async function waitForNotes(page, minimum = 1, timeout = 5000) {
+  try {
+    await page.waitForFunction((n) => window.__musicaAudio.getScheduledNotes().length >= n,
+      minimum, { timeout, polling: 50 });
+  } catch {
+    // Laisser l'assertion rendre compte du nombre réellement observé.
+  }
+}
+
 async function runPage(browser, url, pageName, results) {
   const { page, ctx, errors } = await L.newPage(browser, url, { pageName });
   try {
@@ -88,7 +101,10 @@ async function runPage(browser, url, pageName, results) {
     // l'ordonnanceur envoyer quelques notes avant de lire la gigue mesurée
     // (déclenchement réel - début musical, en secondes).
     await page.evaluate(() => window.__musicaAudio.startNoteLog());
-    await page.waitForTimeout(1200);
+    await page.waitForFunction(() => {
+      const stats = window.__musicaAudio.getTimingStats();
+      return stats && stats.count >= 3;
+    }, null, { timeout: 8000, polling: 50 }).catch(() => {});
     const synth = await page.evaluate(() => ({
       mode: window.__musicaAudio.getEngineMode(),
       timing: window.__musicaAudio.getTimingStats(),
@@ -500,7 +516,7 @@ async function runPage(browser, url, pageName, results) {
       await page.click('#transport-play');
       await waitState(page, 'playing');
       await page.evaluate(() => window.__musicaAudio.startNoteLog());
-      await page.waitForTimeout(1100);
+      await waitForNotes(page);
       const hidden = await page.evaluate(async (label) => {
         const probe = await window.__musicaPlaybackProbe();
         const tracks = probe.trackMap?.[label] || [];
@@ -552,7 +568,7 @@ async function runPage(browser, url, pageName, results) {
       await page.click('#transport-play');
       await waitState(page, 'playing');
       await page.evaluate(() => window.__musicaAudio.startNoteLog());
-      await page.waitForTimeout(1100);
+      await waitForNotes(page);
       const muted = await page.evaluate(async (label) => {
         const probe = await window.__musicaPlaybackProbe();
         const tracks = probe.trackMap?.[label] || [];
@@ -645,7 +661,7 @@ async function runPage(browser, url, pageName, results) {
       await page.click('#transport-play');
       await waitState(page, 'playing');
       await page.evaluate(() => window.__musicaAudio.startNoteLog());
-      await page.waitForTimeout(1100);
+      await waitForNotes(page);
       const base = await page.evaluate(() => ({
         notes: window.__musicaAudio.getNotes(),
         log: window.__musicaAudio.getScheduledNotes(),
@@ -666,7 +682,7 @@ async function runPage(browser, url, pageName, results) {
         marker: !!document.querySelector('#page-current .scroll-page svg[data-test-mark="1"]'),
       }));
       await page.evaluate(() => window.__musicaAudio.startNoteLog());
-      await page.waitForTimeout(1100);
+      await waitForNotes(page);
       const audible = await page.evaluate(() => ({
         log: window.__musicaAudio.getScheduledNotes(),
         notes: window.__musicaAudio.getNotes(),
@@ -683,7 +699,7 @@ async function runPage(browser, url, pageName, results) {
       await page.selectOption('#transpose-audio', '0');
       await page.waitForTimeout(150);
       await page.evaluate(() => window.__musicaAudio.startNoteLog());
-      await page.waitForTimeout(1100);
+      await waitForNotes(page);
       const resetLog = await page.evaluate(() => window.__musicaAudio.getScheduledNotes());
       const resetOk = resetLog.length > 0 && resetLog.every((n) => n.pitch === n.sourcePitch);
       L.record(results, '6. Transposition auditive 0 : hauteurs d’origine rétablies à chaud', pageName,
@@ -715,7 +731,7 @@ async function runPage(browser, url, pageName, results) {
       await page.click('#transport-play');
       await waitState(page, 'playing');
       await page.evaluate(() => window.__musicaAudio.startNoteLog());
-      await page.waitForTimeout(1100);
+      await waitForNotes(page);
       const visual = await page.evaluate(() => ({
         log: window.__musicaAudio.getScheduledNotes(),
         notes: window.__musicaAudio.getNotes(),
