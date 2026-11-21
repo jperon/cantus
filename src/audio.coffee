@@ -12,7 +12,7 @@
 #   onEnd(cb)
 #   setMasterVolume(v)           -> 0..100
 #   setTranspose(semitones)      -> décalage des hauteurs jouées (percussions exclues)
-#   setVoiceVolume(label, v)     -> 0..100, par libellé de voix
+#   setVoiceVolume(label, v)     -> 0..100, par libellé de voix (défaut 50)
 #   setVoiceMuted(label, m)      -> true : silence réel
 #   setVoiceProgram(label, p)    -> programme GM 0..127 de la voix, null = celui
 #                                   de la partition ; appliqué par programChange
@@ -44,7 +44,10 @@
 # ne jamais les perdre.
 
 FLOOR = 0.01            # plancher du curseur de volume (≈ −40 dB)
-DEFAULT_VOLUME = 100
+DEFAULT_VOLUME = 100    # volume général, en pourcentage du maximum
+# Volume d'une voix sans réglage enregistré : la moitié du maximum, pour
+# laisser de la marge au volume général (gain 0,505, ≈ −6 dB).
+DEFAULT_VOICE_VOLUME = 50
 SCHEDULE_INTERVAL = 25  # ms, période de l'ordonnanceur à anticipation
 SCHEDULE_WINDOW = 0.150 # s, fenêtre de notes planifiées d'avance
 MAX_VOICES = 64         # plafond de sources simultanées (repli oscillateur)
@@ -79,7 +82,8 @@ volumeToGain = (volume) ->
   FLOOR + (1 - FLOOR) * (value / 100)
 
 # Gain effectif d'une voix : le plancher ne s'applique qu'au réglage de volume,
-# un masquage explicite vaut un vrai zéro.
+# un masquage explicite vaut un vrai zéro. Au volume par défaut de 50 %, le
+# gain vaut 0,505 (≈ −6 dB), donc bien audible.
 voiceGainValue = (volume, muted) ->
   return 0 if muted
   volumeToGain volume
@@ -492,7 +496,7 @@ createEngine = (initialOptions = {}) ->
     state.masterGain.gain.value = volumeToGain state.masterVolume
     for own label, indices of state.trackMap.byLabel
       gain = ctx.createGain()
-      gain.gain.value = voiceGainValue(state.voiceVolumes[label] ? DEFAULT_VOLUME, state.voiceMuted[label] ? false)
+      gain.gain.value = voiceGainValue(state.voiceVolumes[label] ? DEFAULT_VOICE_VOLUME, state.voiceMuted[label] ? false)
       gain.connect state.masterGain
       state.voiceGains[label] = gain
     for track in state.tracks
@@ -1110,7 +1114,7 @@ createEngine = (initialOptions = {}) ->
     state.voiceMuted[label] = !!muted
     gain = state.voiceGains[label]
     if gain and state.ctx
-      gain.gain.setTargetAtTime voiceGainValue(state.voiceVolumes[label] ? DEFAULT_VOLUME, state.voiceMuted[label]), state.ctx.currentTime, 0.01
+      gain.gain.setTargetAtTime voiceGainValue(state.voiceVolumes[label] ? DEFAULT_VOICE_VOLUME, state.voiceMuted[label]), state.ctx.currentTime, 0.01
     api
 
   # Choix d'instrument d'une voix, appliqué immédiatement sur son canal (y
@@ -1180,6 +1184,7 @@ createEngine = (initialOptions = {}) ->
   # Exposé pour les tests purs et les intégrations avancées
   api.volumeToGain = volumeToGain
   api.voiceGainValue = voiceGainValue
+  api.DEFAULT_VOICE_VOLUME = DEFAULT_VOICE_VOLUME
   api.clampVolume = clampVolume
   api.resolveTrackMap = resolveTrackMap
   api.trackProgram = trackProgram

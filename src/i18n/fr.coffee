@@ -29,8 +29,10 @@ registerLanguage 'fr', 'Français',
   'settings.transposeVisualAria': 'Transposition de la partition en demi-tons'
   'settings.transposeAudioAria': 'Transposition du son en demi-tons'
   'settings.parts': 'Voix'
-  'settings.partsSizesReset': 'Tailles à 100 %'
-  'settings.partsVolumesReset': 'Volumes à 100 %'
+  'settings.partsSizes': 'Tailles à'
+  'settings.partsSizesAria': 'Régler la taille de toutes les voix'
+  'settings.partsVolumes': 'Volumes à'
+  'settings.partsVolumesAria': 'Régler le volume de toutes les voix'
   'settings.playback': 'Lecture'
   'settings.followPlayback': 'Suivre le défilement'
   'settings.expandRepeats': 'Dérouler les reprises'
@@ -136,6 +138,7 @@ registerLanguage 'fr', 'Français',
   'parts.programScore': 'Partition'
   'parts.programTitle': "Instrument de la voix"
   'parts.programAria': 'Instrument de {part}'
+  'parts.mixed': '—'
 
   'gm.family.piano': 'Piano'
   'gm.family.chromatic': 'Percussions chromatiques'

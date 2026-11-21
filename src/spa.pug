@@ -70,9 +70,13 @@ html(lang="en")
       #parts-group.settings-group.hidden
         label.settings-label(data-i18n="settings.parts") Parts
         #parts-list
-        .settings-row
-          button#parts-sizes-reset.settings-btn(type="button" data-i18n="settings.partsSizesReset" disabled) Sizes to 100%
-          button#parts-volumes-reset.settings-btn(type="button" data-i18n="settings.partsVolumesReset" disabled) Volumes to 100%
+        .settings-row.settings-parts-bulk
+          label.bulk-field
+            span.bulk-label(data-i18n="settings.partsSizes") Sizes to
+            select#parts-sizes-reset.bulk-select(data-i18n-aria-label="settings.partsSizesAria")
+          label.bulk-field
+            span.bulk-label(data-i18n="settings.partsVolumes") Volumes to
+            select#parts-volumes-reset.bulk-select(data-i18n-aria-label="settings.partsVolumesAria")
       .settings-group
         label.settings-label(data-i18n="settings.playback") Playback
         .settings-row

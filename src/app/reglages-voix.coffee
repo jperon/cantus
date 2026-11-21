@@ -21,6 +21,22 @@ defaultSettings = { zoom: 40, theme: "white", tapSize: 30, scrollUnit: "page", o
 TRANSPOSE_MIN = -12
 TRANSPOSE_MAX = 12
 
+# Réglages de voix : taille et volume d'une voix sans réglage enregistré.
+# DEFAULT_PART_VOLUME doit rester aligné sur DEFAULT_VOICE_VOLUME du moteur
+# (audio.coffee), la moitié du maximum pour laisser de la marge au volume
+# général.
+DEFAULT_PART_SIZE = 100
+DEFAULT_PART_VOLUME = 50
+
+# Bornes et pas des réglages par voix, repris par les menus « Tailles à » et
+# « Volumes à ».
+PART_SIZE_MIN = 50
+PART_SIZE_MAX = 150
+PART_SIZE_STEP = 10
+PART_VOLUME_MIN = 10
+PART_VOLUME_MAX = 100
+PART_VOLUME_STEP = 10
+
 loadSettings = ->
   try
     saved = localStorage.getItem "musica-settings"
@@ -129,16 +145,17 @@ applyVoiceAudio = (labels) ->
   add label for label in Array.from mutedParts
   engine.setPianoOnly pianoOnly if engine.setPianoOnly?
   for label in list
-    volume = parseInt partVolumes[label] ? 100
-    volume = 100 unless isFinite volume
+    volume = parseInt partVolumes[label] ? DEFAULT_PART_VOLUME
+    volume = DEFAULT_PART_VOLUME unless isFinite volume
     engine.setVoiceVolume label, volume
     engine.setVoiceMuted label, mutedParts.has(label) if engine.setVoiceMuted?
     engine.setVoiceProgram label, (partPrograms[label] ? null) if engine.setVoiceProgram?
 
 # Réglages de voix propres à chaque fichier : voix masquées (rendu), voix
 # coupées (lecture), tailles, volumes et instruments choisis. Le champ `muted`
-# absent vaut aucune voix coupée ; `volumes` absent vaut 100 % partout ;
-# `programs` absent vaut l'instrument de la partition pour toutes les voix.
+# absent vaut aucune voix coupée ; `volumes` absent vaut le volume par défaut
+# (50 %) partout ; `programs` absent vaut l'instrument de la partition pour
+# toutes les voix.
 loadPartSettings = ->
   hiddenParts = new Set()
   mutedParts = new Set()

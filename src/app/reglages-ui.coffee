@@ -174,23 +174,23 @@ renderPartsList = ->
       soundBtn.setAttribute "aria-pressed", String played
       sizeSel = document.createElement "select"
       sizeSel.className = "part-size"
-      for pct in [50..150] by 10
+      for pct in [PART_SIZE_MIN..PART_SIZE_MAX] by PART_SIZE_STEP
         opt = document.createElement "option"
         opt.value = pct
         opt.textContent = "#{pct} %"
         sizeSel.appendChild opt
-      sizeSel.value = partSizes[partLabel] or 100
+      sizeSel.value = partSizes[partLabel] ? DEFAULT_PART_SIZE
       sizeSel.disabled = not displayed
       volumeSel = document.createElement "select"
       volumeSel.className = "part-volume"
       volumeSel.title = t "parts.volumeTitle"
       volumeSel.setAttribute "aria-label", t("parts.volumeAria", {part: partLabel})
-      for pct in [10..100] by 10
+      for pct in [PART_VOLUME_MIN..PART_VOLUME_MAX] by PART_VOLUME_STEP
         opt = document.createElement "option"
         opt.value = pct
         opt.textContent = "#{pct} %"
         volumeSel.appendChild opt
-      volumeSel.value = partVolumes[partLabel] or 100
+      volumeSel.value = partVolumes[partLabel] ? DEFAULT_PART_VOLUME
       volumeSel.disabled = not played
       displayGroup.appendChild displayBtn
       displayGroup.appendChild sizeSel
@@ -245,16 +245,16 @@ renderPartsList = ->
         applyVoiceAudio [partLabel]
       sizeSel.addEventListener "change", ->
         pct = parseInt sizeSel.value
-        if pct is 100 then delete partSizes[partLabel] else partSizes[partLabel] = pct
+        if pct is DEFAULT_PART_SIZE then delete partSizes[partLabel] else partSizes[partLabel] = pct
         savePartSettings()
-        updatePartsSizesReset()
+        renderPartsBulkSelects()
         partsChanged = true
       volumeSel.addEventListener "change", ->
         pct = parseInt volumeSel.value
-        pct = 100 unless isFinite pct
-        if pct is 100 then delete partVolumes[partLabel] else partVolumes[partLabel] = pct
+        pct = DEFAULT_PART_VOLUME unless isFinite pct
+        if pct is DEFAULT_PART_VOLUME then delete partVolumes[partLabel] else partVolumes[partLabel] = pct
         savePartSettings()
-        updatePartsVolumesReset()
+        renderPartsBulkSelects()
         # Application immédiate au moteur : jamais de partsChanged ni de rendu
         engine = audioEngine()
         engine?.setVoiceVolume partLabel, pct
@@ -267,8 +267,7 @@ renderPartsList = ->
           engine?.setVoiceProgram partLabel, (if raw is "" then null else parseInt raw)
       list.appendChild row
   updatePartsDisabled()
-  updatePartsSizesReset()
-  updatePartsVolumesReset()
+  renderPartsBulkSelects()
 
 # Au moins une voix reste affichée : on désactive l'interrupteur d'affichage
 # de la dernière voix affichée. Rien n'impose de voix jouée.
@@ -280,17 +279,50 @@ updatePartsDisabled = ->
   for btn in buttons
     btn.disabled = active.length is 1 and btn.getAttribute("aria-pressed") is "true"
 
-# Bouton « Tailles à 100 % » : actif dès qu'une taille diffère de 100
-updatePartsSizesReset = ->
-  btn = $("parts-sizes-reset")
-  return unless btn
-  btn.disabled = Object.keys(partSizes).every (id) -> partSizes[id] is 100
+# Valeur d'une voix dans `partSizes` / `partVolumes`, avec le défaut du champ
+# quand la voix n'a pas de réglage enregistré.
+partValueOf = (values, label, fallback) ->
+  value = parseInt values[label]
+  if isFinite(value) then value else fallback
 
-# Bouton « Volumes à 100 % » : actif dès qu'un volume diffère de 100
-updatePartsVolumesReset = ->
-  btn = $("parts-volumes-reset")
-  return unless btn
-  btn.disabled = Object.keys(partVolumes).every (id) -> parseInt(partVolumes[id]) is 100
+# Valeur commune à toutes les voix, ou null si elles divergent : le menu
+# affiche alors l'option vide « — ».
+commonPartValue = (labels, values, fallback) ->
+  return null if labels.length is 0
+  first = partValueOf values, labels[0], fallback
+  return first if labels.every (label) -> partValueOf(values, label, fallback) is first
+  null
+
+# Libellés des voix de la liste affichée, dans l'ordre.
+currentPartLabels = ->
+  (el.textContent for el in document.querySelectorAll "#parts-list .part-name")
+
+# Remplit un menu de pourcentages : option vide « — » puis les valeurs, avec
+# la valeur commune sélectionnée si elle existe.
+fillBulkSelect = (sel, min, max, step, common) ->
+  sel.innerHTML = ""
+  mixed = document.createElement "option"
+  mixed.value = ""
+  mixed.textContent = t "parts.mixed"
+  sel.appendChild mixed
+  for pct in [min..max] by step
+    opt = document.createElement "option"
+    opt.value = String pct
+    opt.textContent = "#{pct} %"
+    sel.appendChild opt
+  sel.value = if common? then String(common) else ""
+
+# Menus « Tailles à » et « Volumes à » : valeur commune des voix, sinon « — ».
+renderPartsBulkSelects = ->
+  labels = currentPartLabels()
+  sizeSel = $("parts-sizes-reset")
+  if sizeSel
+    fillBulkSelect sizeSel, PART_SIZE_MIN, PART_SIZE_MAX, PART_SIZE_STEP,
+      (commonPartValue labels, partSizes, DEFAULT_PART_SIZE)
+  volumeSel = $("parts-volumes-reset")
+  if volumeSel
+    fillBulkSelect volumeSel, PART_VOLUME_MIN, PART_VOLUME_MAX, PART_VOLUME_STEP,
+      (commonPartValue labels, partVolumes, DEFAULT_PART_VOLUME)
 
 # --- Transpositions visuelle et auditive ------------------------------------
 # Affichage neutre du sélecteur : « +2 », « 0 », « −3 » (signe moins
@@ -435,18 +467,27 @@ setupSettings = ->
 
   $("settings-close").addEventListener "click", closeSettings
 
-  # Remet toutes les tailles de voix à 100 % (les voix masquées sont conservées)
-  $("parts-sizes-reset").addEventListener "click", ->
-    changed = Object.keys(partSizes).some (id) -> partSizes[id] isnt 100
+  # Applique la taille choisie à toutes les voix (les voix masquées restent
+  # masquées) ; le rendu attend la fermeture des réglages.
+  $("parts-sizes-reset").addEventListener "change", (e) ->
+    pct = parseInt e.target.value
+    return renderPartsBulkSelects() unless isFinite pct
+    labels = currentPartLabels()
+    changed = labels.some (label) -> partValueOf(partSizes, label, DEFAULT_PART_SIZE) isnt pct
     partSizes = {}
+    partSizes[label] = pct for label in labels when pct isnt DEFAULT_PART_SIZE
     savePartSettings()
     renderPartsList()
     partsChanged = true if changed
 
-  # Remet tous les volumes de voix à 100 % : aucun re-rendu, seulement le moteur
-  $("parts-volumes-reset").addEventListener "click", ->
-    labels = Object.keys partVolumes
+  # Applique le volume choisi à toutes les voix : immédiatement au moteur,
+  # sans aucun re-rendu de la partition.
+  $("parts-volumes-reset").addEventListener "change", (e) ->
+    pct = parseInt e.target.value
+    return renderPartsBulkSelects() unless isFinite pct
+    labels = currentPartLabels()
     partVolumes = {}
+    partVolumes[label] = pct for label in labels when pct isnt DEFAULT_PART_VOLUME
     savePartSettings()
     renderPartsList()
     applyVoiceAudio labels
