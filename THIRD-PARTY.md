@@ -119,6 +119,47 @@ L'attribution CC-BY 3.0 doit rester visible : elle figure dans l'en-tête de
 l'asset, dans ce fichier et doit être reprise dans l'écran « À propos » (ou
 la section d'attribution de l'interface) avec un lien vers la licence.
 
+## TimGM6mb (banque General MIDI, SF3)
+
+- Licence : GNU GPL version 2 seulement (GPL-2.0-only), d'après le fichier
+  `debian/copyright` du paquet Debian. L'amont (Tim Brechbill) indique que
+  les échantillons sont soit de lui, soit du domaine public, soit sous GPL.
+  Ce n'est pas « ou ultérieure » : la compatibilité avec la GPL-3.0-or-later
+  du reste de Cantus est à faire confirmer avec l'amont avant diffusion.
+- Copyright © 2004 Tim Brechbill, © 2010 David Bolton
+- Source amont : <https://www.timbrechbill.com> et
+  <https://github.com/musescore/musescore-old/commit/90c33ef9d87b3f5ff92efd3b07d89eb455fb1fef>
+- Source utilisée : paquet Debian `timgm6mb-soundfont` 1.3,
+  <http://deb.debian.org/debian/pool/main/t/timgm6mb-soundfont/timgm6mb-soundfont_1.3.orig.tar.gz>
+  - sha256 de l'archive : `af8f3a00e416dfb262bcaa904a1c84df04a51b72bbc1313aed012bc754bdf99b`
+  - sha256 de `TimGM6mb.sf2` (5 969 788 octets) : `c5378b62028c920cb11e4803327983fee2f2cdff5dc89c708e39da417e51c854`
+
+Cantus distribue une version compressée en SF3, `pwa/soundfonts/TimGM6mb.sf3`
+(1 976 938 octets, sha256
+`deb62fc32331a2ef2ab64ee8be869f927e01898c2ea6a52e5eb5150765759ee6`), produite
+par `tools/build-soundfont.py`. Transformations appliquées :
+
+- réduction des zones de clavier : une zone conservée toutes les deux
+  octaves (24 demi-tons) par preset et par couche de vélocité, tessiture
+  élargie pour couvrir le même ambitus (520 → 404 échantillons ; 136 presets,
+  dont les 8 kits de percussion, inchangés) ;
+- suppression des échantillons devenus orphelins et réécriture des tables
+  `pdta` (`phdr`, `pbag`, `pgen`, `inst`, `ibag`, `igen`, `shdr`) ;
+- encodage de chaque échantillon en Ogg Vorbis mono 16 bits, qualité 2
+  (`oggenc`), et conversion des points de boucle en offsets relatifs au flux
+  décodé, comme l'exige le SF3 ;
+- pas de rééchantillonnage (les fréquences d'origine, 11 à 44,6 kHz, sont
+  conservées) et pas de raccourcissement des queues de boucle (elles font
+  déjà 206 ms au plus) : ces deux transformations ne changent pas la taille,
+  l'en-tête Vorbis de chaque flux pesant environ 3,4 ko.
+
+Régénération :
+
+```sh
+nix-shell -p python3Packages.numpy vorbis-tools --run \
+  "python3 tools/build-soundfont.py"
+```
+
 ## scoretk
 
 - Licence : GNU GPL v3 seulement (GPL-3.0-only)

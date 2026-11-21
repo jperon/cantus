@@ -45,3 +45,18 @@ le sha256 du fichier amont, puis produit l'asset autonome. Vérifier ensuite
   oscillateur, sans requête réseau.
 - Les buffers sont décodés **une seule fois** par mouvement, puis partagés par
   toutes les pistes ; le routage par voix passe par les `GainNode`.
+
+## TimGM6mb.sf3 (banque General MIDI)
+
+`TimGM6mb.sf3` est la banque General MIDI utilisée par le synthétiseur
+SpessaSynth : 136 presets (128 programmes mélodiques + 8 kits de percussion),
+404 échantillons, 1 976 938 octets.
+
+- Source : TimGM6mb 1.3, paquet Debian `timgm6mb-soundfont` (GPL-2.0-only,
+  voir `THIRD-PARTY.md` pour l'URL, les empreintes et les transformations).
+- Régénération : `nix-shell -p python3Packages.numpy vorbis-tools --run
+  "python3 tools/build-soundfont.py"`.
+- Le script produit aussi les variantes de mesure (conversion directe à
+  plusieurs qualités, réduction des zones à 1,5 ou 3 octaves,
+  rééchantillonnage à 22 050 Hz) : `--all` les construit dans
+  `.tmp-sf/build/variantes/`.
