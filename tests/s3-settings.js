@@ -32,16 +32,78 @@ async function runTelemann(browser, url, pageName, results) {
     await L.openSettings(page);
     const rows0 = await L.partRows(page);
     const partsHidden = await page.evaluate(() => document.getElementById('parts-group').classList.contains('hidden'));
+    const bulkDefaults = await page.evaluate(() => {
+      const sizes = document.getElementById('parts-sizes-reset');
+      const volumes = document.getElementById('parts-volumes-reset');
+      return {
+        sizes: sizes?.value,
+        volumes: volumes?.value,
+        sizesLabel: sizes?.closest('label')?.textContent || '',
+        volumesLabel: volumes?.closest('label')?.textContent || '',
+        sizesAria: sizes?.getAttribute('aria-label') || '',
+        volumesAria: volumes?.getAttribute('aria-label') || '',
+      };
+    });
+    const defaultsOk = !partsHidden && bulkDefaults.sizes === '100' && bulkDefaults.volumes === '50' &&
+      rows0.length >= 2 && rows0.every((r) => r.size === '100' && r.volume === '50') &&
+      /Tailles à/.test(bulkDefaults.sizesLabel) && /Volumes à/.test(bulkDefaults.volumesLabel) &&
+      /taille/i.test(bulkDefaults.sizesAria) && /volume/i.test(bulkDefaults.volumesAria);
+    L.record(results, '3. Voix : menus « Tailles à » et « Volumes à » à la valeur commune par défaut', pageName,
+      defaultsOk ? 'OK' : 'ÉCHEC',
+      `${rows0.length} voix (tailles ${[...new Set(rows0.map((r) => r.size))].join('/')}, ` +
+      `volumes ${[...new Set(rows0.map((r) => r.volume))].join('/')}), menus ${bulkDefaults.sizes || '—'}/${bulkDefaults.volumes || '—'}, ` +
+      `libellés « ${bulkDefaults.sizesLabel.trim()} » / « ${bulkDefaults.volumesLabel.trim()} », ` +
+      `aria « ${bulkDefaults.sizesAria} » / « ${bulkDefaults.volumesAria} »`);
+
+    // Volume de toutes les voix : appliqué immédiatement au moteur, sans
+    // re-rendu, et les curseurs des lignes suivent.
     await L.markSvg(page);
+    await page.selectOption('#parts-volumes-reset', '80');
+    await page.waitForTimeout(400);
+    const rowsVolume80 = await L.partRows(page);
+    const volumeAfter = await page.evaluate(() => {
+      const key = Object.keys(localStorage).find((k) => k.startsWith('musica-hidden-parts-'));
+      return {
+        marker: !!document.querySelector('#page-current .scroll-page svg[data-test-mark="1"]'),
+        volume: document.getElementById('parts-volumes-reset')?.value,
+        saved: key ? JSON.parse(localStorage.getItem(key))?.volumes : null,
+      };
+    });
+    const volume80Ok = rowsVolume80.every((r) => r.volume === '80') && volumeAfter.volume === '80' &&
+      volumeAfter.marker && Object.keys(volumeAfter.saved || {}).length === rowsVolume80.length &&
+      Object.values(volumeAfter.saved || {}).every((v) => v === 80);
+    L.record(results, '3. Menu « Volumes à » : 80 % appliqué à toutes les voix, sans re-rendu', pageName,
+      volume80Ok ? 'OK' : 'ÉCHEC',
+      `curseurs ${rowsVolume80.map((r) => r.volume).join('/')}, menu ${volumeAfter.volume}, ` +
+      `SVG marqué conservé : ${volumeAfter.marker}, volumes ${JSON.stringify(volumeAfter.saved)}`);
+    await page.selectOption('#parts-volumes-reset', '50');
+    await page.waitForTimeout(400);
+    const rowsVolume50 = await L.partRows(page);
+    const volumeReset = await page.evaluate(() => {
+      const key = Object.keys(localStorage).find((k) => k.startsWith('musica-hidden-parts-'));
+      return {
+        marker: !!document.querySelector('#page-current .scroll-page svg[data-test-mark="1"]'),
+        volume: document.getElementById('parts-volumes-reset')?.value,
+        saved: key ? JSON.parse(localStorage.getItem(key))?.volumes : null,
+      };
+    });
+    L.record(results, '3. Menu « Volumes à » : retour à 50 %, sans re-rendu', pageName,
+      rowsVolume50.every((r) => r.volume === '50') && volumeReset.volume === '50' &&
+        volumeReset.marker && Object.keys(volumeReset.saved || {}).length === 0 ? 'OK' : 'ÉCHEC',
+      `curseurs ${rowsVolume50.map((r) => r.volume).join('/')}, menu ${volumeReset.volume}, ` +
+      `SVG marqué conservé : ${volumeReset.marker}, volumes ${JSON.stringify(volumeReset.saved)}`);
+
+    // Taille d'une seule voix : le menu « Tailles à » passe à « — » (valeurs
+    // divergentes), aucune régénération avant la fermeture.
     await page.selectOption('#parts-list select.part-size >> nth=0', '120');
     await page.waitForTimeout(2000);
     const marker = await L.markerPresent(page);
     const hDuring = await L.staffHeights(page);
-    const resetEnabled = await page.evaluate(() => !document.getElementById('parts-sizes-reset').disabled);
+    const mixedSizes = await page.evaluate(() => document.getElementById('parts-sizes-reset').value);
     const sameDuring = JSON.stringify(hDuring) === JSON.stringify(h0);
-    L.record(results, '3. Taille de voix : aucune régénération avant la fermeture des réglages', pageName,
-      marker && sameDuring && resetEnabled ? 'OK' : 'ÉCHEC',
-      `SVG marqué toujours affiché : ${marker}, hauteurs inchangées : ${sameDuring}, bouton 100 % actif : ${resetEnabled}`);
+    L.record(results, '3. Taille de voix : aucune régénération avant la fermeture, menu « — »', pageName,
+      marker && sameDuring && mixedSizes === '' ? 'OK' : 'ÉCHEC',
+      `SVG marqué toujours affiché : ${marker}, hauteurs inchangées : ${sameDuring}, menu tailles « ${mixedSizes} »`);
     await L.closeSettings(page);
     await waitNewSvg(page);
     const h1 = await L.staffHeights(page);
@@ -51,16 +113,32 @@ async function runTelemann(browser, url, pageName, results) {
       `portée 1 : ${h0[0]} → ${h1[0]} px (×${ratio.toFixed(2)}), ${rows0.length} voix`);
     await L.openSettings(page);
     const rows120 = await L.partRows(page);
-    await page.click('#parts-sizes-reset');
+    // Menu « Tailles à » : 80 % s'applique à toutes les voix.
+    await page.selectOption('#parts-sizes-reset', '80');
+    await page.waitForTimeout(300);
+    const rows80 = await L.partRows(page);
+    const bulkSize80 = await page.evaluate(() => document.getElementById('parts-sizes-reset').value);
+    await L.closeSettings(page);
+    await waitNewSvg(page);
+    const h80 = await L.staffHeights(page);
+    const ratio80 = h0 && h80 ? h80[0] / h0[0] : 0;
+    L.record(results, '3. Menu « Tailles à » : 80 % appliqué à toutes les voix', pageName,
+      rows80.length === rows0.length && rows80.every((r) => r.size === '80') && bulkSize80 === '80' &&
+        ratio80 > 0.75 && ratio80 < 0.85 ? 'OK' : 'ÉCHEC',
+      `tailles ${rows120.map((r) => r.size).join('/')} → ${rows80.map((r) => r.size).join('/')}, menu « ${bulkSize80} », ` +
+      `portée 1 : ${h0[0]} → ${h80[0]} px (×${ratio80.toFixed(2)})`);
+    // Menu « Tailles à » : retour à 100 % pour toutes les voix.
+    await L.openSettings(page);
+    await page.selectOption('#parts-sizes-reset', '100');
     await page.waitForTimeout(300);
     const rowsReset = await L.partRows(page);
     await L.closeSettings(page);
     await waitNewSvg(page);
     const h2 = await L.staffHeights(page);
     const restored = h2 && h0 && h2.length === h0.length && h2.every((v, i) => Math.abs(v - h0[i]) < 1);
-    L.record(results, '3. Bouton « Toutes les voix à 100 % »', pageName,
+    L.record(results, '3. Menu « Tailles à » : 100 % restaure toutes les voix', pageName,
       restored && rowsReset.every((r) => r.size === '100') ? 'OK' : 'ÉCHEC',
-      `tailles affichées ${rows120.map((r) => r.size).join('/')} → ${rowsReset.map((r) => r.size).join('/')}, hauteur restaurée : ${restored}`);
+      `tailles affichées ${rows80.map((r) => r.size).join('/')} → ${rowsReset.map((r) => r.size).join('/')}, hauteur restaurée : ${restored}`);
     // Voix masquée (P1 des deux voix de Telemann)
     await L.openSettings(page);
     await page.click('#parts-list .part-display >> nth=0');

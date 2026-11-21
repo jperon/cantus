@@ -76,6 +76,14 @@ test('voiceGainValue : le masquage explicite coupe vraiment', () => {
   approx(audio.voiceGainValue(0, true), 0, 'masquée à volume 0');
 });
 
+test('DEFAULT_VOICE_VOLUME : 50 %, gain audible', () => {
+  assert.strictEqual(audio.DEFAULT_VOICE_VOLUME, 50, 'volume par défaut d’une voix');
+  const gain = audio.voiceGainValue(audio.DEFAULT_VOICE_VOLUME, false);
+  approx(gain, 0.505, 'gain au volume par défaut');
+  assert.ok(gain > 0.1, 'le gain par défaut reste audible');
+  assert.ok(gain < audio.volumeToGain(100), 'inférieur au gain maximal');
+});
+
 // --- Mapping libellé -> pistes ---------------------------------------------
 
 test('resolveTrackMap : index par piste et par libellé, doublons écartés', () => {
