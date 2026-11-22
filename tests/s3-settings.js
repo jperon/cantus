@@ -1086,6 +1086,18 @@ async function runSettingsSections(browser, url, pageName, results) {
           };
         }),
         hints: [...document.querySelectorAll('#settings-overlay .settings-hint')].map((el) => el.textContent.trim()),
+        choices: [...document.querySelectorAll('#settings-overlay .settings-choice')].map((choice) => {
+          const check = choice.querySelector('input[type="checkbox"]');
+          const hint = choice.querySelector('.settings-hint');
+          const checkRect = check?.getBoundingClientRect();
+          const hintRect = hint?.getBoundingClientRect();
+          return {
+            label: choice.querySelector('.settings-check')?.textContent.trim() || '',
+            hasHint: !!hint,
+            sameChoice: !hint || hint.closest('.settings-choice') === choice,
+            below: !hint || (!!checkRect && !!hintRect && hintRect.top >= checkRect.bottom - 1),
+          };
+        }),
         voiceCompact: (() => {
           const row = document.querySelector('#parts-list .part-row');
           const expand = row?.querySelector('.part-expand');
@@ -1128,6 +1140,29 @@ async function runSettingsSections(browser, url, pageName, results) {
       `libellés « ${optionById['hide-empty-staves']?.label} » / « ${optionById['highlight-measure']?.label} », ` +
       `cochés ${optionById['hide-empty-staves']?.checked}/${optionById['highlight-measure']?.checked}, ` +
       `aides ${info.hints.filter((h) => /système sauf|mesure jouée/i.test(h)).length}`);
+
+    // Chaque aide est groupée avec sa propre case (même bloc, sous la case),
+    // y compris quand les quatre cases sont sur une ligne.
+    const choiceLabels = info.choices.map((c) => c.label);
+    const withHint = info.choices.filter((c) => c.hasHint);
+    const hintsGrouped = info.choices.length === 4 &&
+      withHint.length === 2 &&
+      withHint.every((c) => c.sameChoice && c.below) &&
+      withHint.some((c) => /surligner/i.test(c.label)) &&
+      withHint.some((c) => /dérouler/i.test(c.label));
+    L.record(results, '3. Réglages : chaque texte d’aide reste groupé sous sa case', pageName,
+      hintsGrouped ? 'OK' : 'ÉCHEC',
+      `${info.choices.length} case(s) [${choiceLabels.join(' / ')}], ` +
+      `${withHint.length} avec aide, même bloc et sous la case : ` +
+      `${withHint.map((c) => `${c.label}:${c.sameChoice && c.below}`).join(', ')}`);
+
+    await page.evaluate(() => {
+      const overlay = document.getElementById('settings-overlay');
+      const group = document.getElementById('highlight-measure').closest('.settings-checks');
+      overlay.scrollTop += group.getBoundingClientRect().top - overlay.getBoundingClientRect().top - 80;
+    });
+    await page.waitForTimeout(200);
+    await page.screenshot({ path: '/tmp/cantus-voix/reglages-lecture-telephone.png' });
 
     await L.markSvg(page);
     await page.check('#hide-empty-staves');
@@ -1319,6 +1354,41 @@ async function runVoiceLayout(browser, url, pageName, results) {
   try {
     await importLoaded(page, L.FILES.telemannXml);
     await L.openSettings(page);
+    const checkLayout = await page.evaluate(() => {
+      const choices = [...document.querySelectorAll('#settings-overlay .settings-choice')];
+      const items = choices.map((choice) => {
+        const check = choice.querySelector('.settings-check');
+        const hint = choice.querySelector('.settings-hint');
+        const cr = check?.getBoundingClientRect();
+        const hr = hint?.getBoundingClientRect();
+        return {
+          label: check?.textContent.trim() || '',
+          top: Math.round(cr?.top || 0),
+          hint: !!hint,
+          sameChoice: !hint || hint.closest('.settings-choice') === choice,
+          below: !hint || (!!cr && !!hr && hr.top >= cr.bottom - 1),
+        };
+      });
+      return { items, tops: items.map((item) => item.top), hints: items.filter((item) => item.hint) };
+    });
+    const checksOneLine = checkLayout.items.length === 4 &&
+      Math.max(...checkLayout.tops) - Math.min(...checkLayout.tops) < 12;
+    const checksHints = checkLayout.hints.length === 2 &&
+      checkLayout.hints.every((item) => item.sameChoice && item.below);
+    L.record(results, '3. Réglages à 1280 px : quatre cases sur une ligne, aides groupées', pageName,
+      checksOneLine && checksHints ? 'OK' : 'ÉCHEC',
+      `${checkLayout.items.length} case(s) [${checkLayout.items.map((item) => item.label).join(' / ')}], ` +
+      `même ligne : ${checksOneLine}, aides sous leur case : ${checksHints}`);
+    await page.evaluate(() => {
+      const overlay = document.getElementById('settings-overlay');
+      const group = document.getElementById('highlight-measure').closest('.settings-checks');
+      overlay.scrollTop += group.getBoundingClientRect().top - overlay.getBoundingClientRect().top - 80;
+    });
+    await page.waitForTimeout(200);
+    await page.screenshot({ path: '/tmp/cantus-voix/reglages-lecture-ordinateur.png' });
+    await page.evaluate(() => document.getElementById('parts-group').scrollIntoView({ block: 'start' }));
+    await page.waitForTimeout(200);
+
     const layout = await page.evaluate(() => {
       const list = document.getElementById('parts-list');
       const rows = [...list.querySelectorAll('.part-row')].map((row) => {
