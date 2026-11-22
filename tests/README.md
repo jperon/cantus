@@ -120,6 +120,8 @@ un contrat imaginé (`pauseBefore`, `from`/`to`/`offset`) ne prouve rien.
 - `tests/unit/audio-load.test.js` — chargement de la banque SpessaSynth une
   seule fois, mesuré avec un faux `AudioContext` et un faux synthétiseur pour
   1 et 3 pistes (programmes, canaux, repli oscillateur).
+- `tests/unit/audio-schedule.test.js` — noteOn/noteOff datés dans l'horloge du
+  processeur, et purge du worklet (pause, transposition) sans note fantôme.
 - `tests/unit/playback.test.js` — résolution des marqueurs de synchronisation
   et suivi de page/système (`src/playback.coffee`).
 - `tests/unit/timeline.test.js` — slices de mouvement, segments de lecture,
@@ -144,8 +146,9 @@ construite.
 
 Après lecture, `window.__musicaAudio.getEngineMode()` vaut `soundfont` (ou
 `oscillator` en repli), `getChannelAssignments()` décrit les canaux et
-programmes GM, et `getTimingStats()` donne la gigue mesurée de
-l'ordonnanceur. Si `pwa/soundfonts/TimGM6mb.sf3` est absent, le build passe
+programmes GM, et `getTimingStats()` donne la gigue réelle des noteOn/noteOff
+(instant où le processeur AudioWorklet les traite moins échéance prévue,
+détaillée en `on` et `off`). Si `pwa/soundfonts/TimGM6mb.sf3` est absent, le build passe
 (tolérance) et le moteur se rabat sur l'oscillateur.
 
 ## Scénarios
