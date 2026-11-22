@@ -565,6 +565,79 @@ test('normalizePlaybackData : pistes de percussion signalées, hauteurs intactes
   assert.deepStrictEqual(data.notes.map((n) => n.pitch), [60, 38], 'notes chargées inchangées');
 });
 
+// --- Échantillons : zones, hauteur, enveloppe ------------------------------
+
+const zone = (extra = {}) => ({
+  keyLo: 0, keyHi: 127, velLo: 0, velHi: 127,
+  root: 60, tune: 0, offset: 0, frames: 32000,
+  loop: false, loopStart: 0, loopEnd: 0,
+  gain: 1, attack: 0.005, hold: 0, decay: 0.1,
+  sustain: 0.8, release: 0.2, ...extra,
+});
+
+test('sampleKey : programme mélodique ou kit de batterie', () => {
+  assert.strictEqual(audio.sampleKey(0, false), '0');
+  assert.strictEqual(audio.sampleKey(52, false), '52');
+  assert.strictEqual(audio.sampleKey(127, false), '127');
+  assert.strictEqual(audio.sampleKey(0, true), 'drums');
+  assert.strictEqual(audio.sampleKey(52, true), 'drums');
+  assert.strictEqual(audio.sampleKey(NaN, false), '0', 'programme absent -> piano');
+  assert.strictEqual(audio.sampleKey(200, false), '127', 'programme borné');
+});
+
+test('selectSampleZone : couche de vélocité la plus étroite, tessiture la plus proche', () => {
+  const base = zone({ keyLo: 0, keyHi: 127, velLo: 0, velHi: 127 });
+  const mf = zone({ keyLo: 0, keyHi: 127, velLo: 64, velHi: 107 });
+  const ff = zone({ keyLo: 0, keyHi: 127, velLo: 108, velHi: 127 });
+  const zones = [base, mf, ff];
+  assert.strictEqual(audio.selectSampleZone(zones, 60, 90), mf, 'vélocité moyenne -> couche mf');
+  assert.strictEqual(audio.selectSampleZone(zones, 60, 120), ff, 'vélocité forte -> couche ff');
+  assert.strictEqual(audio.selectSampleZone(zones, 60, 20), base,
+    'vélocité faible -> couche de base (la plus proche)');
+  assert.strictEqual(audio.selectSampleZone([], 60, 90), null);
+  assert.strictEqual(audio.selectSampleZone(null, 60, 90), null);
+});
+
+test('selectSampleZone : la zone la plus proche en hauteur sert hors tessiture', () => {
+  const low = zone({ keyLo: 0, keyHi: 40, velLo: 0, velHi: 127 });
+  const high = zone({ keyLo: 41, keyHi: 127, velLo: 0, velHi: 127 });
+  assert.strictEqual(audio.selectSampleZone([low, high], 30, 90), low);
+  assert.strictEqual(audio.selectSampleZone([low, high], 80, 90), high);
+  // Hauteur hors de toute zone : la plus proche l'emporte.
+  const narrow = zone({ keyLo: 60, keyHi: 62, velLo: 0, velHi: 127 });
+  assert.strictEqual(audio.selectSampleZone([low, narrow], 64, 90), narrow);
+});
+
+test('zonePlaybackRate : root key, accord fin et bornes de sécurité', () => {
+  approx(audio.zonePlaybackRate(zone(), 60), 1, 'note = root');
+  approx(audio.zonePlaybackRate(zone(), 72), 2, 'une octave au-dessus');
+  approx(audio.zonePlaybackRate(zone(), 48), 0.5, 'une octave en dessous');
+  approx(audio.zonePlaybackRate(zone({ root: 69 }), 69), 1, 'root 69');
+  approx(audio.zonePlaybackRate(zone({ tune: 100 }), 60), Math.pow(2, 1 / 12),
+    'un demi-ton d’accord fin');
+  approx(audio.zonePlaybackRate(zone(), 0), 0.03125, 'rapport minimal borné');
+  approx(audio.zonePlaybackRate(zone(), 127), 32, 'rapport maximal borné');
+});
+
+test('zonePeakGain : vélocité, atténuation et niveau global', () => {
+  approx(audio.zonePeakGain(zone({ gain: 1 }), 127), audio.SAMPLE_LEVEL,
+    'vélocité maximale, sans atténuation');
+  approx(audio.zonePeakGain(zone({ gain: 0.5 }), 127), audio.SAMPLE_LEVEL * 0.5, 'atténuation de moitié');
+  assert.ok(audio.zonePeakGain(zone(), 40) < audio.zonePeakGain(zone(), 100),
+    'une vélocité plus faible sonne moins fort');
+  assert.ok(audio.zonePeakGain(zone(), 0) > 0, 'la vélocité nulle reste audible');
+});
+
+test('zoneEnvelopeLevel : attaque, tenue, décroissance, sustain', () => {
+  const z = zone({ attack: 0.1, hold: 0.05, decay: 0.2, sustain: 0.5 });
+  const peak = 1;
+  approx(audio.zoneEnvelopeLevel(z, peak, 0), 0, 'départ');
+  approx(audio.zoneEnvelopeLevel(z, peak, 0.05), 0.5, 'milieu de l’attaque');
+  approx(audio.zoneEnvelopeLevel(z, peak, 0.12), 1, 'pendant la tenue');
+  approx(audio.zoneEnvelopeLevel(z, peak, 0.25), 0.75, 'milieu de la décroissance');
+  approx(audio.zoneEnvelopeLevel(z, peak, 0.5), 0.5, 'niveau de sustain');
+});
+
 // --- Exécution -------------------------------------------------------------
 
 let passed = 0;

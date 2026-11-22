@@ -15,13 +15,10 @@ const SCORETK_CLASSIC = path.join(
   process.env.SCORETK_PKG || path.join(__dirname, '..', 'musescore', 'result'),
   'classic'
 );
-// Banque General MIDI (SF3) et processeur AudioWorklet de SpessaSynth.
-const SOUNDFONTS_SRC = path.join(PWA, 'soundfonts');
-const SOUNDFONT_FILE = path.join(SOUNDFONTS_SRC, 'TimGM6mb.sf3');
-const SPESSA_LIB = path.join(__dirname, 'node_modules', 'spessasynth_lib');
-const SPESSA_PROCESSOR = path.join(SPESSA_LIB, 'dist', 'spessasynth_processor.min.js');
-const SPESSA_WORKLET_DEST = path.join('soundfonts', 'spessasynth_processor.min.js');
-let spessaBundleCache = null;
+// Échantillons General MIDI du moteur natif (tools/build-samples.py) :
+// un manifeste JSON et un Ogg Vorbis par programme.
+const SAMPLES_SRC = path.join(PWA, 'samples');
+const SAMPLES_MANIFEST = path.join(SAMPLES_SRC, 'manifest.json');
 
 // Formats importables : src/formats.coffee est la seule source (extensions,
 // `from` scoretk, types MIME). Le module y est évalué en CommonJS pour calculer
@@ -205,76 +202,60 @@ function readScoretk() {
   };
 }
 
-// Copie la banque SF3 dans dist/soundfonts ; renvoie false si elle est
-// absente (le build reste valide, le moteur audio se rabat sur l'oscillateur).
-function copySoundfontSamples() {
-  ensureDir(path.join(DIST, 'soundfonts'));
-  // Fichier de l'ancienne banque MIDI.js : retiré de dist pour ne pas rester
-  // accessible après une mise à jour.
-  fs.rmSync(path.join(DIST, 'soundfonts', 'piano-fluidr3-13notes.js'), { force: true });
-  if (!fs.existsSync(SOUNDFONT_FILE)) {
-    console.warn(`  Attention : ${SOUNDFONT_FILE} introuvable, échantillons audio désactivés`);
-    return false;
+// Copie les échantillons dans dist/samples ; renvoie la liste des fichiers
+// copiés (diagnostic). Absents, le build reste valide : le moteur audio se
+// rabat sur l'oscillateur.
+function copySamples() {
+  ensureDir(path.join(DIST, 'samples'));
+  // Dossiers des anciens moteurs : retirés de dist pour ne pas rester
+  // accessibles après une mise à jour.
+  fs.rmSync(path.join(DIST, 'soundfonts'), { recursive: true, force: true });
+  if (!fs.existsSync(SAMPLES_MANIFEST)) {
+    console.warn(`  Attention : ${SAMPLES_MANIFEST} introuvable, échantillons audio désactivés`);
+    return [];
   }
-  console.log('  Copying soundfont...');
-  const dest = path.join(DIST, 'soundfonts', 'TimGM6mb.sf3');
-  fs.rmSync(dest, { force: true });
-  fs.copyFileSync(SOUNDFONT_FILE, dest);
-  fs.chmodSync(dest, 0o644);
-  console.log('  -> dist/soundfonts/TimGM6mb.sf3');
-  return true;
-}
-
-// Bundle navigateur de spessasynth_lib (ESM + spessasynth_core), exposé comme
-// window.__musicaSpessa. Un seul bundle par processus de build.
-function readSpessaBundle() {
-  if (spessaBundleCache) return spessaBundleCache;
-  console.log('  Bundling spessasynth_lib...');
-  const result = esbuild.buildSync({
-    stdin: {
-      contents: "import { WorkletSynthesizer } from 'spessasynth_lib'; window.__musicaSpessa = { WorkletSynthesizer };",
-      resolveDir: __dirname,
-      sourcefile: 'spessasynth-entry.js',
-    },
-    bundle: true,
-    format: 'iife',
-    minify: MINIFY,
-    write: false,
-    platform: 'browser',
-    target: ['es2020'],
-    logLevel: 'warning',
-  });
-  spessaBundleCache = result.outputFiles[0].text;
-  return spessaBundleCache;
-}
-
-// Processeur AudioWorklet (texte), servi comme fichier dans le build normal et
-// inliné dans le SPA (file:// interdit fetch).
-function readSpessaWorklet() {
-  if (!fs.existsSync(SPESSA_PROCESSOR)) {
-    throw new Error(`Processeur SpessaSynth introuvable : ${SPESSA_PROCESSOR}`);
+  console.log('  Copying samples...');
+  const manifest = JSON.parse(fs.readFileSync(SAMPLES_MANIFEST, 'utf-8'));
+  const files = ['samples/manifest.json'];
+  for (const entry of Object.values(manifest.programs || {})) {
+    if (!entry.file) continue;
+    const src = path.join(SAMPLES_SRC, entry.file);
+    if (!fs.existsSync(src)) {
+      throw new Error(`Échantillon manquant : ${src}`);
+    }
+    const dest = path.join(DIST, 'samples', entry.file);
+    fs.rmSync(dest, { force: true });
+    fs.copyFileSync(src, dest);
+    fs.chmodSync(dest, 0o644);
+    files.push(`samples/${entry.file}`);
   }
-  return fs.readFileSync(SPESSA_PROCESSOR, 'utf-8');
+  fs.rmSync(path.join(DIST, 'samples', 'manifest.json'), { force: true });
+  fs.copyFileSync(SAMPLES_MANIFEST, path.join(DIST, 'samples', 'manifest.json'));
+  fs.chmodSync(path.join(DIST, 'samples', 'manifest.json'), 0o644);
+  const size = files.reduce((sum, file) => {
+    const full = path.join(DIST, file);
+    return sum + (fs.existsSync(full) ? fs.statSync(full).size : 0);
+  }, 0);
+  console.log(`  -> dist/samples (${files.length} fichier(s), ${(size / 1024 / 1024).toFixed(2)} Mo)`);
+  return files.map((file) => `./${file}`);
 }
 
-function copySpessaWorklet() {
-  console.log('  Copying SpessaSynth worklet...');
-  const dest = path.join(DIST, SPESSA_WORKLET_DEST);
-  ensureDir(path.dirname(dest));
-  fs.rmSync(dest, { force: true });
-  fs.writeFileSync(dest, readSpessaWorklet(), { mode: 0o644 });
-  fs.chmodSync(dest, 0o644);
-  console.log(`  -> dist/${SPESSA_WORKLET_DEST}`);
-}
-
-// Banque pour le SPA (file:// interdit fetch), inlinée en base64.
-function readSoundfontBase64() {
-  if (!fs.existsSync(SOUNDFONT_FILE)) {
-    console.warn(`  Attention : ${SOUNDFONT_FILE} introuvable, échantillons audio désactivés`);
-    return null;
+// Échantillons pour le SPA : manifeste et contenus inlinés (file:// interdit
+// fetch). Le décodage reste paresseux, programme par programme.
+function readSamplesForSpa() {
+  if (!fs.existsSync(SAMPLES_MANIFEST)) {
+    console.warn(`  Attention : ${SAMPLES_MANIFEST} introuvable, échantillons audio désactivés`);
+    return { manifest: null, data: {} };
   }
-  console.log('  Reading soundfont...');
-  return fs.readFileSync(SOUNDFONT_FILE).toString('base64');
+  console.log('  Reading samples...');
+  const manifestText = fs.readFileSync(SAMPLES_MANIFEST, 'utf-8');
+  const manifest = JSON.parse(manifestText);
+  const data = {};
+  for (const [key, entry] of Object.entries(manifest.programs || {})) {
+    if (!entry.file) continue;
+    data[key] = fs.readFileSync(path.join(SAMPLES_SRC, entry.file)).toString('base64');
+  }
+  return { manifest, data };
 }
 
 // Le contenu d'un <script type="text/plain"> est du texte brut : un
@@ -325,6 +306,14 @@ function injectSw(source, marker, value) {
   return source.replace(marker, () => value);
 }
 
+// Précache du service worker : le manifeste seulement. Les Ogg sont mis en
+// cache à la demande (cacheFirst, /samples/ est un actif statique) : précacher
+// 130 fichiers retarderait l'activation du SW, donc la lecture hors ligne.
+function copySamplesAssetsFromDist() {
+  const manifest = path.join(DIST, 'samples', 'manifest.json');
+  return fs.existsSync(manifest) ? ['./samples/manifest.json'] : [];
+}
+
 function copyPwaFiles(buildDate, formats) {
   console.log('  Copying PWA files...');
   fs.writeFileSync(path.join(DIST, 'manifest.json'), buildManifest(formats));
@@ -340,13 +329,16 @@ function copyPwaFiles(buildDate, formats) {
   }
   const caches = JSON.stringify(preservedCacheNames());
   const swWithCaches = swWithVersion.replace(placeholder, () => `PRESERVED_CACHES = ${caches}`);
+  // Échantillons audio facultatifs, précachés pour la lecture hors ligne.
+  const sampleAssets = copySamplesAssetsFromDist();
+  let swWithSamples = injectSw(swWithCaches, 'SAMPLE_ASSETS = []', `SAMPLE_ASSETS = ${JSON.stringify(sampleAssets)}`);
   // Formats importables : table MIME -> extension du nom de repli, et regex des
   // extensions à retirer pour nommer une entrée partagée (src/formats.coffee).
   const mimeExtensions = Object.fromEntries(
     Object.entries(formats.mimeExtensions).map(([type, ext]) => [type, `.${ext}`])
   );
   const shareExtRe = new RegExp(`\\.(${formats.extensions.join('|')})$`, 'i');
-  let sw = injectSw(swWithCaches, 'MIME_EXTENSIONS = {}', `MIME_EXTENSIONS = ${JSON.stringify(mimeExtensions)}`);
+  let sw = injectSw(swWithSamples, 'MIME_EXTENSIONS = {}', `MIME_EXTENSIONS = ${JSON.stringify(mimeExtensions)}`);
   sw = injectSw(sw, 'SHARE_EXT_RE = null', `SHARE_EXT_RE = ${shareExtRe}`);
   fs.writeFileSync(path.join(DIST, 'sw.js'), minify(sw));
 
@@ -397,11 +389,10 @@ async function build() {
   console.log('  -> dist/verovio-toolkit-wasm.js (partitura)');
 
   const scoretkAvailable = copyScoretk();
-  const soundfontsAvailable = copySoundfontSamples();
-  copySpessaWorklet();
+  const sampleAssets = copySamples();
+  const samplesAvailable = sampleAssets.length > 0;
 
   const fflateSetup = readFflate();
-  const spessaJs = readSpessaBundle();
   const formats = loadFormats();
   const { mxlJs, storageJs, svgCacheJs, playbackCacheJs, midiJs, formatsJs, timelineJs, i18nJs, audioJs, playbackJs, workerJs, appJs } = compileScripts();
 
@@ -433,7 +424,6 @@ async function build() {
     css,
     workerSetup,
     fflateSetup,
-    spessaJs: escapeScript(spessaJs),
     mxlJs,
     storageJs,
     svgCacheJs,
@@ -447,7 +437,7 @@ async function build() {
     appJs,
     buildDate,
     scoretkAvailable,
-    soundfontsAvailable,
+    samplesAvailable,
     importAccept: importAccept(formats, scoretkAvailable),
   });
 
@@ -482,9 +472,7 @@ async function buildSpa() {
   const verovioJs = fs.readFileSync(verovioToolkit(), 'utf-8');
 
   const fflateSetup = readFflate();
-  const spessaJs = readSpessaBundle();
-  const spessaWorklet = readSpessaWorklet();
-  const soundfontB64 = readSoundfontBase64();
+  const samples = readSamplesForSpa();
   const formats = loadFormats();
   const { mxlJs, storageJs, svgCacheJs, playbackCacheJs, midiJs, formatsJs, timelineJs, i18nJs, audioJs, playbackJs, workerJs, appJs } = compileScripts();
   const scoretkInline = readScoretk();
@@ -540,10 +528,9 @@ ${workerJs}
     workerSource,
     workerSetup,
     fflateSetup,
-    spessaJs: escapeScript(spessaJs),
-    spessaWorklet: escapeScript(spessaWorklet),
-    soundfontB64,
-    soundfontsAvailable: !!soundfontB64,
+    samplesManifest: samples.manifest ? escapeScript(JSON.stringify(samples.manifest)) : null,
+    samplesData: samples.manifest ? escapeScript(JSON.stringify(samples.data)) : null,
+    samplesAvailable: !!samples.manifest,
     mxlJs,
     storageJs,
     svgCacheJs,

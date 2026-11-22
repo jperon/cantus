@@ -35,7 +35,7 @@ async function cachedMscz(page) {
 }
 
 // Lecture hors ligne : le transport doit apparaître, la lecture démarrer et la
-// position progresser. Que les échantillons soient précachés (soundfont) ou
+// position progresser. Que les échantillons soient précachés (manifeste + Ogg) ou
 // non (repli oscillateur), seule la lecture compte ici.
 async function offlinePlayback(page) {
   await page.waitForFunction(() => {
@@ -157,7 +157,11 @@ async function offlinePlayback(page) {
         } catch (e) {
           L.record(results, '4. Hors ligne réel', 'index.html', 'ÉCHEC', e.message);
         }
-        const relevant = L.summarize(errors);
+        // Hors ligne, un instrument non encore mis en cache fait échouer son
+        // fetch : c'est le repli oscillateur attendu, pas une erreur JS. Les
+        // échecs réseau sont donc filtrés ici (les pageerror restent testés).
+        const relevant = L.summarize(errors)
+          .filter((e) => !/net::ERR_(FAILED|INTERNET_DISCONNECTED)/.test(e));
         L.record(results, '6. Erreurs JS (hors ligne)', 'index.html', relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
       }
     } catch (e) {

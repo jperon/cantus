@@ -117,12 +117,13 @@ un contrat imaginé (`pauseBefore`, `from`/`to`/`offset`) ne prouve rien.
 - `tests/unit/audio.test.js` — logique audio pure : volumes, mapping des voix,
   répartition des pistes sur les canaux et programmes GM, ordonnancement,
   normalisation de `playbackData`.
-- `tests/unit/audio-load.test.js` — chargement de la banque SpessaSynth une
-  seule fois, mesuré avec un faux `AudioContext` et un faux synthétiseur pour
-  1 et 3 pistes (programmes, canaux, repli oscillateur).
-- `tests/unit/audio-schedule.test.js` — noteOn/noteOff datés dans l'horloge du
-  processeur, et purge différée des événements datés (pause, transposition)
-  sans note fantôme ni reconstruction du moteur.
+- `tests/unit/audio-load.test.js` — chargement paresseux des échantillons
+  (seuls les programmes de la partition, une seule fois), avec un faux
+  `AudioContext` ; repli oscillateur si le manifeste ou un échantillon manque.
+- `tests/unit/audio-schedule.test.js` — notes datées avec
+  `start(when, offset, duration)`, hauteur par `playbackRate`, boucle et
+  enveloppe sur les nœuds natifs, coupure immédiate (pause, seek, stop,
+  transposition) sans purge différée.
 - `tests/unit/playback.test.js` — résolution des marqueurs de synchronisation
   et suivi de page/système (`src/playback.coffee`).
 - `tests/unit/timeline.test.js` — slices de mouvement, segments de lecture,
@@ -131,26 +132,44 @@ un contrat imaginé (`pauseBefore`, `from`/`to`/`offset`) ne prouve rien.
 - `tests/unit/i18n.test.js` — interpolation, pluriel, replis et cohérence
   stricte des clés et des `{paramètres}` entre les dictionnaires.
 
-## Sonde audio (aperçu SpessaSynth)
+## Sonde audio (moteur d'échantillons natif)
 
 Pas de scénario dédié : la plomberie se vérifie dans la console de la page
 construite.
 
-- build normal : `typeof window.__musicaSpessa.WorkletSynthesizer` vaut
-  `function` (bundle ES inliné), la banque est servie depuis
-  `soundfonts/TimGM6mb.sf3` et le processeur AudioWorklet depuis
-  `soundfonts/spessasynth_processor.min.js` ;
-- SPA : les mêmes globals sont définis ; la banque est inlinée en base64 dans
-  `<script id="soundfont-b64" type="text/plain">` et le worklet dans
-  `<script id="spessasynth-worklet-src" type="text/plain">`, chargé depuis une
-  URL blob au premier `play()`.
+- build normal : le manifeste est servi depuis `samples/manifest.json` et un
+  Ogg par programme depuis `samples/` ; seuls les instruments de la partition
+  sont téléchargés et décodés ;
+- SPA : manifeste et échantillons sont inlinés dans
+  `<script id="samples-manifest" type="application/json">` et
+  `<script id="samples-data" type="application/json">`, décodés paresseusement.
 
-Après lecture, `window.__musicaAudio.getEngineMode()` vaut `soundfont` (ou
-`oscillator` en repli), `getChannelAssignments()` décrit les canaux et
-programmes GM, et `getTimingStats()` donne la gigue réelle des noteOn/noteOff
-(instant où le processeur AudioWorklet les traite moins échéance prévue,
-détaillée en `on` et `off`). Si `pwa/soundfonts/TimGM6mb.sf3` est absent, le build passe
+Après lecture, `window.__musicaAudio.getEngineMode()` vaut `samples` (ou
+`oscillator` en repli), `getChannelAssignments()` décrit les programmes
+effectifs (diagnostic), `getLoadedSampleKeys()` liste les programmes décodés et
+`getTimingStats()` donne le retard du fil principal au moment de confier
+chaque note au graphe. Les instants de `start(when)` sont exacts par
+construction. Si `pwa/samples/manifest.json` est absent, le build passe
 (tolérance) et le moteur se rabat sur l'oscillateur.
+
+## Mesure comparative des moteurs audio
+
+`tests/bench-audio.js` compare deux builds (SpessaSynth de référence et moteur
+d'échantillons courant) sur la même partition, Chromium headless, service
+worker bloqué et CPU bridé ×6 : CPU par type de processus (CDP `SystemInfo`),
+CPU du fil principal (`Performance.getMetrics`), mémoire JS, octets audio
+téléchargés, temps de chargement et régularité des débuts. Il produit aussi un
+WAV de 20 s par moteur.
+
+```sh
+CHROMIUM=/run/current-system/sw/bin/chromium env -u LD_LIBRARY_PATH \
+  node tests/bench-audio.js --spessa /tmp/cantus-natif/spessa-dist \
+  --samples dist --out /tmp/cantus-natif
+```
+
+`--spessa` désigne un `dist/` construit avant le remplacement (le build de
+référence), `--samples` le build courant. Ce script n'est pas lancé par
+`tests/run.sh`.
 
 ## Scénarios
 
@@ -175,7 +194,7 @@ détaillée en `on` et `off`). Si `pwa/soundfonts/TimGM6mb.sf3` est absent, le b
   préférence conservée).
 - `s4-offline.js` — installation du service worker, mise en cache des trois
   fichiers mscz2xml, rechargement et import `.mscz` avec `setOffline(true)`,
-  puis lecture audio hors ligne (position qui progresse, soundfont précaché ou
+  puis lecture audio hors ligne (position qui progresse, échantillons précachés ou
   repli oscillateur). Diagnostique l'étape qui échoue au lieu d'attendre
   indéfiniment.
 - `s5-nopkg.js` — build `MSCZ2XML_PKG=/nonexistent` (normal et `--spa`),
@@ -267,15 +286,14 @@ Le panneau Réglages expose :
 - **Vider le cache** : purge les caches de rendu SVG et de données de lecture,
   sans toucher aux fichiers de la bibliothèque.
 
-## Régénérer la banque audio
+## Régénérer les échantillons audio
 
 ```sh
-nix-shell -p python3Packages.numpy vorbis-tools --run \
-  "python3 tools/build-soundfont.py"
+nix-shell -p python3 ffmpeg --run "python3 tools/build-samples.py"
 ```
 
-Le script produit `pwa/soundfonts/TimGM6mb.sf3` (voir `pwa/soundfonts/README.md`
-et `THIRD-PARTY.md`).
+Le script produit `pwa/samples/manifest.json` et un Ogg par programme (voir
+`pwa/samples/README.md` et `THIRD-PARTY.md`).
 
 ## Notes
 

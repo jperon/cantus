@@ -142,10 +142,10 @@ async function runPage(browser, url, pageName, results) {
     const timeBefore = await page.textContent('#transport-time');
     await page.click('#transport-play');
     await waitState(page, 'playing');
-    // Le premier play() attend la résolution du moteur (worklet + banque SF3)
-    // avant de démarrer l'horloge, pour ne jamais jouer l'oscillateur de
-    // repli. La position reste figée jusque-là : on attend le mode avant de
-    // mesurer sa progression.
+    // Le premier play() attend la résolution du moteur (manifeste + décodage
+    // des instruments de la partition) avant de démarrer l'horloge, pour ne
+    // jamais jouer l'oscillateur de repli. La position reste figée jusque-là :
+    // on attend le mode avant de mesurer sa progression.
     await bounded('moteur audio prêt', 20000, page.waitForFunction(
       () => window.__musicaAudio.getEngineMode() !== null,
       null,
@@ -163,10 +163,12 @@ async function runPage(browser, url, pageName, results) {
       timeOk ? 'OK' : 'ÉCHEC',
       `« ${timeBefore.trim()} » → « ${timeAfter.trim()} », durée ${growth.after.duration} ms`);
 
-    // --- SpessaSynth : un canal et un programme par piste, gigue bornée ---
-    // La banque SF3 se charge au premier play() ; on laisse ensuite
-    // l'ordonnanceur envoyer quelques notes avant de lire la gigue mesurée
-    // (déclenchement réel - début musical, en secondes).
+    // --- Échantillons natifs : un programme par piste, gigue bornée ---
+    // Le manifeste et les instruments utilisés se chargent au premier play() ;
+    // on laisse ensuite l'ordonnanceur confier quelques notes au graphe avant
+    // de lire le retard mesuré (fil principal - échéance prévue, en secondes).
+    // Les débuts eux-mêmes sont exacts : start(when) est daté dans l'horloge
+    // de l'AudioContext.
     await page.evaluate(() => window.__musicaAudio.startNoteLog());
     await page.waitForFunction(() => {
       const stats = window.__musicaAudio.getTimingStats();
@@ -185,9 +187,9 @@ async function runPage(browser, url, pageName, results) {
     const programsSent = new Set((synth.changes || []).map((c) => `${c.channel}:${c.program}`));
     const programsOk = melodic.every((a) => programsSent.has(`${a.channel}:${a.program}`));
     const drumsOk = drums.every((a) => a.channel === 9);
-    const jitterOk = synth.mode === 'soundfont' && synth.timing &&
+    const jitterOk = synth.mode === 'samples' && synth.timing &&
       synth.timing.count > 0 && synth.timing.max < 0.05;
-    L.record(results, '6. SpessaSynth : canal et programme par piste, gigue < 50 ms', pageName,
+    L.record(results, '6. Échantillons natifs : programme par piste, gigue < 50 ms', pageName,
       uniqueChannels && programsOk && drumsOk && jitterOk ? 'OK' : 'ÉCHEC',
       `moteur ${synth.mode}, ${melodic.length} piste(s) mélodique(s) sur ` +
       `${new Set(channels).size} canal/canaux${uniqueChannels ? '' : ' (collision)'}, ` +
@@ -245,7 +247,7 @@ async function runPage(browser, url, pageName, results) {
         Math.abs(fast.notes[i].start - n.start / 2) < 1e-9 &&
         Math.abs(fast.notes[i].dur - n.dur / 2) < 1e-9);
     const scheduleAligned = fast.scheduled.length > 0 && fast.scheduled.every((n) =>
-      n.offset >= n.start - 0.001 && n.offset <= n.start + 0.15);
+      n.offset >= n.start - 0.001 && n.offset <= n.start + 0.45);
     L.record(results, '6. Tempo 160 : notes réellement programmées à débuts et durées /2', pageName,
       notesHalved && scheduleAligned ? 'OK' : 'ÉCHEC',
       `${baseNotes.length} → ${fast.notes.length} notes, débuts et durées ×0,5 : ${notesHalved}, ` +

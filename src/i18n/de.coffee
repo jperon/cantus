@@ -65,7 +65,7 @@ registerLanguage 'de', 'Deutsch',
   'settings.license': 'Freie Software unter der GNU GPL v3 oder später, ohne jegliche Gewährleistung.'
   'settings.sourceCode': 'Quelltext'
   'settings.thirdParty': 'Komponenten von Drittanbietern'
-  'settings.soundfontCredit': 'TimGM6mb-General-MIDI-Bank, SpessaSynth-Synthese —'
+  'settings.soundfontCredit': 'MuseScore-General-MIDI-Bank, native Web-Audio-Samples —'
 
   'library.title': 'Bibliothek'
   'library.close': 'Bibliothek schließen'

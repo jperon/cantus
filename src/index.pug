@@ -163,11 +163,9 @@ html(lang="en")
               a(href="https://github.com/jperon/cantus/blob/master/THIRD-PARTY.md" target="_blank" rel="noopener" data-i18n="settings.thirdParty") Third-party components
           .settings-row
             small
-              span(data-i18n="settings.soundfontCredit") TimGM6mb General MIDI soundfont, SpessaSynth synthesis —
+              span(data-i18n="settings.soundfontCredit") MuseScore General MIDI soundfont, native Web Audio samples —
               = ' '
-              a(href="https://www.gnu.org/licenses/old-licenses/gpl-2.0.html" target="_blank" rel="noopener") GPL-2.0
-              = ' · '
-              a(href="https://www.apache.org/licenses/LICENSE-2.0" target="_blank" rel="noopener") Apache-2.0
+              a(href="https://opensource.org/licenses/MIT" target="_blank" rel="noopener") MIT
     #library-overlay.hidden
       #library-header
         h2(data-i18n="library.title") Library
@@ -229,7 +227,7 @@ html(lang="en")
     script.
       window.__musicaBuildDate = "#{buildDate}"
       window.__musicaScoretkAvailable = #{scoretkAvailable ? 'true' : 'false'}
-      window.__musicaSoundfontAvailable = #{soundfontsAvailable ? 'true' : 'false'}
+      window.__musicaSamplesAvailable = #{samplesAvailable ? 'true' : 'false'}
     script !{workerSetup}
     script !{fflateSetup}
     script !{mxlJs}
@@ -240,9 +238,8 @@ html(lang="en")
     script !{formatsJs}
     script !{timelineJs}
     script !{i18nJs}
-    //- Bundle SpessaSynth (window.__musicaSpessa) : la banque et le processeur
-    //- AudioWorklet de soundfonts/ sont chargés paresseusement au premier play().
-    script !{spessaJs}
+    //- Les échantillons de samples/ (manifeste + un Ogg par programme) sont
+    //- chargés et décodés paresseusement, instrument par instrument.
     script !{audioJs}
     script !{playbackJs}
     script !{appJs}

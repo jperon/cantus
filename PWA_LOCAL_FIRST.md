@@ -7,17 +7,17 @@ Cette PWA implémente une stratégie "Local First" complète pour garantir une e
 ## Architecture du Cache
 
 ### Deux types de caches
-- **STATIC_CACHE** (`musica-static-v2`): Assets essentiels qui changent peu
-- **DYNAMIC_CACHE** (`musica-dynamic-v2`): Ressources dynamiques et fichiers utilisateur
+- **STATIC_CACHE** (`musica-static-v3`): Assets essentiels qui changent peu
+- **DYNAMIC_CACHE** (`musica-dynamic-v3`): Ressources dynamiques et fichiers utilisateur
 
 ### Assets statiques pré-cachés
 - Page principale (`index.html`)
 - Worker Verovio (`worker.js`, `verovio.js`, `verovio-toolkit-wasm.js`)
 - Manifest PWA et icônes
 - Favicon
-- Banque audio (`soundfonts/TimGM6mb.sf3`) et processeur AudioWorklet de
-  SpessaSynth (`soundfonts/spessasynth_processor.min.js`), en optionnel non
-  bloquant : sans eux, la lecture se rabat sur l'oscillateur.
+- Manifeste audio (`samples/manifest.json`), en optionnel non bloquant ; les
+  Ogg par programme sont mis en cache à la demande. Sans échantillons, la
+  lecture se rabat sur l'oscillateur.
 
 ### Caches de rendu préservés
 

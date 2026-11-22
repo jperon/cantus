@@ -36,6 +36,7 @@ const MIME = {
   '.ico': 'image/x-icon',
   '.svg': 'image/svg+xml',
   '.css': 'text/css',
+  '.ogg': 'audio/ogg',
 };
 
 // Sert un dossier dist. Les requêtes sont journalisées pour diagnostiquer

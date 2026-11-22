@@ -67,7 +67,7 @@ registerLanguage 'en', 'English',
   'settings.license': 'Free software under the GNU GPL v3 or later, with no warranty.'
   'settings.sourceCode': 'Source code'
   'settings.thirdParty': 'Third-party components'
-  'settings.soundfontCredit': 'TimGM6mb General MIDI soundfont, SpessaSynth synthesis —'
+  'settings.soundfontCredit': 'MuseScore General MIDI soundfont, native Web Audio samples —'
 
   'library.title': 'Library'
   'library.close': 'Close library'

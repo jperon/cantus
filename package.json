@@ -20,7 +20,6 @@
     "verovio": "^4.4.0"
   },
   "dependencies": {
-    "fflate": "^0.8.2",
-    "spessasynth_lib": "^4.4.10"
+    "fflate": "^0.8.2"
   }
 }
