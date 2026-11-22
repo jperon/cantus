@@ -9,6 +9,12 @@ audioEngine = -> window.__musicaAudio
 # Vrai pendant un glissement du curseur de position : le libellé et le curseur
 # suivent alors le geste, pas la tête de lecture.
 transportSeeking = false
+# Position visée par le glissement (ms, locale au mouvement), ou null quand le
+# suivi reprend la tête de lecture. Le défilement pendant le geste passe par la
+# même fonction que le suivi de lecture (applyFollowScroll).
+transportSeekPreview = null
+# Boucle d'aperçu du glissement : au plus une mise à jour de vue par frame.
+transportSeekRaf = null
 
 formatTime = (ms) ->
   total = Math.max 0, Math.round((Number(ms) or 0) / 1000)
@@ -32,6 +38,12 @@ currentPlaybackPosition = ->
   engine = audioEngine()
   return playback.position unless engine
   Math.max 0, engine.position() * 1000
+
+# Position qui pilote le suivi : celle visée par un glissement du curseur
+# s'il est en cours, sinon la tête de lecture.
+followPosition = ->
+  return transportSeekPreview if transportSeekPreview?
+  currentPlaybackPosition()
 
 # Durée affichée : celle de la source entière (tous les mouvements
 # s'enchaînent), fournie par le worker.
@@ -200,6 +212,13 @@ followPlaybackFrame = ->
   timeline = window.__musicaTimeline
   if timeline?.pauseAt? and Array.isArray(playback.pauses) and playback.pauses.length
     return if timeline.pauseAt playback.pauses, currentPlaybackPosition()
+  applyFollowView()
+
+# Applique le suivi de la position courante à la vue, en une seule frame, et
+# mémorise la page visée pour que les `scroll` différés ne déclenchent pas de
+# cale de lecture. Partagé par la boucle de lecture et l'aperçu du glissement
+# du curseur : c'est exactement la même fonction de suivi dans les deux cas.
+applyFollowView = ->
   followSuppressSeek = true
   try
     target = applyFollowScroll()
@@ -212,8 +231,38 @@ followPlaybackFrame = ->
       lastDisplayedPage = target
       clearTimeout pageSeekTimer if pageSeekTimer
       pageSeekTimer = null
+    target
   finally
     followSuppressSeek = false
+
+# Aperçu du défilement pendant le glissement du curseur : une mise à jour de
+# la vue par frame, avec la même fonction que le suivi de lecture. La boucle
+# reste vivante pendant le geste pour laisser au rendu asynchrone de la page
+# cible le temps d'arriver (sinon un arrêt du doigt laisserait la vue en
+# attente), mais ne fait rien quand la position visée est déjà à l'écran.
+seekPreviewFrame = ->
+  transportSeekRaf = null
+  return unless transportSeeking and transportSeekPreview?
+  applyFollowView()
+  transportSeekRaf = requestAnimationFrame seekPreviewFrame if transportSeeking
+
+scheduleSeekPreview = ->
+  transportSeekRaf = requestAnimationFrame seekPreviewFrame unless transportSeekRaf?
+
+stopSeekPreview = ->
+  if transportSeekRaf?
+    cancelAnimationFrame transportSeekRaf
+    transportSeekRaf = null
+  transportSeekPreview = null
+
+# Interrompt seulement la boucle d'aperçu, sans oublier la position visée : le
+# `change` qui suit le relâchement reste maître du seek. Évite qu'une boucle
+# survive à un geste qui ne déclenche pas de `change` (valeur inchangée,
+# annulation du pointeur).
+cancelSeekPreviewFrame = ->
+  if transportSeekRaf?
+    cancelAnimationFrame transportSeekRaf
+    transportSeekRaf = null
 
 # Applique le suivi et renvoie la page globale visée, ou null si le défilement
 # n'a pas bougé.
@@ -226,7 +275,7 @@ applyFollowScroll = ->
   vertical = scrollMode is "vertical"
   # Horizontal : l'id du marqueur courant (et non celui du début de page)
   # permet de choisir entre les deux demi-pages ; vertical : réglage inchangé.
-  plan = api.planFollow marks, currentPlaybackPosition(),
+  plan = api.planFollow marks, followPosition(),
     scrollUnit: if vertical then currentScrollUnit else "system"
   return null unless plan
   target = getGlobalPage playback.movementId, plan.page
@@ -309,6 +358,8 @@ seekPlayback = (ms) ->
 # Libère le moteur et oublie les données chargées (changement de mouvement,
 # rechargement, retour à la bibliothèque).
 resetPlayback = ->
+  transportSeeking = false
+  stopSeekPreview()
   cancelPlaybackFrame()
   playback.loadToken++
   engine = audioEngine()
@@ -335,6 +386,8 @@ resetPlayback = ->
   renderTransport()
 
 stopPlayback = ->
+  transportSeeking = false
+  stopSeekPreview()
   cancelPlaybackFrame()
   playback.loadToken++
   playback.loading = false
@@ -607,22 +660,53 @@ setupTransport = ->
   # qu'au relâchement (change), y compris au clavier (flèches).
   seek = $("transport-seek")
   seek?.addEventListener "pointerdown", -> transportSeeking = true
+  # Relâchement : le `change` qui suit applique le seek ; seule la boucle de
+  # frames est arrêtée ici (geste sans changement de valeur, pointeur annulé).
+  seek?.addEventListener "pointerup", -> cancelSeekPreviewFrame()
+  seek?.addEventListener "pointercancel", ->
+    transportSeeking = false
+    stopSeekPreview()
+    renderTransport()
   seek?.addEventListener "input", ->
     transportSeeking = true
     duration = Math.max 0, playback.duration or 0
     time = $("transport-time")
-    if duration > 0 and time
+    if duration > 0
       value = Math.max 0, Math.min 1000, Number(seek.value) or 0
-      position = (Number(playback.offset) or 0) + value / 1000 * duration
-      time.textContent = "#{formatTime position} / #{formatTime displayDuration()}"
+      preview = value / 1000 * duration
+      # Avec « Suivre le défilement », la vue suit le doigt dès le glissé, par
+      # la même fonction que le suivi de lecture (une frame au plus). Le geste
+      # prime sur une cale de page encore en attente.
+      if followPlaybackEnabled
+        pageSeekPending = false
+        if pageSeekTimer
+          clearTimeout pageSeekTimer
+          pageSeekTimer = null
+        transportSeekPreview = preview
+        scheduleSeekPreview()
+      if time
+        position = (Number(playback.offset) or 0) + preview
+        time.textContent = "#{formatTime position} / #{formatTime displayDuration()}"
   seek?.addEventListener "change", ->
     transportSeeking = false
+    stopSeekPreview()
     duration = Math.max 0, playback.duration or 0
     if duration > 0
       value = Math.max 0, Math.min 1000, Number(seek.value) or 0
       seekPlayback value / 1000 * duration
+      # La position de lecture vient de changer : aligner la vue sur elle,
+      # comme le fait la boucle de lecture (utile à l'arrêt, où elle ne tourne
+      # pas, et pour rattraper la dernière frame du geste).
+      applyFollowView() if followPlaybackEnabled and playback.hasData
     renderTransport()
-  seek?.addEventListener "blur", -> transportSeeking = false
+  seek?.addEventListener "blur", ->
+    hadPreview = transportSeekPreview?
+    transportSeeking = false
+    stopSeekPreview()
+    # Geste interrompu sans `change` : la lecture n'a pas bougé, la vue revient
+    # donc sur la tête de lecture.
+    applyFollowView() if hadPreview and followPlaybackEnabled and playback.hasData
+    renderTransport()
 
   engine = audioEngine()
   engine?.onEnd ->

@@ -92,6 +92,8 @@ applyFollowPlayback = (enabled) ->
   followPlaybackEnabled = enabled isnt false
   box = $("follow-playback")
   box.checked = followPlaybackEnabled if box
+  # Suivi actif : la barre de position reste visible en permanence.
+  showCommandBar() if followPlaybackEnabled and fileLoaded
 
 applyExpandRepeats = (enabled) ->
   expandRepeats = enabled isnt false

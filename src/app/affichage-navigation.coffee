@@ -53,6 +53,13 @@ hideCommandBar = ->
 
 toggleCommandBar = ->
   return unless fileLoaded
+  # Avec « Suivre le défilement », la barre de position reste visible en
+  # permanence, y compris à l'arrêt : la touche au centre ne la masque pas
+  # (elle la réaffiche si elle était masquée). Réglage désactivé : comportement
+  # inchangé.
+  if followPlaybackEnabled
+    showCommandBar()
+    return
   if $("command-bar")?.classList.contains "hidden"
     showCommandBar()
   else
