@@ -46,9 +46,12 @@
 # Les noteOn/noteOff SpessaSynth sont confiés au processeur AudioWorklet avec
 # leur heure exacte (argument `time`), dans sa propre horloge, une fenêtre
 # SCHEDULE_WINDOW avant l'échéance : les retards du fil principal ne décalent
-# donc plus les notes. Comme la lib ne permet pas de vider la file d'événements
-# datés, tout changement de transport ou de hauteur/d'instrument détruit le
-# worklet (voir discardScheduledSynth) : aucune note fantôme ne survit.
+# donc plus les notes. La lib ne permet pas de vider la file d'événements
+# datés : à chaque changement de transport ou de hauteur/d'instrument, un
+# stopAll(true) immédiat coupe le son, puis un second stopAll(true) après
+# l'anticipation écoulée coupe les notes qui étaient déjà datées (voir
+# schedulePurge). Aucune note de l'ancienne génération n'est programmée
+# entre-temps.
 
 FLOOR = 0.01            # plancher du curseur de volume (≈ −40 dB)
 DEFAULT_VOLUME = 100    # volume général, en pourcentage du maximum
@@ -57,6 +60,7 @@ DEFAULT_VOLUME = 100    # volume général, en pourcentage du maximum
 DEFAULT_VOICE_VOLUME = 50
 SCHEDULE_INTERVAL = 25  # ms, période de l'ordonnanceur à anticipation
 SCHEDULE_WINDOW = 0.150 # s, fenêtre de notes et noteOff planifiés d'avance
+PURGE_MARGIN = 0.020    # s, marge après la fenêtre avant le stopAll différé
 MAX_VOICES = 64         # plafond de sources simultanées (repli oscillateur)
 SOUNDFONT_TIMEOUT = 15000 # ms avant bascule vers la synthèse de repli
 FALLBACK_ATTACK = 0.01
@@ -427,11 +431,14 @@ createEngine = (initialOptions = {}) ->
     channelPlan: []
     # noteOff déjà confiés au synthétiseur mais pas encore envoyés (fenêtre
     # d'anticipation), triés par échéance. Vidés à chaque changement de
-    # transport ; le worklet, lui, est détruit (voir discardScheduledSynth).
+    # transport ; le synthétiseur, lui, reste chargé (voir schedulePurge).
     pendingOffs: []
-    # Vrai dès qu'un événement daté a été confié au worklet : sa file ne peut
-    # alors être purgée qu'en détruisant le processeur.
-    spessaDirty: false
+    # Purge différée de la file d'événements datés : instant (horloge du
+    # contexte) du second stopAll, minuteur et promesse d'attente associés.
+    purgeUntil: 0
+    purgeTimer: null
+    purgeToken: 0
+    purgeWaiters: []
     # Journal de gigue : instants d'échéance des événements SpessaSynth encore
     # attendus (clé type:canal:hauteur, FIFO) et écarts mesurés quand le
     # processeur les traite réellement (voir instrumentSynth).
@@ -559,13 +566,13 @@ createEngine = (initialOptions = {}) ->
     state.spessaLinks = []
 
   releaseSynth = ->
+    clearPurge()
     state.engineGeneration += 1
     synth = state.synth
     state.synth = null
     state.spessaLinks = []
     state.programChanges = []
     state.pendingOffs = []
-    state.spessaDirty = false
     state.expectedEvents = {}
     state.dispatchJitter = []
     if synth
@@ -884,25 +891,59 @@ createEngine = (initialOptions = {}) ->
         null
     state.sources = []
 
-  # spessasynth ne purge pas sa file d'événements datés : stopAll(true)
-  # n'arrête que les voix déjà déclenchées, la file du processeur reste et
-  # rejouerait les noteOn à leur heure. Le worklet ne l'expose pas ; le seul
-  # moyen propre de la vider est de détruire le processeur. Le moteur est
-  # reconstruit à la reprise (ensureEngine), sans recréer l'AudioContext ni
-  # recompiler le module AudioWorklet.
-  discardScheduledSynth = ->
-    return unless state.spessaDirty and state.synth
-    state.spessaDirty = false
-    disconnectSpessa()
-    releaseSynth()
-    state.enginePromise = null
-    state.engineMode = null
+  stopSpessaNow = ->
+    return unless state.synth
+    try
+      state.synth.stopAll true
+    catch
+      null
     return
+
+  resolvePurge = ->
+    state.purgeUntil = 0
+    state.purgeTimer = null
+    waiters = state.purgeWaiters
+    state.purgeWaiters = []
+    waiter() for waiter in waiters
+    return
+
+  # Annule la purge en cours (destruction du moteur ou changement de contexte).
+  clearPurge = ->
+    if state.purgeTimer?
+      clearTimeout state.purgeTimer
+      state.purgeTimer = null
+    state.purgeToken += 1
+    resolvePurge()
+
+  # spessasynth ne purge pas sa file d'événements datés et stopAll(true) ne la
+  # touche pas : un premier stopAll coupe immédiatement les voix en cours, puis
+  # un second, une fois l'anticipation écoulée, coupe les noteOn déjà datés qui
+  # démarreraient entre-temps. Aucune note de l'ancienne génération n'est
+  # programmée pendant l'attente (restartAt attend la purge).
+  schedulePurge = ->
+    stopSpessaNow()
+    state.pendingOffs = []
+    return if state.purgeUntil > 0
+    ctx = state.ctx
+    return unless ctx and state.synth
+    delay = SCHEDULE_WINDOW + PURGE_MARGIN
+    state.purgeUntil = ctx.currentTime + delay
+    token = ++state.purgeToken
+    state.purgeTimer = setTimeout (->
+      return unless token is state.purgeToken
+      stopSpessaNow()
+      state.expectedEvents = {}
+      resolvePurge()
+    ), delay * 1000
+    return
+
+  waitForPurge = ->
+    return Promise.resolve() unless state.purgeUntil > 0
+    new Promise (resolve) -> state.purgeWaiters.push resolve
 
   cancelAll = ->
     cancelSources()
-    state.pendingOffs = []
-    discardScheduledSynth()
+    schedulePurge()
 
   trackDestination = (trackIndex) ->
     state.trackGains[trackIndex] ? state.masterGain
@@ -978,7 +1019,6 @@ createEngine = (initialOptions = {}) ->
       scheduleOff offTime, channel, pitch
       expectSynthEvent 'noteOn', channel, pitch, intendedAt
       expectSynthEvent 'noteOff', channel, pitch, offTime
-      state.spessaDirty = true
       true
     catch
       false
@@ -1129,10 +1169,12 @@ createEngine = (initialOptions = {}) ->
     state.clockStarted = false
     clearTimer()
     token = ++state.playToken
-    ensureEngine().then ->
+    waitForPurge()
+    .then -> ensureEngine()
+    .then ->
       return unless token is state.playToken and state.playing and state.ctx
-      # `state.position` peut avoir changé (seek) pendant le chargement du
-      # moteur : le départ réel se cale sur la position courante.
+      # `state.position` peut avoir changé (seek) pendant l'attente du moteur
+      # ou de la purge : le départ réel se cale sur la position courante.
       startClock()
     api
 
@@ -1154,9 +1196,8 @@ createEngine = (initialOptions = {}) ->
       resetEngine()
     ensureContext()
     api.resume()
-    # Aucun événement daté ne doit survivre au redémarrage : le worklet est
-    # détruit s'il en reste, le nouvel ordonnanceur ne part qu'une fois le
-    # moteur prêt.
+    # Purge les événements datés de l'ancienne génération : le nouvel
+    # ordonnanceur ne part qu'une fois la purge et le moteur prêts.
     cancelAll()
     restartAt fromSeconds
 
@@ -1168,9 +1209,6 @@ createEngine = (initialOptions = {}) ->
     state.clockStarted = false
     clearTimer()
     cancelAll()
-    # Recharge le moteur en tâche de fond : la reprise n'aura pas à attendre
-    # la reconstruction du worklet.
-    ensureEngine() if state.loaded and state.ctx
     api
 
   api.stop = ->

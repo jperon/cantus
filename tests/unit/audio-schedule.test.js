@@ -175,7 +175,7 @@ test('noteOn et noteOff partent à l’avance avec l’heure du processeur', asy
   }
 });
 
-test('pause : le worklet daté est détruit, reconstruit, et ne rejoue rien', async () => {
+test('pause : stopAll immédiat puis différé, moteur conservé, aucune note fantôme', async () => {
   const counters = { contexts: 0, modules: 0, synths: 0, last: null, lastCtx: null };
   const restore = installWindow(counters);
   const engine = loadEngine();
@@ -183,26 +183,25 @@ test('pause : le worklet daté est détruit, reconstruit, et ne rejoue rien', as
     engine.play(0);
     assert.strictEqual(await waitForMode(engine), 'soundfont');
     await sleep(120);
-    const oldSynth = counters.last;
-    const sentBefore = oldSynth.notesOn.length;
+    const synth = counters.last;
+    const sentBefore = synth.notesOn.length;
     assert.ok(sentBefore > 0, 'des notes ont été programmées');
     engine.pause();
-    assert.strictEqual(oldSynth.destroyed, true, 'le worklet de l’ancienne lecture est détruit');
-    assert.ok(oldSynth.stopped >= 1, 'stopAll forcé avant destruction');
-    assert.strictEqual((await waitForMode(engine, 3000)), 'soundfont', 'moteur reconstruit en tâche de fond');
-    const rebuilt = counters.last;
-    assert.notStrictEqual(rebuilt, oldSynth, 'un nouveau worklet est créé');
-    const countAfter = oldSynth.notesOn.length;
-    await sleep(150);
-    assert.strictEqual(oldSynth.notesOn.length, countAfter, 'aucun noteOn ne part du worklet détruit');
-    assert.strictEqual(rebuilt.notesOn.length, 0, 'le worklet reconstruit reste silencieux à l’arrêt');
+    assert.strictEqual(synth.destroyed, false, 'le moteur reste chargé');
+    assert.strictEqual(synth.stopped, 1, 'stopAll immédiat');
+    assert.strictEqual(engine.getEngineMode(), 'soundfont', 'moteur toujours prêt');
+    const countAfter = synth.notesOn.length;
+    await sleep(400);
+    assert.strictEqual(counters.last, synth, 'aucun nouveau worklet');
+    assert.ok(synth.stopped >= 2, 'second stopAll après l’anticipation');
+    assert.strictEqual(synth.notesOn.length, countAfter, 'aucun noteOn ne part après la pause');
   } finally {
     engine.destroy();
     restore();
   }
 });
 
-test('transposition en lecture : purge et reprise avec les nouvelles hauteurs', async () => {
+test('reprise immédiate après pause : rien n’est programmé avant la purge', async () => {
   const counters = { contexts: 0, modules: 0, synths: 0, last: null, lastCtx: null };
   const restore = installWindow(counters);
   const engine = loadEngine();
@@ -210,16 +209,41 @@ test('transposition en lecture : purge et reprise avec les nouvelles hauteurs', 
     engine.play(0);
     assert.strictEqual(await waitForMode(engine), 'soundfont');
     await sleep(120);
-    const oldSynth = counters.last;
+    const synth = counters.last;
+    engine.pause();
+    const count = synth.notesOn.length;
+    engine.play(0);
+    await sleep(20);
+    assert.strictEqual(engine.isPlaying(), true, 'lecture demandée');
+    assert.strictEqual(synth.notesOn.length, count, 'aucune note de la nouvelle génération pendant la purge');
+    await sleep(400);
+    assert.strictEqual(counters.last, synth, 'toujours le même moteur');
+    assert.ok(synth.notesOn.length > count, 'les notes repartent après la purge');
+  } finally {
+    engine.destroy();
+    restore();
+  }
+});
+
+test('transposition en lecture : purge puis reprise avec les nouvelles hauteurs', async () => {
+  const counters = { contexts: 0, modules: 0, synths: 0, last: null, lastCtx: null };
+  const restore = installWindow(counters);
+  const engine = loadEngine();
+  try {
+    engine.play(0);
+    assert.strictEqual(await waitForMode(engine), 'soundfont');
+    await sleep(120);
+    const synth = counters.last;
+    const before = synth.notesOn.length;
     engine.setTranspose(2);
-    assert.strictEqual(oldSynth.destroyed, true, 'l’ancien worklet est purgé');
-    assert.strictEqual(await waitForMode(engine, 3000), 'soundfont');
-    await sleep(200);
-    const rebuilt = counters.last;
-    assert.notStrictEqual(rebuilt, oldSynth, 'nouveau worklet');
-    assert.ok(rebuilt.notesOn.length > 0, 'la lecture a repris');
-    assert.ok(rebuilt.notesOn.some((n) => n.pitch >= 62), 'les notes jouées sont transposées');
-    assert.ok(rebuilt.notesOn.every((n) => n.velocity >= 1), 'vélocités valides');
+    assert.strictEqual(synth.destroyed, false, 'le moteur est conservé');
+    assert.strictEqual(counters.last, synth, 'toujours le même worklet');
+    await sleep(400);
+    const after = synth.notesOn.slice(before);
+    assert.ok(after.length > 0, 'la lecture a repris');
+    assert.ok(after.every((n) => n.pitch >= 62), 'les notes jouées sont transposées');
+    assert.ok(after.every((n) => n.velocity >= 1), 'vélocités valides');
+    assert.ok(synth.stopped >= 2, 'stopAll immédiat puis différé');
   } finally {
     engine.destroy();
     restore();
