@@ -67,60 +67,40 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-## SpessaSynth (spessasynth_lib et spessasynth_core)
+## MuseScore_General (banque General MIDI)
 
-- Licence : Apache License 2.0
-- Copyright © 2026 Spessasus
-- Sources : <https://github.com/spessasus/spessasynth_lib> et
-  <https://github.com/spessasus/spessasynth_core>
+- Licence : MIT (voir `pwa/samples/README.md` pour les notices d'origine)
+- Copyright © 2000-2002 Frank Wen (FluidR3), © 2014-2017 Michael Cowgill
+  (FluidR3Mono), © 2018-2020 S. Christian Collins (MuseScore_General)
+- Source : <https://ftp.osuosl.org/pub/musescore/soundfont/MuseScore_General/>
+  - `MuseScore_General.sf2` version 0.2.0, 215 614 036 octets
+  - sha256 : `ee51d2c4b1525e70f19a45909c4fd7a2e26d91d115fa89dbf5a6bc413d8b9bf3`
+- Utilisée par : `tools/build-samples.py`, qui en extrait les échantillons
+  joués par le moteur Web Audio natif (`src/audio.coffee`).
 
-SpessaSynth est le synthétiseur MIDI utilisé pour jouer la banque General
-MIDI. `build.js` embarque le bundle navigateur de `spessasynth_lib` (qui
-inclut `spessasynth_core` et le décodeur Vorbis `stb-vorbis`, MIT) et son
-processeur AudioWorklet `spessasynth_processor.min.js`.
+MuseScore_General est partagée sous licence MIT, comme FluidR3Mono et FluidR3
+avant elle. Cette licence est compatible avec la GPL-3.0-or-later de Cantus,
+contrairement à l'ancienne banque TimGM6mb (GPL-2.0-only) qui n'est plus
+distribuée.
 
-Le texte complet de la licence Apache 2.0 est disponible à l'adresse
-<https://www.apache.org/licenses/LICENSE-2.0>.
+Le script produit `pwa/samples/manifest.json` et un fichier Ogg Vorbis par
+programme GM (129 fichiers, batterie comprise). Transformations appliquées :
 
-## TimGM6mb (banque General MIDI, SF3)
+- une zone de clavier toutes les 12 touches par couche de vélocité, tessiture
+  élargie pour couvrir le même ambitus ; au plus deux couches de vélocité par
+  programme (la plus large, puis celle qui couvre la vélocité 90) ;
+- batterie : une zone par touche, sans réduction de tessiture ;
+- échantillons non bouclés tronqués à 3 s avec fondu de sortie de 50 ms ;
+  échantillons bouclés limités à la boucle + 0,25 s ;
+- rééchantillonnage à 32 000 Hz, points de boucle recalés sur un passage par
+  zéro à ±5 ms ;
+- encodage Ogg Vorbis mono qualité 0, contenu par programme concaténé (le
+  manifeste donne l'offset de chaque zone).
 
-- Licence : GNU GPL version 2 seulement (GPL-2.0-only), d'après le fichier
-  `debian/copyright` du paquet Debian. L'amont (Tim Brechbill) indique que
-  les échantillons sont soit de lui, soit du domaine public, soit sous GPL.
-  Ce n'est pas « ou ultérieure » : la compatibilité avec la GPL-3.0-or-later
-  du reste de Cantus est à faire confirmer avec l'amont avant diffusion.
-- Copyright © 2004 Tim Brechbill, © 2010 David Bolton
-- Source amont : <https://www.timbrechbill.com> et
-  <https://github.com/musescore/musescore-old/commit/90c33ef9d87b3f5ff92efd3b07d89eb455fb1fef>
-- Source utilisée : paquet Debian `timgm6mb-soundfont` 1.3,
-  <http://deb.debian.org/debian/pool/main/t/timgm6mb-soundfont/timgm6mb-soundfont_1.3.orig.tar.gz>
-  - sha256 de l'archive : `af8f3a00e416dfb262bcaa904a1c84df04a51b72bbc1313aed012bc754bdf99b`
-  - sha256 de `TimGM6mb.sf2` (5 969 788 octets) : `c5378b62028c920cb11e4803327983fee2f2cdff5dc89c708e39da417e51c854`
-
-Cantus distribue une version compressée en SF3, `pwa/soundfonts/TimGM6mb.sf3`
-(1 976 938 octets, sha256
-`deb62fc32331a2ef2ab64ee8be869f927e01898c2ea6a52e5eb5150765759ee6`), produite
-par `tools/build-soundfont.py`. Transformations appliquées :
-
-- réduction des zones de clavier : une zone conservée toutes les deux
-  octaves (24 demi-tons) par preset et par couche de vélocité, tessiture
-  élargie pour couvrir le même ambitus (520 → 404 échantillons ; 136 presets,
-  dont les 8 kits de percussion, inchangés) ;
-- suppression des échantillons devenus orphelins et réécriture des tables
-  `pdta` (`phdr`, `pbag`, `pgen`, `inst`, `ibag`, `igen`, `shdr`) ;
-- encodage de chaque échantillon en Ogg Vorbis mono 16 bits, qualité 2
-  (`oggenc`), et conversion des points de boucle en offsets relatifs au flux
-  décodé, comme l'exige le SF3 ;
-- pas de rééchantillonnage (les fréquences d'origine, 11 à 44,6 kHz, sont
-  conservées) et pas de raccourcissement des queues de boucle (elles font
-  déjà 206 ms au plus) : ces deux transformations ne changent pas la taille,
-  l'en-tête Vorbis de chaque flux pesant environ 3,4 ko.
-
-Régénération :
+Régénération (le script télécharge et vérifie l'empreinte du SF2) :
 
 ```sh
-nix-shell -p python3Packages.numpy vorbis-tools --run \
-  "python3 tools/build-soundfont.py"
+nix-shell -p python3 ffmpeg --run "python3 tools/build-samples.py"
 ```
 
 ## scoretk
