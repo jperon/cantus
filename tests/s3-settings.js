@@ -8,6 +8,7 @@ const path = require('path');
 const L = require('./lib');
 
 const PAGES = ['index.html', 'spa.html'];
+try { fs.mkdirSync('/tmp/cantus-voix', { recursive: true }); } catch { /* captures facultatives */ }
 
 async function waitNewSvg(page, timeout = 120000) {
   await page.waitForFunction(() => !document.querySelector('#page-current .scroll-page svg[data-test-mark="1"]'), null, { timeout, polling: 200 });
@@ -1062,17 +1063,29 @@ async function runSettingsSections(browser, url, pageName, results) {
         }),
         placed: {
           zoom: sectionOf('zoom-range'),
+          hideEmptyStaves: sectionOf('hide-empty-staves'),
           transposeVisual: sectionOf('transpose-visual'),
           master: sectionOf('master-volume-range'),
           tempo: sectionOf('tempo-input'),
           transposeAudio: sectionOf('transpose-audio'),
           piano: sectionOf('piano-only'),
           follow: sectionOf('follow-playback'),
+          highlight: sectionOf('highlight-measure'),
           repeats: sectionOf('expand-repeats'),
           language: sectionOf('language-select'),
           storage: sectionOf('btn-storage'),
           parts: sectionOf('parts-list'),
         },
+        options: ['hide-empty-staves', 'highlight-measure'].map((id) => {
+          const el = document.getElementById(id);
+          return {
+            id,
+            checked: el?.checked,
+            label: el?.closest('label')?.textContent.trim() || '',
+            section: sectionOf(id),
+          };
+        }),
+        hints: [...document.querySelectorAll('#settings-overlay .settings-hint')].map((el) => el.textContent.trim()),
         voiceCompact: (() => {
           const row = document.querySelector('#parts-list .part-row');
           const expand = row?.querySelector('.part-expand');
@@ -1089,14 +1102,51 @@ async function runSettingsSections(browser, url, pageName, results) {
       titlesOk ? 'OK' : 'ÉCHEC', `titres « ${info.titles.join(' » / « ')} »`);
 
     const placed = info.placed;
-    const placedOk = placed.zoom === 'Affichage' && placed.transposeVisual === 'Affichage' &&
+    const placedOk = placed.zoom === 'Affichage' && placed.hideEmptyStaves === 'Affichage' &&
+      placed.transposeVisual === 'Affichage' &&
       placed.master === 'Lecture' && placed.tempo === 'Lecture' && placed.transposeAudio === 'Lecture' &&
-      placed.piano === 'Lecture' && placed.follow === 'Lecture' && placed.repeats === 'Lecture' &&
+      placed.piano === 'Lecture' && placed.follow === 'Lecture' && placed.highlight === 'Lecture' &&
+      placed.repeats === 'Lecture' &&
       placed.language === 'Application' && placed.storage === 'Application' && placed.parts === 'Voix';
     L.record(results, '3. Réglages : chaque contrôle est dans sa section', pageName,
       placedOk ? 'OK' : 'ÉCHEC',
-      `affichage ${placed.zoom}/${placed.transposeVisual}, lecture ${[placed.master, placed.tempo, placed.transposeAudio, placed.piano, placed.follow, placed.repeats].join('/')}, ` +
+      `affichage ${placed.zoom}/${placed.hideEmptyStaves}/${placed.transposeVisual}, ` +
+      `lecture ${[placed.master, placed.tempo, placed.transposeAudio, placed.piano, placed.follow, placed.highlight, placed.repeats].join('/')}, ` +
       `voix ${placed.parts}, application ${placed.language}/${placed.storage}`);
+
+    // Les deux nouvelles options sont décochées par défaut et enregistrées avec
+    // les autres réglages, sans re-rendu de la partition à la bascule.
+    const optionById = Object.fromEntries(info.options.map((o) => [o.id, o]));
+    const defaultsOk = optionById['hide-empty-staves']?.checked === false &&
+      optionById['highlight-measure']?.checked === false;
+    L.record(results, '3. Réglages : portées vides et surlignage de mesure décochés par défaut', pageName,
+      defaultsOk &&
+        /portées vides/i.test(optionById['hide-empty-staves']?.label || '') &&
+        /mesure en cours/i.test(optionById['highlight-measure']?.label || '') &&
+        info.hints.some((h) => /système sauf le premier/i.test(h)) &&
+        info.hints.some((h) => /mesure jouée/i.test(h)) ? 'OK' : 'ÉCHEC',
+      `libellés « ${optionById['hide-empty-staves']?.label} » / « ${optionById['highlight-measure']?.label} », ` +
+      `cochés ${optionById['hide-empty-staves']?.checked}/${optionById['highlight-measure']?.checked}, ` +
+      `aides ${info.hints.filter((h) => /système sauf|mesure jouée/i.test(h)).length}`);
+
+    await L.markSvg(page);
+    await page.check('#hide-empty-staves');
+    await page.check('#highlight-measure');
+    const savedOptions = await page.evaluate(() => {
+      const saved = JSON.parse(localStorage.getItem('musica-settings') || '{}');
+      return {
+        hideEmptyStaves: saved.hideEmptyStaves,
+        highlightMeasure: saved.highlightMeasure,
+        marker: !!document.querySelector('#page-current .scroll-page svg[data-test-mark="1"]'),
+      };
+    });
+    await page.uncheck('#hide-empty-staves');
+    await page.uncheck('#highlight-measure');
+    L.record(results, '3. Réglages : les deux options sont enregistrées sans re-rendu', pageName,
+      savedOptions.hideEmptyStaves === true && savedOptions.highlightMeasure === true &&
+        savedOptions.marker ? 'OK' : 'ÉCHEC',
+      `enregistré portées vides ${savedOptions.hideEmptyStaves}, surlignage ${savedOptions.highlightMeasure}, ` +
+      `SVG marqué conservé : ${savedOptions.marker}`);
 
     const sameStyle = (key) => new Set(info.selectStyles.map((s) => s[key])).size === 1;
     const selectsOk = info.selectStyles.length >= 5 && info.selectStyles.every((s) => s.height >= 44) &&
@@ -1181,6 +1231,9 @@ async function runVoiceTouchTargets(browser, url, pageName, results) {
       m.expand.h >= 44 && m.volume.h >= 44);
     const oneLine = metrics.length >= 2 && metrics.every((m) =>
       Math.abs(m.expand.top - m.controls.top) < 12 && m.expand.right <= m.controls.left + 2);
+    await page.evaluate(() => document.getElementById('parts-group').scrollIntoView({ block: 'start' }));
+    await page.waitForTimeout(200);
+    await page.screenshot({ path: '/tmp/cantus-voix/reglages-voix-telephone.png' });
     L.record(results, '3. Voix : une ligne compacte par voix, cibles ≥ 44 px à 390 px', pageName,
       targetsOk && oneLine && metrics.every((m) => m.detailsHidden && !m.expanded) ? 'OK' : 'ÉCHEC',
       `${metrics.length} voix : ${metrics.map((m) => `${m.name} ${m.toggles.map((t) => `${t.w}×${t.h}`).join(' ')} ` +
@@ -1255,8 +1308,10 @@ async function runVoiceTouchTargets(browser, url, pageName, results) {
   await ctx.close();
 }
 
-// Grand écran : la ligne compacte garde l'ordre 👁, 🔊, volume ; les réglages
-// fins (taille, instrument) sont sur une seconde ligne, repliée par défaut.
+// Grand écran : tous les contrôles d'une voix (nom, 👁, 🔊, volume, taille,
+// instrument) sont affichés directement sur une ligne lisible, sans repli.
+// À 768 px (liseuse en portrait), la ligne redevient repliable. La disposition
+// est en CSS ; la bascule de largeur régénère seulement la liste des voix.
 async function runVoiceLayout(browser, url, pageName, results) {
   const { page, ctx, errors } = await L.newPage(browser, url, {
     pageName, viewport: { width: 1280, height: 900 },
@@ -1267,49 +1322,96 @@ async function runVoiceLayout(browser, url, pageName, results) {
     const layout = await page.evaluate(() => {
       const list = document.getElementById('parts-list');
       const rows = [...list.querySelectorAll('.part-row')].map((row) => {
-        const expand = row.querySelector('.part-expand').getBoundingClientRect();
-        const controls = row.querySelector('.part-controls').getBoundingClientRect();
+        const rect = (el) => el.getBoundingClientRect();
+        const controls = rect(row.querySelector('.part-controls'));
+        const details = row.querySelector('.part-details');
+        const detailFields = [...details.querySelectorAll('.part-detail-field')].map(rect);
         const order = [...row.querySelectorAll('.part-toggle, select.part-volume')].map((el) => (
           el.classList.contains('part-display') ? 'display'
             : el.classList.contains('part-sound') ? 'sound' : 'volume'));
-        const details = row.querySelector('.part-details');
         return {
           name: row.querySelector('.part-name')?.textContent?.trim(),
-          expandTop: Math.round(expand.top),
           controlsTop: Math.round(controls.top),
-          controlsRight: Math.round(controls.right),
-          rowRight: Math.round(row.getBoundingClientRect().right),
+          controlsBottom: Math.round(controls.bottom),
+          detailTops: detailFields.map((r) => Math.round(r.top)),
+          detailBottoms: detailFields.map((r) => Math.round(r.bottom)),
           order,
-          detailsHidden: details.classList.contains('hidden'),
+          detailsDisplay: getComputedStyle(details).display,
+          detailsHiddenClass: details.classList.contains('hidden'),
+          caretDisplay: getComputedStyle(row.querySelector('.part-caret')).display,
+          expandDisabled: row.querySelector('.part-expand').disabled,
+          expandAria: row.querySelector('.part-expand').getAttribute('aria-expanded'),
+          sizeVisible: !!row.querySelector('select.part-size'),
+          programVisible: !!row.querySelector('select.part-program'),
+          rowOverflow: row.scrollWidth > row.clientWidth,
         };
       });
-      return { listWidth: Math.round(list.getBoundingClientRect().width), rows };
+      return {
+        listWidth: Math.round(list.getBoundingClientRect().width),
+        listOverflow: list.scrollWidth > list.clientWidth,
+        rows,
+      };
     });
     const expected = 'display,sound,volume';
     const orderOk = layout.rows.length >= 2 && layout.rows.every((r) => r.order.join(',') === expected);
-    const lineOk = layout.rows.every((r) => Math.abs(r.expandTop - r.controlsTop) < 12);
-    const alignedOk = new Set(layout.rows.map((r) => r.controlsRight)).size === 1;
-    const collapsedOk = layout.rows.every((r) => r.detailsHidden);
-    L.record(results, '3. Voix à 1280 px : ligne compacte 👁 🔊 volume, réglages fins repliés', pageName,
-      orderOk && lineOk && alignedOk && collapsedOk ? 'OK' : 'ÉCHEC',
-      `ordre ${layout.rows.map((r) => r.order.join('+')).join(' | ')} ; ligne unique : ${lineOk}, ` +
-      `contrôles alignés à droite : ${alignedOk}, réglages fins repliés : ${collapsedOk}`);
+    // Une seule ligne : le haut des réglages fins est dans la bande verticale
+    // des interrupteurs/volume, et aucun chevron ni repli n'est actif.
+    const oneLine = layout.rows.every((r) =>
+      r.detailTops.length >= 2 &&
+      r.detailTops.every((top) => Math.abs(top - r.controlsTop) < 16));
+    const noCollapse = layout.rows.every((r) =>
+      r.detailsDisplay === 'flex' && r.caretDisplay === 'none' && r.expandDisabled &&
+      r.expandAria === 'true');
+    const fieldsOk = layout.rows.every((r) => r.sizeVisible && r.programVisible);
+    const rowsFit = layout.rows.every((r) => !r.rowOverflow);
+    L.record(results, '3. Voix à 1280 px : tous les contrôles directs sur une ligne, sans repli', pageName,
+      orderOk && oneLine && noCollapse && fieldsOk && !layout.listOverflow && rowsFit
+        ? 'OK' : 'ÉCHEC',
+      `ordre ${layout.rows.map((r) => r.order.join('+')).join(' | ')} ; une ligne : ${oneLine}, ` +
+      `sans repli : ${noCollapse}, taille+instrument : ${fieldsOk}, ` +
+      `débordement lignes/liste : ${!rowsFit}/${layout.listOverflow}`);
+    await page.evaluate(() => document.getElementById('parts-group').scrollIntoView({ block: 'start' }));
+    await page.waitForTimeout(200);
+    await page.screenshot({ path: '/tmp/cantus-voix/reglages-voix-ordinateur.png' });
 
-    await expandPart(page, 0);
-    const opened = await page.evaluate(() => {
+    // Liseuse en portrait (768 px) : la ligne redevient repliable, sans
+    // débordement ; un appui déplie les réglages fins.
+    await page.setViewportSize({ width: 768, height: 1024 });
+    await page.waitForTimeout(500);
+    const narrow = await page.evaluate(() => {
       const row = document.querySelector('#parts-list .part-row');
-      const controls = row.querySelector('.part-controls').getBoundingClientRect();
-      const details = row.querySelector('.part-details').getBoundingClientRect();
+      const details = row.querySelector('.part-details');
       return {
-        visible: !row.querySelector('.part-details').classList.contains('hidden'),
-        below: Math.round(details.top) >= Math.round(controls.bottom) - 2,
-        size: !!row.querySelector('select.part-size'),
-        program: !!row.querySelector('select.part-program'),
+        detailsDisplay: getComputedStyle(details).display,
+        hiddenClass: details.classList.contains('hidden'),
+        caretDisplay: getComputedStyle(row.querySelector('.part-caret')).display,
+        expandDisabled: row.querySelector('.part-expand').disabled,
+        expandAria: row.querySelector('.part-expand').getAttribute('aria-expanded'),
+        listOverflow: document.getElementById('parts-list').scrollWidth >
+          document.getElementById('parts-list').clientWidth,
       };
     });
-    L.record(results, '3. Voix à 1280 px : les réglages fins se déplient sous la ligne', pageName,
-      opened.visible && opened.below && opened.size && opened.program ? 'OK' : 'ÉCHEC',
-      `déplié ${opened.visible}, sous la ligne ${opened.below}, taille ${opened.size}, instrument ${opened.program}`);
+    await page.click('#parts-list .part-expand >> nth=0');
+    await page.waitForTimeout(200);
+    const narrowOpen = await page.evaluate(() => {
+      const row = document.querySelector('#parts-list .part-row');
+      const details = row.querySelector('.part-details');
+      return {
+        display: getComputedStyle(details).display,
+        hiddenClass: details.classList.contains('hidden'),
+        expandAria: row.querySelector('.part-expand').getAttribute('aria-expanded'),
+        sizeHeight: Math.round(row.querySelector('select.part-size')?.getBoundingClientRect().height || 0),
+      };
+    });
+    L.record(results, '3. Voix à 768 px (liseuse) : repli conservé, dépliage lisible sans débordement', pageName,
+      narrow.detailsDisplay === 'none' && narrow.hiddenClass && narrow.caretDisplay !== 'none' &&
+        !narrow.expandDisabled && narrow.expandAria === 'false' && !narrow.listOverflow &&
+        narrowOpen.display !== 'none' && !narrowOpen.hiddenClass && narrowOpen.expandAria === 'true' &&
+        narrowOpen.sizeHeight >= 44 ? 'OK' : 'ÉCHEC',
+      `replié ${narrow.detailsDisplay}/${narrow.hiddenClass}, chevron ${narrow.caretDisplay}, ` +
+      `déplié ${narrowOpen.display}/${narrowOpen.expandAria}, taille ${narrowOpen.sizeHeight} px, ` +
+      `débordement ${narrow.listOverflow}`);
+
     const relevant = L.summarize(errors);
     L.record(results, '6. Erreurs JS (disposition des voix)', pageName, relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
   } catch (e) {

@@ -24,11 +24,17 @@ async function runPage(browser, url, pageName, results) {
   if (L.FILES.magnificatBachMscz && require('fs').existsSync(L.FILES.magnificatBachMscz)) {
     const { page, ctx: ctxLoop, errors: errorsLoop } = await L.newPage(browser, url, { pageName });
     try {
+      try { require('fs').mkdirSync('/tmp/cantus-voix', { recursive: true }); } catch { /* captures facultatives */ }
       await waitReady(page);
       await L.importFile(page, L.FILES.magnificatBachMscz);
       await waitFirstSvg(page);
       await waitBackgroundLoaded(page);
       await page.waitForTimeout(800);
+      // Surlignage de la mesure jouée activé pour la lecture naturelle : il ne
+      // doit pas perturber la boucle de suivi.
+      await L.openSettings(page);
+      await page.check('#highlight-measure');
+      await L.closeSettings(page);
 
       // Marqueurs du mouvement affiché (mouvement 1) : le premier doit être au
       // début du mouvement, sinon le suivi et la cale sont désynchronisés.
@@ -122,6 +128,31 @@ async function runPage(browser, url, pageName, results) {
       L.record(results, '6. Magnificat : le suivi fait avancer la page en 30 s', pageName,
         pageChanges >= 2 && pages[pages.length - 1] > pages[0] ? 'OK' : 'ÉCHEC',
         `pages ${pages.join('>')} (${pageChanges} changement(s))`);
+
+      const highlighted = await page.evaluate(() => {
+        const rect = document.querySelector('#page-current .measure-highlight');
+        const system = rect?.parentNode;
+        const rb = rect?.getBBox();
+        const sb = system?.getBBox();
+        return {
+          state: window.__musicaMeasureHighlightState(),
+          current: window.__musicaPlaybackCurrentMark(),
+          height: rb?.height ?? null,
+          systemHeight: sb?.height ?? null,
+          page: rect?.closest('.scroll-page')?.dataset.page ?? null,
+        };
+      });
+      L.record(results, '6. Magnificat : la mesure jouée reste surlignée pendant le suivi', pageName,
+        highlighted.state.key != null && highlighted.current.id != null &&
+          String(highlighted.state.key) === String(highlighted.current.id) &&
+          highlighted.state.updates > 0 &&
+          highlighted.height != null && highlighted.systemHeight != null &&
+          Math.abs(highlighted.height - highlighted.systemHeight) <= 1.5 ? 'OK' : 'ÉCHEC',
+        `mesure ${highlighted.state.key} (marqueur ${highlighted.current.id}), ` +
+        `${highlighted.state.updates} mise(s) à jour, ` +
+        `hauteur ${highlighted.height?.toFixed(1)} / système ${highlighted.systemHeight?.toFixed(1)}, ` +
+        `page ${highlighted.page}`);
+      await page.screenshot({ path: '/tmp/cantus-voix/magnificat-mesure-surlignee.png' });
 
       // Événement scroll périmé : le suivi vient de viser la page courante mais
       // un `scroll` différé mesure encore la page précédente (cas d'une liseuse

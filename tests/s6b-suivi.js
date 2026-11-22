@@ -13,6 +13,28 @@ const {
 } = C;
 
 async function runPage(browser, url, pageName, results) {
+  // Nombre de portées du premier <g class="measure"> de chaque système : la
+  // condensation Verovio retire les portées vides système par système.
+  // Verovio imbrique un <svg> dans le <svg> de page : ne compter que le SVG
+  // de page extérieur, dont querySelectorAll voit déjà les systèmes internes.
+  const systemStaffCounts = (page) => page.evaluate(() => [...document.querySelectorAll('#page-current .scroll-page > svg')]
+    .flatMap((svg) => [...svg.querySelectorAll('g.system')].map((system) => {
+      const measure = system.querySelector('g.measure');
+      return measure ? measure.querySelectorAll('g.staff').length : 0;
+    })));
+
+  // Le rendu des pages est asynchrone : attendre deux relevés identiques
+  // avant de conclure sur le nombre de portées par système.
+  const settledSystemStaffCounts = async (page) => {
+    let previous = null;
+    for (let i = 0; i < 20; i += 1) {
+      const current = await systemStaffCounts(page);
+      if (previous && JSON.stringify(current) === JSON.stringify(previous)) return current;
+      previous = current;
+      await page.waitForTimeout(150);
+    }
+    return previous;
+  };
   // Suivi en mode horizontal (Fauré : une page = un système) : la page
   // affichée change et contient toujours un SVG, y compris en revenant en
   // arrière.
@@ -479,6 +501,218 @@ async function runPage(browser, url, pageName, results) {
     L.record(results, '6. Erreurs JS (voix groupée masquée)', pageName,
       relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
     await ctxGroups.close();
+  }
+
+  // Portées vides masquées (option Verovio « condense ») : la voix Réduction
+  // de la fixture ne joue aucune note. Le premier système garde toutes les
+  // portées, les suivants sont condensés. La pagination change (variante de
+  // cache) ; le suivi, le défilement et le surlignage de mesure doivent rester
+  // alignés sur le SVG condensé.
+  {
+    const { page, ctx: ctxEmpty, errors: errorsEmpty } = await L.newPage(browser, url, {
+      pageName, viewport: { width: 600, height: 800 },
+    });
+    try {
+      try { fs.mkdirSync('/tmp/cantus-voix', { recursive: true }); } catch { /* captures */ }
+      await waitReady(page);
+      await L.importFile(page, L.FILES.suiviGroupesXml);
+      await waitFirstSvg(page);
+      await waitBackgroundLoaded(page);
+      await page.waitForTimeout(600);
+      const visibleCounts = await settledSystemStaffCounts(page);
+      const visiblePages = (await L.pageInfo(page)).total;
+      await page.screenshot({ path: '/tmp/cantus-voix/portees-vides-sans-masquage.png' });
+
+      await page.evaluate(() => {
+        for (const svg of document.querySelectorAll('#page-current .scroll-page svg')) {
+          svg.setAttribute('data-test-mark', '1');
+        }
+      });
+      await L.openSettings(page);
+      await page.check('#hide-empty-staves');
+      const savedOption = await page.evaluate(() =>
+        JSON.parse(localStorage.getItem('musica-settings') || '{}').hideEmptyStaves);
+      await L.closeSettings(page);
+      await bounded('re-rendu après condensation des portées vides', WAIT.backgroundLoaded,
+        page.waitForFunction(
+          () => !document.querySelector('#page-current .scroll-page svg[data-test-mark="1"]'),
+          null, { timeout: WAIT.backgroundLoaded, polling: 100 }));
+      await page.waitForSelector('#page-current .scroll-page svg', { timeout: WAIT.pageRendered });
+      await waitBackgroundLoaded(page);
+      await page.waitForTimeout(800);
+      // Toutes les pages affichées doivent être celles du nouveau rendu : la
+      // dernière page peut arriver après le premier SVG du rechargement.
+      await page.waitForFunction(() => {
+        const pages = [...document.querySelectorAll('#page-current .scroll-page')];
+        return pages.length > 0 && pages.every((div) => !!div.querySelector('svg'));
+      }, null, { timeout: WAIT.pageRendered, polling: 100 });
+
+      // Attendre que le rendu condensé soit complet : premier système à deux
+      // portées, tous les suivants à une seule, sur toutes les pages.
+      let condensedSettled = true;
+      try {
+        await bounded('condensation des portées vides stabilisée', WAIT.pageRendered,
+          page.waitForFunction(() => {
+            const pages = [...document.querySelectorAll('#page-current .scroll-page')];
+            if (pages.length === 0 || pages.some((div) => !div.querySelector('svg'))) return false;
+            const counts = pages.flatMap((div) => {
+              const svg = div.querySelector('svg');
+              return svg ? [...svg.querySelectorAll('g.system')].map((system) => {
+                const measure = system.querySelector('g.measure');
+                return measure ? measure.querySelectorAll('g.staff').length : 0;
+              }) : [];
+            });
+            return counts.length > 1 && counts[0] === 2 && counts.slice(1).every((n) => n === 1);
+          }, null, { timeout: WAIT.pageRendered, polling: 100 }));
+      } catch {
+        condensedSettled = false;
+      }
+      const condensedCounts = await systemStaffCounts(page);
+      const condensedPages = (await L.pageInfo(page)).total;
+      const countsOk = condensedSettled && visibleCounts.length > 1 &&
+        visibleCounts.every((n) => n === 2) &&
+        condensedCounts.length > 1 && condensedCounts[0] === 2 &&
+        condensedCounts.slice(1).every((n) => n === 1);
+      L.record(results, '6. Portées vides : premier système complet, systèmes suivants condensés', pageName,
+        countsOk && savedOption === true ? 'OK' : 'ÉCHEC',
+        `portées par système avant ${visibleCounts.join('/')}, après ${condensedCounts.join('/')} ` +
+        `(premier système 2, suivants 1 : ${countsOk}), option enregistrée ${savedOption}, ` +
+        `pages ${visiblePages} → ${condensedPages}`);
+      await page.screenshot({ path: '/tmp/cantus-voix/portees-vides-masquees.png' });
+
+      // La variante de cache de rendu porte la condensation : les pages
+      // resservies après ce rechargement sont bien celles de l'option active.
+      const cacheVariants = await page.evaluate(async () => {
+        const keys = await window.__svgCache.keys();
+        return keys.map((key) => decodeURIComponent(key));
+      });
+      const variantOk = cacheVariants.length > 0 &&
+        cacheVariants.every((key) => /\|c(?:\||$)/.test(key));
+      L.record(results, '6. Portées vides : la condensation entre dans la clé de cache du rendu', pageName,
+        variantOk ? 'OK' : 'ÉCHEC',
+        `${cacheVariants.length} clé(s), variante « |c » dans toutes : ${variantOk}`);
+
+      // Surlignage de la mesure jouée : rectangle sous les notes, hauteur du
+      // système condensé, mis à jour au changement de mesure seulement.
+      await L.openSettings(page);
+      await page.check('#highlight-measure');
+      await L.closeSettings(page);
+      await page.click('#transport-play');
+      await waitState(page, 'playing');
+      await page.waitForSelector('#page-current .measure-highlight', { timeout: WAIT.pageRendered });
+      const first = await page.evaluate(() => {
+        const rect = document.querySelector('#page-current .measure-highlight');
+        const system = rect?.parentNode;
+        const rb = rect?.getBBox();
+        const sb = system?.getBBox();
+        return {
+          state: window.__musicaMeasureHighlightState(),
+          systemClass: system?.getAttribute('class'),
+          parent: rect?.parentNode?.tagName,
+          rect: rb ? { x: rb.x, y: rb.y, width: rb.width, height: rb.height } : null,
+          system: sb ? { x: sb.x, y: sb.y, width: sb.width, height: sb.height } : null,
+          fill: rect ? getComputedStyle(rect).fill : null,
+        };
+      });
+      const geometryOk = first.rect && first.system && first.parent === 'g' &&
+        first.systemClass === 'system' &&
+        Math.abs(first.rect.height - first.system.height) <= 1.5 &&
+        first.rect.width > 0 && first.rect.x >= first.system.x - 1 &&
+        first.rect.x + first.rect.width <= first.system.x + first.system.width + 1 &&
+        first.fill && first.fill !== 'none';
+      // Même mesure sur quelques frames : aucun recalcul (le rectangle ne doit
+      // pas être réécrit à chaque frame).
+      await page.waitForTimeout(700);
+      const second = await page.evaluate(() => window.__musicaMeasureHighlightState());
+      const stableSameMeasure = first.state.key !== second.key ||
+        first.state.updates === second.updates;
+      L.record(results, '6. Mesure surlignée : rectangle de fond sur toute la hauteur du système', pageName,
+        geometryOk && first.state.key != null && first.state.updates >= 1 && stableSameMeasure
+          ? 'OK' : 'ÉCHEC',
+        `mesure ${first.state.key}, ${first.state.updates} mise(s) à jour → ${second.updates}, ` +
+        `hauteur ${first.rect?.height?.toFixed(1)} / système ${first.system?.height?.toFixed(1)}, ` +
+        `fond ${first.fill}, stable : ${stableSameMeasure}`);
+
+      // Thèmes clair, sépia et sombre : le fond du rectangle change et reste
+      // translucide (contraste suffisant, y compris en niveaux de gris).
+      const themeFills = await page.evaluate(() => {
+        const rect = document.querySelector('#page-current .measure-highlight');
+        const body = document.body;
+        const fills = {};
+        for (const theme of ['white', 'sepia', 'dark']) {
+          body.classList.remove('theme-sepia', 'theme-dark');
+          if (theme !== 'white') body.classList.add(`theme-${theme}`);
+          fills[theme] = getComputedStyle(rect).fill;
+        }
+        body.classList.remove('theme-sepia', 'theme-dark');
+        return fills;
+      });
+      const alphaOf = (fill) => {
+        const m = /rgba?\([^,]+,[^,]+,[^,]+,\s*([\d.]+)\)/.exec(fill);
+        return m ? Number(m[1]) : 1;
+      };
+      const themeOk = new Set(Object.values(themeFills)).size >= 2 &&
+        Object.values(themeFills).every((fill) => fill !== 'none' &&
+          alphaOf(fill) >= 0.1 && alphaOf(fill) <= 0.3);
+      L.record(results, '6. Mesure surlignée : fond adapté aux thèmes clair, sépia et sombre', pageName,
+        themeOk ? 'OK' : 'ÉCHEC',
+        Object.entries(themeFills).map(([theme, fill]) => `${theme} ${fill}`).join(', '));
+      await page.screenshot({ path: '/tmp/cantus-voix/mesure-surlignee.png' });
+
+      // Défilement vertical avec portées condensées : le suivi amène la page
+      // suivante et la mesure surlignée appartient bien à cette page.
+      const beforeSeek = await displayedPageNumber(page);
+      await seekFraction(page, 0.98);
+      let pageChanged = false;
+      try {
+        await bounded('suivi vertical avec portées condensées', WAIT.seekToPage,
+          page.waitForFunction((prev) => {
+            const m = (document.getElementById('page-number')?.textContent || '').match(/(\d+)\s*\//);
+            return m && parseInt(m[1], 10) !== prev;
+          }, beforeSeek, { timeout: WAIT.seekToPage, polling: 100 }));
+        pageChanged = true;
+      } catch {
+        // laissé à false : la page n'a pas suivi
+      }
+      await page.waitForTimeout(500);
+      const followed = await page.evaluate(() => {
+        const rect = document.querySelector('#page-current .measure-highlight');
+        const pageDiv = rect?.closest('.scroll-page');
+        return {
+          state: window.__musicaMeasureHighlightState(),
+          current: window.__musicaPlaybackCurrentMark(),
+          page: pageDiv ? parseInt(pageDiv.dataset.page, 10) : null,
+          renderedPages: [...document.querySelectorAll('#page-current .scroll-page')]
+            .map((div) => parseInt(div.dataset.page, 10)),
+          displayed: (document.getElementById('page-number')?.textContent || '').match(/(\d+)\s*\//)?.[1],
+        };
+      });
+      L.record(results, '6. Portées vides : suivi et surlignage restent alignés après défilement', pageName,
+        pageChanged && followed.state.key != null && followed.current.id != null &&
+          String(followed.state.key) === String(followed.current.id) &&
+          followed.page != null && followed.renderedPages.includes(followed.page) &&
+          String(followed.page) === String(followed.current.page) ? 'OK' : 'ÉCHEC',
+        `page ${beforeSeek} → ${followed.displayed}, marqueur courant ${followed.current.id} ` +
+        `(page ${followed.current.page}), mesure surlignée ${followed.state.key} ` +
+        `sur la page ${followed.page} [${followed.renderedPages.join(',')}], ` +
+        `mises à jour ${followed.state.updates}`);
+
+      await stopPlayback(page);
+      const afterStop = await page.evaluate(() => ({
+        rectangles: document.querySelectorAll('.measure-highlight').length,
+        state: window.__musicaMeasureHighlightState(),
+      }));
+      L.record(results, '6. Mesure surlignée : rectangle retiré à l’arrêt', pageName,
+        afterStop.rectangles === 0 && afterStop.state.rect === null ? 'OK' : 'ÉCHEC',
+        `${afterStop.rectangles} rectangle(s), clé ${afterStop.state.key}`);
+    } catch (e) {
+      L.record(results, '6. Portées vides et mesure surlignée', pageName, 'ÉCHEC',
+        'exception du test : ' + e.message);
+    }
+    const relevant = L.summarize(errorsEmpty);
+    L.record(results, '6. Erreurs JS (portées vides, mesure surlignée)', pageName,
+      relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
+    await ctxEmpty.close();
   }
 
   // Téléphone 390×844 : la barre de position reste visible à l'arrêt avec le

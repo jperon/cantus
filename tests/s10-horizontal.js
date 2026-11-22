@@ -135,6 +135,56 @@ async function runPage(browser, url, pageName, results) {
       '10. Mode horizontal : une page = un système sur toutes les pages (Byrd 1200×800, zoom 40)',
       pageName);
 
+    // Surlignage horizontal : le rectangle de fond reste dans la page affichée
+    // quand le suivi change de page (wrapper translaté en vw).
+    await L.openSettings(page);
+    await page.check('#highlight-measure');
+    await L.closeSettings(page);
+    await page.click('#transport-play');
+    await page.waitForFunction(() => window.__musicaPlaybackState?.().state === 'playing',
+      null, { timeout: 60000, polling: 100 });
+    await page.waitForSelector('#page-current .measure-highlight', { timeout: 60000 });
+    const highlightAt = async () => page.evaluate(() => {
+      const rect = document.querySelector('#page-current .measure-highlight');
+      const pageDiv = rect?.closest('.scroll-page');
+      const m = (document.getElementById('page-number')?.textContent || '').match(/(\d+)\s*\//);
+      return {
+        key: window.__musicaMeasureHighlightState().key,
+        current: window.__musicaPlaybackCurrentMark().id,
+        rectPage: pageDiv ? parseInt(pageDiv.dataset.page, 10) : null,
+        displayed: m ? parseInt(m[1], 10) : null,
+      };
+    });
+    const hStart = await highlightAt();
+    await page.$eval('#transport-seek', (el) => {
+      el.value = '500';
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    let moved = true;
+    try {
+      await page.waitForFunction((prev) => {
+        const m = (document.getElementById('page-number')?.textContent || '').match(/(\d+)\s*\//);
+        return !!m && parseInt(m[1], 10) !== prev;
+      }, hStart.displayed, { timeout: 30000, polling: 100 });
+    } catch {
+      moved = false;
+    }
+    await page.waitForTimeout(400);
+    const hMoved = await highlightAt();
+    L.record(results, '10. Mode horizontal : la mesure surlignée reste sur la page affichée', pageName,
+      moved && hStart.key != null && String(hStart.key) === String(hStart.current) &&
+        hStart.rectPage === hStart.displayed &&
+        hMoved.key != null && String(hMoved.key) === String(hMoved.current) &&
+        hMoved.rectPage === hMoved.displayed ? 'OK' : 'ÉCHEC',
+      `départ page ${hStart.displayed} / mesure ${hStart.key}, ` +
+      `après saut page ${hMoved.displayed} / mesure ${hMoved.key}, ` +
+      `rectangle sur la page ${hMoved.rectPage}`);
+    await page.evaluate(() => document.activeElement?.blur?.());
+    await page.keyboard.press('s');
+    await page.waitForTimeout(300);
+    await L.gotoPage(page, 1);
+
     // Réouverture depuis la bibliothèque : le mode et la pagination doivent
     // être identiques, servis par les caches SVG et de lecture de la version
     // courante (une page mise en cache avec deux systèmes serait resservie).

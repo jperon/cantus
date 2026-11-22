@@ -67,6 +67,13 @@ test('playbackCacheKey : mode et bornes distincts, mouvement distinct', () => {
     worker.playbackCacheKey(1, false, 0, 50),
     worker.playbackCacheKey(1, false, 0, 50)
   );
+  // Un rechargement (autre pagination) doit produire une autre clé, même à
+  // mode et bornes égaux : un calcul encore en vol ne resservira pas ses
+  // marqueurs après condensation des portées vides ou masquage d'une voix.
+  assert.notStrictEqual(
+    worker.playbackCacheKey(1, false, 0, 50, 1),
+    worker.playbackCacheKey(1, false, 0, 50, 2)
+  );
   assert.match(worker.playbackCacheKey(1, true, 0, 50), /linear/);
   assert.match(worker.playbackCacheKey(1, false, 0, 50), /expanded/);
 });
