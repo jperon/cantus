@@ -22,6 +22,8 @@ registerLanguage 'it', 'Italiano',
   'settings.sectionApplication': 'Applicazione'
   'settings.zoom': 'Zoom'
   'settings.zoomAria': 'Zoom della partitura in percentuale'
+  'settings.hideEmptyStaves': 'Nascondi i pentagrammi vuoti'
+  'settings.hideEmptyStavesHint': 'In ogni sistema tranne il primo, i pentagrammi senza note sono nascosti.'
   'settings.language': 'Lingua'
   'settings.masterVolume': 'Volume generale'
   'settings.tempo': 'Tempo di riproduzione'
@@ -39,6 +41,8 @@ registerLanguage 'it', 'Italiano',
   'settings.partsVolumes': 'Volumi al'
   'settings.partsVolumesAria': 'Imposta il volume di tutte le parti'
   'settings.followPlayback': 'Segui lo scorrimento'
+  'settings.highlightMeasure': 'Evidenzia la battuta corrente'
+  'settings.highlightMeasureHint': 'Durante la riproduzione, la battuta suonata viene evidenziata.'
   'settings.expandRepeats': 'Espandi i ritornelli'
   'settings.expandRepeatsHint': "Deselezionato: riproduzione lineare nell'ordine scritto (senza ritornelli, D.C./D.S., coda né volte)."
   'settings.pianoOnly': 'Solo pianoforte'

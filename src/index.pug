@@ -61,6 +61,12 @@ html(lang="en")
             button.layout-btn(type="button" data-layout="horizontal" data-i18n="layout.horizontal") Horizontal
             button.layout-btn(type="button" data-layout="vertical" data-i18n="layout.vertical") Vertical
         .settings-group
+          .settings-row.settings-checks
+            label.settings-check
+              input#hide-empty-staves(type="checkbox")
+              span(data-i18n="settings.hideEmptyStaves") Hide empty staves
+          p.settings-hint(data-i18n="settings.hideEmptyStavesHint") In each system except the first, staves with no notes are hidden.
+        .settings-group
           span.settings-label(data-i18n="settings.scroll") Scrolling
           .settings-row(role="group" aria-label="Scrolling" data-i18n-aria-label="settings.scroll")
             button.scroll-unit-btn.active(type="button" data-unit="page" data-i18n="scroll.page") Per page
@@ -118,8 +124,12 @@ html(lang="en")
               input#follow-playback(type="checkbox" checked)
               span(data-i18n="settings.followPlayback") Follow scrolling
             label.settings-check
+              input#highlight-measure(type="checkbox")
+              span(data-i18n="settings.highlightMeasure") Highlight the current measure
+            label.settings-check
               input#expand-repeats(type="checkbox" checked)
               span(data-i18n="settings.expandRepeats") Expand repeats
+          p.settings-hint(data-i18n="settings.highlightMeasureHint") During playback, the measure being played is marked.
           p.settings-hint(data-i18n="settings.expandRepeatsHint") Unchecked: linear playback in written order (no repeats, D.C./D.S., coda or endings).
       section#parts-group.settings-section.hidden(aria-labelledby="settings-parts-title")
         h3#settings-parts-title.settings-section-title(data-i18n="settings.parts") Parts

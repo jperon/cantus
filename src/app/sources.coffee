@@ -299,6 +299,10 @@ loadMovementAndWait = (movementId, xmlString, pageWidth, pageHeight, sourceId = 
       measureStart: measureStart
       measureEnd: measureEnd
       scrollMode: mode
+      hideEmptyStaves: hideEmptyStaves
+      # Jeton du chargement : les pages d'un rendu remplacé (mise en page
+      # différente) seront ignorées même si elles arrivent après le nouveau.
+      loadToken: loadToken
 
 # Loading indicator for background movement loading
 showLoadingIndicator = ->

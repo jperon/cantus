@@ -121,6 +121,15 @@ partPercussionLabels = ->
 # aux re-rendus de la liste (changement de taille, piano seulement…).
 expandedVoiceLabels = new Set()
 
+# Au-delà de cette largeur, tous les contrôles d'une voix tiennent sur une
+# ligne lisible : ils sont alors affichés directement, sans repli (mise en page
+# en CSS, voir styles.css). En dessous, la ligne reste repliable.
+PARTS_WIDE_QUERY = "(min-width: 900px)"
+
+partsWideLayout = ->
+  return false unless window.matchMedia?
+  window.matchMedia(PARTS_WIDE_QUERY).matches
+
 # Remplit la liste des voix avec l'union, dans l'ordre d'apparition, des voix
 # de toutes les sources déjà converties de l'entrée (pas de re-parse). Chaque
 # fichier renumérote ses parties à partir de P1 : les voix sont identifiées par
@@ -254,20 +263,26 @@ renderPartsList = ->
         details.appendChild programField
       expandBtn.setAttribute "aria-controls", details.id
       setExpanded = (expanded) ->
-        details.classList.toggle "hidden", not expanded
-        expandBtn.setAttribute "aria-expanded", String expanded
+        wide = partsWideLayout()
+        details.classList.toggle "hidden", not (expanded or wide)
+        # Sur écran large, le bouton n'est plus un pli : le nom reste lisible,
+        # mais aucun chevron ni bascule (les détails sont toujours affichés).
+        expandBtn.disabled = wide
+        expandBtn.setAttribute "aria-expanded", String(expanded or wide)
         labelKey = if expanded then "parts.collapseAria" else "parts.expandAria"
-        expandBtn.title = t labelKey, {part: partLabel}
+        expandBtn.title = if wide then partLabel else t(labelKey, {part: partLabel})
         expandBtn.setAttribute "aria-label", expandBtn.title
-        caret.textContent = if expanded then "▾" else "▸"
+        caret.textContent = if wide then "" else if expanded then "▾" else "▸"
       setExpanded expandedVoiceLabels.has partLabel
       expandBtn.addEventListener "click", (e) ->
         e.stopPropagation()
+        return if partsWideLayout()
         expanded = expandBtn.getAttribute("aria-expanded") isnt "true"
         if expanded then expandedVoiceLabels.add partLabel else expandedVoiceLabels.delete partLabel
         setExpanded expanded
       # Un appui sur la ligne (hors contrôle) déplie ou replie aussi.
       row.addEventListener "click", (e) ->
+        return if partsWideLayout()
         return if e.target.closest "button, select, input, label, a"
         expandBtn.click()
       # Affichage : rendu seul, appliqué à la fermeture. La voix reste jouée.
@@ -524,6 +539,17 @@ openSettings = ->
 
 # Settings overlay controls
 setupSettings = ->
+  # Franchissement du seuil « tous les contrôles sur une ligne » : la liste des
+  # voix est régénérée pour que l'état ARIA (replié/déplié) suive la mise en
+  # page CSS. Le rendu de la partition n'est pas touché.
+  if window.matchMedia?
+    wideMedia = window.matchMedia PARTS_WIDE_QUERY
+    onChange = ->
+      return if $("settings-overlay").classList.contains "hidden"
+      renderPartsList()
+    if wideMedia.addEventListener? then wideMedia.addEventListener "change", onChange
+    else wideMedia.addListener? onChange
+
   $("menu-settings").addEventListener "click", openSettings
 
   $("settings-close").addEventListener "click", closeSettings
@@ -630,6 +656,28 @@ setupSettings = ->
       applyFollowPlayback enabled
       settings = loadSettings()
       settings.followPlayback = enabled
+      saveSettings settings
+
+  # Portées vides : option de rendu, appliquée au rechargement à la fermeture
+  # du panneau (comme les tailles de voix et la transposition visuelle).
+  emptyStavesBox = $("hide-empty-staves")
+  if emptyStavesBox
+    emptyStavesBox.addEventListener "change", (e) ->
+      enabled = e.target.checked
+      applyHideEmptyStaves enabled
+      settings = loadSettings()
+      settings.hideEmptyStaves = enabled
+      saveSettings settings
+      partsChanged = true
+
+  # Surligner la mesure jouée : appliqué à chaud, sans re-rendu.
+  highlightBox = $("highlight-measure")
+  if highlightBox
+    highlightBox.addEventListener "change", (e) ->
+      enabled = e.target.checked
+      applyHighlightMeasure enabled
+      settings = loadSettings()
+      settings.highlightMeasure = enabled
       saveSettings settings
 
   # Dérouler les reprises : le mode change le contenu des données de lecture.

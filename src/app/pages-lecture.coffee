@@ -105,6 +105,10 @@ requestPlaybackData = (movementId, linear = not expandRepeats) ->
           linearRepeats: linear
           measureStart: measureStart
           measureEnd: measureEnd
+          # Jeton du chargement : une réponse calculée avant un rechargement
+          # (pagination différente) est ignorée par la page, même si elle
+          # arrive après que le nouveau mouvement a été installé.
+          loadToken: loadToken
   # Écrire le résultat dans le cache persistant, sans retarder la lecture
   promise.then (data) ->
     if data and playbackStore?.set? and fileId

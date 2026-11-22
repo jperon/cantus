@@ -34,6 +34,8 @@ partVolumes = {}  # Libellé de voix -> volume en % (100 = volume normal)
 partPrograms = {}  # Libellé de voix -> programme GM choisi (absence = partition)
 partsChanged = false  # Réglages de voix modifiés, à appliquer à la fermeture
 followPlaybackEnabled = true  # Suivi du défilement pendant la lecture
+hideEmptyStaves = false  # Masquer les portées vides de chaque système (sauf le premier)
+highlightMeasureEnabled = false  # Surligner la mesure jouée pendant la lecture
 expandRepeats = true  # Dérouler les reprises (false : lecture linéaire écrite)
 pianoOnly = false  # Toutes les voix mélodiques au piano (réglage global)
 # Tempo de lecture : réglage propre au fichier (localStorage), prioritaire sur
@@ -138,6 +140,7 @@ playback =
   marks: []  # syncMarks du mouvement chargé (t en ms, page locale)
   pauses: []  # pauses du mouvement (timeUs/endTimeUs), pour geler le suivi
   followKey: null  # dernière cible de suivi appliquée
+  highlightKey: null  # mesure surlignée (id Verovio) : rectangle de fond
   rawData: null  # données du worker, à l'échelle du fichier (sans facteur)
   tempoFactor: 1  # facteur tempo choisi / tempo initial du fichier
   tempoBpm: null  # tempo effectif utilisé pour la lecture chargée
@@ -146,6 +149,10 @@ playback =
 # Worker message handler
 worker.onmessage = (e) ->
   {type} = e.data
+  # Réponse d'un chargement remplacé (rechargement, condensation, masquage) :
+  # sa pagination ne vaut plus rien, même si elle arrive après le nouveau
+  # mouvement. Les messages de l'application portent le jeton courant.
+  return if e.data.loadToken? and e.data.loadToken isnt loadToken
   # Replies still in flight from the previous render would be mapped onto the
   # movements just reset (page counts at 0) and shown in its place: drop them
   # until the new first movement is loaded.
@@ -269,7 +276,9 @@ worker.onmessage = (e) ->
         pending.reject new Error message
 
     when "playbackData"
-      {movementId, midi, syncMarks, staffLabels, trackMap, duration, offsetMs, sourceDurationMs, segments, pauses, linearRepeats, fileTempoBpm, fileTempoExplicit, fileTempoUnit} = e.data
+      {movementId, midi, syncMarks, staffLabels, trackMap, duration, offsetMs, sourceDurationMs, segments, pauses, linearRepeats, fileTempoBpm, fileTempoExplicit, fileTempoUnit, loadToken: replyToken} = e.data
+      # Réponse d'un chargement remplacé : sa pagination ne vaut plus rien.
+      return if replyToken? and replyToken isnt loadToken
       key = playbackKey movementId, !!linearRepeats
       data = {midi, syncMarks, staffLabels, trackMap, duration, offsetMs, sourceDurationMs, segments: segments ? [], pauses: pauses ? [], linearRepeats: !!linearRepeats, fileTempoBpm, fileTempoExplicit, fileTempoUnit}
       playbackCache.set key, data
@@ -279,7 +288,9 @@ worker.onmessage = (e) ->
         pending.resolve data
 
     when "playbackError"
-      {movementId, message, linearRepeats} = e.data
+      {movementId, message, linearRepeats, loadToken: replyToken} = e.data
+      # Réponse d'un chargement remplacé : ne pas rejeter la demande courante.
+      return if replyToken? and replyToken isnt loadToken
       # PR 1 : aucune UI de lecture, une erreur ici ne doit rien casser
       console.warn "Données de lecture indisponibles pour le mouvement #{movementId}: #{message}"
       key = playbackKey movementId, !!linearRepeats

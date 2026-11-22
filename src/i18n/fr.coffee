@@ -22,6 +22,8 @@ registerLanguage 'fr', 'Français',
   'settings.sectionApplication': 'Application'
   'settings.zoom': 'Zoom'
   'settings.zoomAria': 'Zoom de la partition en pourcentage'
+  'settings.hideEmptyStaves': 'Masquer les portées vides'
+  'settings.hideEmptyStavesHint': 'Dans chaque système sauf le premier, les portées sans note sont masquées.'
   'settings.language': 'Langue'
   'settings.masterVolume': 'Volume général'
   'settings.tempo': 'Tempo de lecture'
@@ -39,6 +41,8 @@ registerLanguage 'fr', 'Français',
   'settings.partsVolumes': 'Volumes à'
   'settings.partsVolumesAria': 'Régler le volume de toutes les voix'
   'settings.followPlayback': 'Suivre le défilement'
+  'settings.highlightMeasure': 'Surligner la mesure en cours'
+  'settings.highlightMeasureHint': 'Pendant la lecture, la mesure jouée est mise en évidence.'
   'settings.expandRepeats': 'Dérouler les reprises'
   'settings.expandRepeatsHint': "Décoché : lecture linéaire, dans l'ordre écrit (sans reprises, D.C./D.S., coda ni voltes)."
   'settings.pianoOnly': 'Piano seulement'

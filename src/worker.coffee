@@ -5,6 +5,10 @@ tk = null
 verovioLoaded = false
 movements = {}  # movementId -> {pageCount, loaded, xml, options}
 currentMovement = null
+# Numéro de chargement d'un mouvement : une conversion scoretk asynchrone
+# lancée avant un rechargement ne doit pas resservir ensuite sa pagination
+# périmée. La clé du cache de lecture du worker porte ce numéro.
+movementLoadSeq = 0
 pending = []  # messages waiting for the toolkit, replayed once Verovio is ready
 scoretkLoad = null  # scoretk loading promise, created on first MuseScore conversion
 scoretkInline = null  # SPA: {glue, wasm} sources sent by the page
@@ -146,6 +150,7 @@ postPage = (movementId, pageNumber) ->
     type: "svg"
     movementId
     page: pageNumber
+    loadToken: movements[movementId]?.loadToken
     svg: tk.renderToSVG pageNumber
   }
 
@@ -160,14 +165,20 @@ systemCount = (svgString) ->
 # mise en page naturelle. En mode horizontal, une page ne contient qu'un
 # système (systemMaxPerPage) : sans cela, une page suivante ou un mouvement
 # moins fourni en afficherait deux, superposés dans la vue paginée.
-loadMovement = (movementId, xmlString, pageWidth, pageHeight, scale = 40, sourceId = null, measureStart = 0, measureEnd = null, transpose = 0, mode = null) ->
+loadMovement = (movementId, xmlString, pageWidth, pageHeight, scale = 40, sourceId = null, measureStart = 0, measureEnd = null, transpose = 0, mode = null, hideEmptyStaves = false, loadToken = null) ->
   options = {
     breaks: "auto"
     adjustPageHeight: true
     pageWidth: pageWidth
     pageHeight: pageHeight
     scale: scale
-    condense: "none"
+    # Condensation des portées vides : « auto » masque, dans chaque système,
+    # les portées qui n'ont aucune note. Verovio exempte le premier système
+    # quand condenseFirstPage est faux (comportement des éditeurs) ; les
+    # systèmes suivants sont condensés séparément, y compris sur la même page.
+    condense: if hideEmptyStaves then "auto" else "none"
+    condenseFirstPage: false
+    condenseNotLastSystem: false
     header: "none"
     footer: "none"
     # Toujours posé : le toolkit sert à plusieurs fichiers et une valeur
@@ -183,6 +194,7 @@ loadMovement = (movementId, xmlString, pageWidth, pageHeight, scale = 40, source
     self.postMessage {
       type: "error"
       movementId
+      loadToken
       message: "Failed to load movement data"
     }
     return
@@ -208,6 +220,8 @@ loadMovement = (movementId, xmlString, pageWidth, pageHeight, scale = 40, source
     measureStart
     measureEnd
   }
+  mv.loadSeq = ++movementLoadSeq
+  mv.loadToken = loadToken
   # Pont mesure écrite -> page : le SEUL usage de renderToTimemap. Il est
   # construit ici, sur le mouvement (indices locaux), une fois pour toutes.
   try
@@ -231,11 +245,12 @@ loadMovement = (movementId, xmlString, pageWidth, pageHeight, scale = 40, source
     pageCount
     pushed
     scrollMode: mode
+    loadToken
   }
   if pushed > 0
     for page in [1..pushed]
       if page is 1 and firstPageSvg?
-        self.postMessage {type: "svg", movementId, page, svg: firstPageSvg}
+        self.postMessage {type: "svg", movementId, page, loadToken, svg: firstPageSvg}
       else
         postPage movementId, page
 
@@ -607,10 +622,12 @@ encodeBase64 = (bytes) ->
     parts.push String.fromCharCode.apply null, bytes.subarray(offset, offset + chunk)
   btoa parts.join ''
 
-# Clé du cache de lecture : mode (déroulé / linéaire) et bornes du mouvement.
-playbackCacheKey = (movementId, linearRepeats, measureStart = 0, measureEnd = null) ->
+# Clé du cache de lecture : mode (déroulé / linéaire), bornes du mouvement et
+# numéro de chargement (une pagination recalculée ne réutilise jamais les
+# marqueurs d'un rendu antérieur, même si la conversion était encore en vol).
+playbackCacheKey = (movementId, linearRepeats, measureStart = 0, measureEnd = null, loadSeq = null) ->
   bounds = "#{measureStart}:#{measureEnd ? ''}"
-  "#{movementId}:#{if linearRepeats then 'linear' else 'expanded'}:#{bounds}"
+  "#{movementId}:#{if linearRepeats then 'linear' else 'expanded'}:#{bounds}:#{loadSeq ? ''}"
 
 sourcePlaybackKey = (sourceId, linearRepeats) ->
   "#{sourceId}:#{if linearRepeats then 'linear' else 'expanded'}"
@@ -665,10 +682,16 @@ buildPlaybackData = (movementId, linearRepeats = false, measureStart, measureEnd
     throw new Error "Module timeline absent du worker"
   start = if measureStart? then measureStart else (mv.measureStart ? 0)
   stop = if measureEnd? then measureEnd else (mv.measureEnd ? null)
-  cacheKey = playbackCacheKey movementId, linearRepeats, start, stop
+  cacheKey = playbackCacheKey movementId, linearRepeats, start, stop, mv.loadSeq
   cached = playbackCache[cacheKey]
   return Promise.resolve cached if cached
   loadSourcePlayback(mv.sourceId, linearRepeats).then (source) ->
+    # Un rechargement a pu remplacer le mouvement pendant la conversion
+    # scoretk : la pagination capturée n'est plus celle du toolkit. Recalculer
+    # avec le mouvement courant plutôt que de figer des marqueurs périmés.
+    current = movements[movementId]
+    throw new Error "Mouvement #{movementId} déchargé pendant sa conversion" unless current?.loaded
+    return buildPlaybackData movementId, linearRepeats, measureStart, measureEnd unless current is mv
     slice = timelineApi.movementSlice source.timeline, start, stop
     # Le MIDI scoretk est global à la source : les segments visent ses notes
     # aux temps absolus du flux (`baseUs`), tout en gardant `offsetMs` cumulé
@@ -877,8 +900,10 @@ handleMessage = (e) ->
           measureStart
           measureEnd
           scrollMode
+          hideEmptyStaves
+          loadToken
         } = e.data
-        loadMovement movementId, xmlString, pageWidth, pageHeight, scale, sourceId, measureStart, measureEnd, transpose, scrollMode
+        loadMovement movementId, xmlString, pageWidth, pageHeight, scale, sourceId, measureStart, measureEnd, transpose, scrollMode, hideEmptyStaves, loadToken
 
       when "renderMovementPage"
         {
@@ -888,13 +913,14 @@ handleMessage = (e) ->
         renderMovementPage movementId, page
 
       when "getPlaybackData"
-        {movementId, linearRepeats, measureStart, measureEnd} = e.data
+        {movementId, linearRepeats, measureStart, measureEnd, loadToken} = e.data
         # Une erreur de lecture ne doit jamais bloquer le rendu des pages
         buildPlaybackData movementId, !!linearRepeats, measureStart, measureEnd
           .then (data) ->
             self.postMessage {
               type: "playbackData"
               movementId
+              loadToken
               midi: data.midi
               syncMarks: data.syncMarks
               staffLabels: data.staffLabels
@@ -913,6 +939,7 @@ handleMessage = (e) ->
             self.postMessage {
               type: "playbackError"
               movementId
+              loadToken
               linearRepeats: !!linearRepeats
               message: playbackErr.message or String(playbackErr)
             }

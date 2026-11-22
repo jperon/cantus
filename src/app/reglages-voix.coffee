@@ -15,7 +15,7 @@ getMovementForPage = (globalPage) ->
   null
 
 # Settings defaults
-defaultSettings = { zoom: 40, theme: "white", tapSize: 30, scrollUnit: "page", overlap: 0, layout: "auto", masterVolume: 80, followPlayback: true, expandRepeats: true, pianoOnly: false }
+defaultSettings = { zoom: 40, theme: "white", tapSize: 30, scrollUnit: "page", overlap: 0, layout: "auto", masterVolume: 80, followPlayback: true, hideEmptyStaves: false, highlightMeasure: false, expandRepeats: true, pianoOnly: false }
 
 # Bornes des transpositions visuelle et auditive, en demi-tons.
 TRANSPOSE_MIN = -12
@@ -95,6 +95,21 @@ applyFollowPlayback = (enabled) ->
   # Suivi actif : la barre de position reste visible en permanence.
   showCommandBar() if followPlaybackEnabled and fileLoaded
 
+# Portées vides masquées : option Verovio de condensation. Elle ne change le
+# rendu qu'au prochain chargement (comme les tailles de voix et la
+# transposition visuelle) ; sa valeur entre dans la variante de cache.
+applyHideEmptyStaves = (enabled) ->
+  hideEmptyStaves = enabled is true
+  box = $("hide-empty-staves")
+  box.checked = hideEmptyStaves if box
+
+# Surligner la mesure jouée : purement visuel, appliqué à chaud, sans rendu.
+applyHighlightMeasure = (enabled) ->
+  highlightMeasureEnabled = enabled is true
+  box = $("highlight-measure")
+  box.checked = highlightMeasureEnabled if box
+  clearMeasureHighlight() unless highlightMeasureEnabled
+
 applyExpandRepeats = (enabled) ->
   expandRepeats = enabled isnt false
   box = $("expand-repeats")
@@ -127,6 +142,8 @@ applyAllSettings = ->
   applyLayoutSetting settings.layout
   applyMasterVolume settings.masterVolume
   applyFollowPlayback settings.followPlayback
+  applyHideEmptyStaves settings.hideEmptyStaves
+  applyHighlightMeasure settings.highlightMeasure
   applyExpandRepeats settings.expandRepeats
   applyPianoOnly settings.pianoOnly
 
@@ -267,6 +284,10 @@ partsVariant = ->
   sizes = (for id in Object.keys(partSizes).sort() when partSizes[id] isnt 100
     "#{id}=#{partSizes[id]}")
   variant = if sizes.length is 0 then hidden else "#{hidden}|#{sizes.join ','}"  # clé inchangée quand toutes les voix sont à 100 %
+  # Condensation des portées vides : le rendu et la pagination changent, donc
+  # la variante aussi. Suffixe absent quand l'option est au défaut (aucune
+  # condensation) : les clés existantes restent valables.
+  variant = "#{variant}|c" if hideEmptyStaves
   return variant if visualTranspose is 0
   "#{variant}|t#{visualTranspose}"
 

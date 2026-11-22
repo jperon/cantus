@@ -795,6 +795,22 @@ html, body {
   cursor: default;
 }
 
+/* Surlignage de la mesure jouée : rectangle de fond sous les notes. Noir
+   translucide sur les thèmes clairs (bon contraste en niveaux de gris sur
+   liseuse), blanc translucide sur le thème sombre. */
+.measure-highlight {
+  fill: rgba(0, 0, 0, 0.16);
+  stroke: none;
+}
+
+body.theme-sepia .measure-highlight {
+  fill: rgba(40, 20, 0, 0.18);
+}
+
+body.theme-dark .measure-highlight {
+  fill: rgba(255, 255, 255, 0.2);
+}
+
 #storage-info {
   flex: 0 1 auto;
   font-size: 14px;
@@ -1678,6 +1694,48 @@ body.theme-dark #page-jump button:focus-visible,
 body.theme-dark #page-jump input:focus-visible,
 body.theme-dark #transport-seek:focus-visible {
   outline-color: #eee;
+}
+
+/* Écrans larges : tous les contrôles d'une voix tiennent sur une ligne
+   lisible. Le nom, les interrupteurs, le volume, la taille et l'instrument
+   sont affichés directement ; le chevron et le repli disparaissent. Le repli
+   ne subsiste que sur les écrans étroits (téléphone, liseuse en portrait). */
+@media (min-width: 900px) {
+  #parts-list .part-row {
+    flex-wrap: nowrap;
+    gap: 10px;
+  }
+
+  #parts-list .part-expand {
+    flex: 1 1 140px;
+    cursor: default;
+  }
+
+  #parts-list .part-expand:disabled {
+    opacity: 1;
+    color: #222;
+  }
+
+  #parts-list .part-caret {
+    display: none;
+  }
+
+  #parts-list .part-controls {
+    margin-left: 0;
+  }
+
+  #parts-list .part-details,
+  #parts-list .part-details.hidden {
+    display: flex;
+    flex: 0 1 auto;
+    flex-wrap: nowrap;
+    padding: 0;
+    border-top: none;
+  }
+
+  #parts-list select.part-program {
+    flex: 0 1 220px;
+  }
 }
 
 /* Écrans étroits : voix sur deux lignes dans les réglages. */

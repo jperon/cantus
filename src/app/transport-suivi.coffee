@@ -330,12 +330,100 @@ applyFollowScroll = ->
     playback.followKey = key
     target
 
+# --- Surlignage de la mesure jouée -----------------------------------------
+# Verovio écrit chaque mesure dans un <g class="measure" id="…"> ; les
+# marqueurs de synchronisation portent cet id (`mark.id`, aussi utilisé par le
+# suivi). Le rectangle de fond est inséré en premier enfant du système : il
+# passe sous les notes, couvre toute la hauteur du système (portées masquées
+# par condensation comprises) et suit le cadre de la mesure. Il n'est
+# recalculé qu'au changement de mesure, pas à chaque frame.
+measureHighlightRect = null
+measureHighlightUpdates = 0
+
+clearMeasureHighlight = ->
+  playback.highlightKey = null
+  if measureHighlightRect?.parentNode?
+    measureHighlightRect.remove()
+  measureHighlightRect = null
+
+updateMeasureHighlight = ->
+  unless highlightMeasureEnabled
+    clearMeasureHighlight()
+    return
+  marks = playback.marks
+  unless Array.isArray(marks) and marks.length
+    clearMeasureHighlight()
+    return
+  api = window.__musicaPlayback
+  mark = if api?.markAt? then api.markAt marks, followPosition() else null
+  unless mark?.id?
+    clearMeasureHighlight()
+    return
+  key = String mark.id
+  return if key is playback.highlightKey and measureHighlightRect?.isConnected
+  # La page de la mesure peut ne pas être encore rendue (suivi en avance sur
+  # le rendu asynchrone) : garder le surlignage précédent et réessayer à la
+  # frame suivante.
+  element = document.getElementById key
+  return unless element?
+  system = element.closest? "g.system"
+  return unless system?
+  try
+    measureBox = element.getBBox()
+    systemBox = system.getBBox()
+  catch
+    return
+  return unless measureBox.width > 0 and systemBox.height > 0
+  unless measureHighlightRect?.parentNode is system
+    clearMeasureHighlight()
+    rect = document.createElementNS "http://www.w3.org/2000/svg", "rect"
+    rect.setAttribute "class", "measure-highlight"
+    rect.setAttribute "aria-hidden", "true"
+    rect.setAttribute "pointer-events", "none"
+    system.insertBefore rect, system.firstChild
+    measureHighlightRect = rect
+  rect = measureHighlightRect
+  rect.setAttribute "x", String measureBox.x
+  rect.setAttribute "y", String systemBox.y
+  rect.setAttribute "width", String measureBox.width
+  rect.setAttribute "height", String systemBox.height
+  playback.highlightKey = key
+  measureHighlightUpdates += 1
+
+# Sonde de test : état du surlignage (mesure courante, rectangle, mises à jour).
+window.__musicaMeasureHighlightState = ->
+  rect = measureHighlightRect
+  connected = rect?.isConnected is true
+  {
+    enabled: highlightMeasureEnabled
+    key: playback.highlightKey
+    updates: measureHighlightUpdates
+    rect: if connected then {
+      x: Number rect.getAttribute "x"
+      y: Number rect.getAttribute "y"
+      width: Number rect.getAttribute "width"
+      height: Number rect.getAttribute "height"
+    } else null
+  }
+
+# Sonde de test : marqueur de synchronisation de la position courante (mêmes
+# données à l'échelle de la lecture que celles du suivi et du surlignage).
+window.__musicaPlaybackCurrentMark = ->
+  api = window.__musicaPlayback
+  mark = if api?.markAt? then api.markAt playback.marks, currentPlaybackPosition() else null
+  {
+    id: mark?.id ? null
+    t: mark?.t ? null
+    page: mark?.page ? null
+  }
+
 # Une seule boucle rAF vivante à la fois ; rien n'est écrit dans localStorage
 playbackFrame = ->
   playback.rafId = null
   return unless playback.state is "playing"
   renderTransport()
   followPlaybackFrame()
+  updateMeasureHighlight()
   playback.rafId = requestAnimationFrame playbackFrame
 
 startPlaybackFrame = ->
@@ -379,6 +467,7 @@ resetPlayback = ->
   playback.marks = []
   playback.pauses = []
   playback.followKey = null
+  clearMeasureHighlight()
   playback.rawData = null
   playback.tempoFactor = 1
   playback.tempoBpm = null
@@ -402,6 +491,7 @@ stopPlayback = ->
   # Les marqueurs restent : les données de lecture sont toujours chargées
   # après un arrêt, une reprise doit pouvoir suivre immédiatement.
   playback.followKey = null
+  clearMeasureHighlight()
   renderTransport()
 
 pausePlayback = ->
