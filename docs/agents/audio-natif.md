@@ -25,35 +25,38 @@ AudioWorklet) par la lecture d'échantillons avec les nœuds natifs
 
 Protocole : Chromium headless, service worker bloqué, CPU bridé ×6
 (`Emulation.setCPUThrottlingRate`), 20 s du premier mouvement du Magnificat
-(Bach) à partir de la première note (67,875 s), suivi visuel désactivé, même
-partition pour les deux moteurs. CPU par type de processus via CDP
-`SystemInfo` (agrège navigateur, rendus — dont l'AudioWorklet — et service
-audio), fil principal via `Performance.getMetrics`.
+(Bach) dans sa fenêtre la plus dense (départ 79,125 s, 307 notes), suivi
+visuel désactivé, même segment pour les deux moteurs. CPU par type de
+processus via CDP `SystemInfo` (agrège navigateur, rendus — dont l'AudioWorklet
+— et service audio), fil principal via `Performance.getMetrics`. Médianes de
+trois runs ; les valeurs varient de ±10 % environ.
 
 | moteur | CPU lecture (s) | CPU à l'arrêt (s) | CPU net (s) | CPU fil principal (s) | heap JS (Mo) | chargement (ms) | audio (Ko) | notes | retard max (ms) | dispersion débuts (ms) |
 |---|---|---|---|---|---|---|---|---|---|---|
-| SpessaSynth | 24,99 | 8,90 | 16,09 | 18,14 | 8,0 | 1307 | 2749 | 237 | 39,23 | — |
-| Échantillons | 22,54 | 7,92 | 14,62 | 14,70 | 5,5 | 1488 | 398 | 243 | 0,00 | 0,000 |
+| SpessaSynth | 22,49 | 8,04 | 14,37 | 18,07 | 6,3 | 1610 | 2749 | 300 | 65,6 | — |
+| Échantillons | 22,06 | 8,27 | 14,25 | 18,33 | 5,7 | 1584 | 398 | 300 | 0,00 | 0,000 |
 
-Le CPU total baisse d'environ 10 % et le fil principal de 19 % sur ce
-desktop ; les mesures varient de ±10 % selon les runs. Le protocole CDP ne
-bride que le fil principal du rendu, pas le fil audio : sur un téléphone ou
-une liseuse, dont le fil audio est bien plus lent, la suppression de la
-synthèse JS pèse davantage. Les gains certains et reproductibles sont :
+Sur ce desktop, le CPU est donc **sensiblement le même** : le protocole CDP ne
+ralentit que le fil principal du rendu, pas le fil audio, et la synthèse de
+quatre voix par SpessaSynth est peu coûteuse pour un processeur de bureau. Le
+gain attendu sur téléphone ou liseuse vient de la suppression de cette
+synthèse du fil audio (et de la gigue qu'elle entraîne), gain que ce banc ne
+peut pas simuler fidèlement. Les résultats reproductibles sont :
 
 - téléchargement audio divisé par 6,9 (2749 → 398 Ko pour cette partition) ;
-- mémoire JS réduite (8,0 → 5,5 Mo), banque décodée uniquement pour les
-  instruments joués ;
+- mémoire JS réduite (médiane 6,3 → 5,7 Mo ; 8,0 → 5,5 Mo sur les runs à la
+  première note) ;
 - régularité : débuts exacts par construction (`start(when)`), dispersion
-  mesurée sur 243 notes = 0,000 ms, aucun retard du fil principal sur ce run,
-  contre 39,2 ms de gigue maximale pour le worklet SpessaSynth.
+  mesurée sur 300 notes = 0,000 ms, aucun retard du fil principal, contre
+  65,6 ms de gigue maximale pour le worklet SpessaSynth (médiane) ;
+- temps de chargement comparable (≈1,6 s bridé ×6 pour les deux).
 
 Rendus d'écoute (20 s, même segment, 48 kHz mono) :
 
 - `/tmp/cantus-natif/spessasynth-20s.wav` (SpessaSynth)
 - `/tmp/cantus-natif/samples-20s.wav` (échantillons)
 
-Niveaux comparables : moyenne −35,7 dB / −34,3 dB, crête −19,6 dB / −20,2 dB ;
+Niveaux comparables : moyenne −34,1 dB / −33,1 dB, crête −19,6 dB / −19,1 dB ;
 aucun silence > 0,3 s dans les deux rendus.
 
 ## Vérifications

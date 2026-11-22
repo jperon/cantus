@@ -196,12 +196,21 @@ async function measure(browser, browserSession, dist, label) {
       null, { timeout: 120000, polling: 50 });
     const loadMs = Date.now() - t0;
     // La partition peut commencer par une longue introduction vide
-    // (Magnificat : 67,875 s). On mesure 20 s de musique à partir de la
-    // première note, commune aux deux moteurs.
-    const startSeconds = await page.evaluate(() => {
+    // (Magnificat : 67,875 s). On mesure la fenêtre de 20 s la plus dense en
+    // notes, identique pour les deux moteurs.
+    const startInfo = await page.evaluate((seconds) => {
       const notes = window.__musicaAudio.getNotes();
-      return notes.length ? Math.max(0, notes[0].start) : 0;
-    });
+      let best = 0;
+      let bestCount = -1;
+      for (let i = 0; i < notes.length; i += 1) {
+        const start = Math.max(0, notes[i].start);
+        let count = 0;
+        for (let j = i; j < notes.length && notes[j].start < start + seconds; j += 1) count += 1;
+        if (count > bestCount) { bestCount = count; best = start; }
+      }
+      return { start: best, count: bestCount };
+    }, PLAY_SECONDS);
+    const startSeconds = startInfo.start;
     await page.evaluate((start) => window.__musicaAudio.seek(start), startSeconds);
     await page.waitForTimeout(300);
 
@@ -293,6 +302,7 @@ async function measure(browser, browserSession, dist, label) {
       loadedKeys: state.loadedKeys,
       positionMs: state.playback?.position ?? null,
       startSeconds,
+      windowNotes: startInfo.count,
     };
   } finally {
     await context.close();
@@ -317,14 +327,21 @@ async function record(browser, dist, label) {
     }, null, { timeout: 120000, polling: 100 });
     // Même segment musical pour les deux moteurs : pause, retour à zéro,
     // enregistrement puis lecture depuis le début.
-    await page.evaluate(() => {
+    await page.evaluate((seconds) => {
       const notes = window.__musicaAudio.getNotes();
-      const start = notes.length ? Math.max(0, notes[0].start) : 0;
+      let start = 0;
+      let bestCount = -1;
+      for (let i = 0; i < notes.length; i += 1) {
+        const t = Math.max(0, notes[i].start);
+        let count = 0;
+        for (let j = i; j < notes.length && notes[j].start < t + seconds; j += 1) count += 1;
+        if (count > bestCount) { bestCount = count; start = t; }
+      }
       window.__musicaAudio.pause();
       window.__musicaAudio.seek(start);
       window.__startRecording();
       window.__musicaAudio.play(start);
-    });
+    }, PLAY_SECONDS);
     await page.waitForTimeout(PLAY_SECONDS * 1000);
     const base64 = await page.evaluate(() => window.__stopRecording());
     fs.mkdirSync(OUT, { recursive: true });
