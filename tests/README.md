@@ -121,7 +121,8 @@ un contrat imaginé (`pauseBefore`, `from`/`to`/`offset`) ne prouve rien.
   seule fois, mesuré avec un faux `AudioContext` et un faux synthétiseur pour
   1 et 3 pistes (programmes, canaux, repli oscillateur).
 - `tests/unit/audio-schedule.test.js` — noteOn/noteOff datés dans l'horloge du
-  processeur, et purge du worklet (pause, transposition) sans note fantôme.
+  processeur, et purge différée des événements datés (pause, transposition)
+  sans note fantôme ni reconstruction du moteur.
 - `tests/unit/playback.test.js` — résolution des marqueurs de synchronisation
   et suivi de page/système (`src/playback.coffee`).
 - `tests/unit/timeline.test.js` — slices de mouvement, segments de lecture,
