@@ -42,6 +42,13 @@
 # dégradé) est jouée par l'oscillateur de repli vers son GainNode de piste.
 # Les pistes absentes de trackMap sont rattachées directement au master pour
 # ne jamais les perdre.
+#
+# Les noteOn/noteOff SpessaSynth sont confiés au processeur AudioWorklet avec
+# leur heure exacte (argument `time`), dans sa propre horloge, une fenêtre
+# SCHEDULE_WINDOW avant l'échéance : les retards du fil principal ne décalent
+# donc plus les notes. Comme la lib ne permet pas de vider la file d'événements
+# datés, tout changement de transport ou de hauteur/d'instrument détruit le
+# worklet (voir discardScheduledSynth) : aucune note fantôme ne survit.
 
 FLOOR = 0.01            # plancher du curseur de volume (≈ −40 dB)
 DEFAULT_VOLUME = 100    # volume général, en pourcentage du maximum
@@ -49,7 +56,7 @@ DEFAULT_VOLUME = 100    # volume général, en pourcentage du maximum
 # laisser de la marge au volume général (gain 0,505, ≈ −6 dB).
 DEFAULT_VOICE_VOLUME = 50
 SCHEDULE_INTERVAL = 25  # ms, période de l'ordonnanceur à anticipation
-SCHEDULE_WINDOW = 0.150 # s, fenêtre de notes planifiées d'avance
+SCHEDULE_WINDOW = 0.150 # s, fenêtre de notes et noteOff planifiés d'avance
 MAX_VOICES = 64         # plafond de sources simultanées (repli oscillateur)
 SOUNDFONT_TIMEOUT = 15000 # ms avant bascule vers la synthèse de repli
 FALLBACK_ATTACK = 0.01
@@ -63,9 +70,6 @@ DRUM_CHANNEL = 9        # canal MIDI 10 (index 9) : percussion GM
 MELODIC_CHANNELS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14, 15]
 SOUNDFONT_FILE = 'soundfonts/TimGM6mb.sf3'
 SPESSA_WORKLET_FILE = 'soundfonts/spessasynth_processor.min.js'
-# Petite tolérance pour l'envoi des noteOff : une note est relâchée au tick où
-# son échéance est atteinte (voir flushSpessaOffs).
-SPESSA_DUE_EPSILON = 0.005
 
 # --- Logique pure (testable sans AudioContext) ------------------------------
 
@@ -421,12 +425,23 @@ createEngine = (initialOptions = {}) ->
     # Répartition piste -> canal SpessaSynth et description par canal.
     channelByTrack: {}
     channelPlan: []
-    # File d'attente SpessaSynth : notes déjà retenues par l'ordonnanceur mais
-    # pas encore dues, et noteOff à envoyer. Les deux sont vidés à chaque
-    # pause/seek/stop, donc aucun événement ne survit à un changement de
-    # transport.
-    spessaQueue: []
+    # noteOff déjà confiés au synthétiseur mais pas encore envoyés (fenêtre
+    # d'anticipation), triés par échéance. Vidés à chaque changement de
+    # transport ; le worklet, lui, est détruit (voir discardScheduledSynth).
     pendingOffs: []
+    # Vrai dès qu'un événement daté a été confié au worklet : sa file ne peut
+    # alors être purgée qu'en détruisant le processeur.
+    spessaDirty: false
+    # Journal de gigue : instants d'échéance des événements SpessaSynth encore
+    # attendus (clé type:canal:hauteur, FIFO) et écarts mesurés quand le
+    # processeur les traite réellement (voir instrumentSynth).
+    expectedEvents: {}
+    noteLogStartCtx: 0
+    # Décalage entre AudioContext.currentTime et l'horloge du processeur
+    # AudioWorklet, qui repart de 0 à la création du premier nœud et reste
+    # ensuite constante. Mesuré sur les messages du processeur (minimum des
+    # écarts, la livraison au fil principal n'ajoutant qu'un retard positif).
+    workletClockOffset: null
     dispatchJitter: []
     loaded: false
     tracks: []
@@ -512,6 +527,17 @@ createEngine = (initialOptions = {}) ->
     Context = window?.AudioContext ? window?.webkitAudioContext
     throw new Error "WebAudio indisponible dans ce navigateur" unless Context
     ctx = new Context {latencyHint: 'playback'}
+    state.workletClockOffset = null
+    # Le contexte est suspendu dès sa création : son currentTime et l'horloge
+    # des AudioWorklet restent à 0 pendant le préchargement du moteur (worklet
+    # + banque), puis repartent ensemble au premier play(). Sans cela, le
+    # premier AudioWorkletNode est construit après la compilation du module,
+    # alors que son horloge globale repart de 0 : elle prend un retard fixe
+    # égal à currentTime à cet instant, que les événements datés subiraient.
+    try
+      ctx.suspend?().catch? -> null
+    catch
+      null
     master = ctx.createGain()
     master.gain.value = volumeToGain state.masterVolume
     master.connect ctx.destination
@@ -539,7 +565,8 @@ createEngine = (initialOptions = {}) ->
     state.spessaLinks = []
     state.programChanges = []
     state.pendingOffs = []
-    state.spessaQueue = []
+    state.spessaDirty = false
+    state.expectedEvents = {}
     state.dispatchJitter = []
     if synth
       try synth.stopAll true
@@ -602,6 +629,34 @@ createEngine = (initialOptions = {}) ->
       throw new Error "Soundfont introuvable (#{response.status})" unless response.ok
       response.arrayBuffer()
 
+  # Raccorde les sorties de canal du synthétiseur aux GainNode de piste. Fait
+  # dès la création du worklet, avant le chargement de la banque : le nœud est
+  # alors alimenté par le graphe audio et son horloge (celle du processeur)
+  # reste alignée sur AudioContext.currentTime. Sans cela, le processeur ne
+  # commence à rendre qu'à la connexion et son currentTime prend un retard
+  # égal au chargement de la banque, que les événements datés subiraient.
+  connectSynthOutputs = (synth) ->
+    return unless synth
+    wanted = []
+    for entry in state.channelPlan
+      node = state.trackGains[entry.tracks[0]]
+      continue unless node
+      wanted.push {node, channel: entry.channel}
+    # Déjà raccordé à ce plan (cas courant : la connexion a été faite dès la
+    # création, avant la banque) : ne pas déconnecter/reconnecter pour rien.
+    same = wanted.length is state.spessaLinks.length and
+      wanted.every((link, i) ->
+        state.spessaLinks[i].node is link.node and state.spessaLinks[i].channel is link.channel)
+    return synth if same
+    disconnectSpessa()
+    for link in wanted
+      try
+        synth.connectChannel link.node, link.channel
+        state.spessaLinks.push link
+      catch
+        null
+    synth
+
   # Charge le synthétiseur et la banque UNE SEULE FOIS par moteur. La banque
   # n'est pas relue du MIDI : scheduleNote envoie les noteOn/noteOff, ce qui
   # laisse le remappage des reprises et le tempo sous le contrôle de
@@ -617,12 +672,22 @@ createEngine = (initialOptions = {}) ->
     generation = state.engineGeneration
     loading = Promise.resolve()
       .then -> ctx.audioWorklet.addModule workletModuleUrl()
-      .then -> new Spessa.WorkletSynthesizer ctx
+      .then ->
+        synth = new Spessa.WorkletSynthesizer ctx
+        instrumentSynth synth
+        synth
       .then (synth) ->
+        connectSynthOutputs synth
         readSoundfontBuffer()
         .then (buffer) -> synth.soundBankManager.addSoundBank buffer, 'main'
         .then -> synth.isReady
         .then -> synth
+        .catch (err) ->
+          # Connexion déjà en place : libère le worklet avant le repli.
+          try synth.destroy()
+          catch
+            null
+          throw err
     # La bascule doit rester transparente même sur un appareil lent (liseuse) :
     # au-delà du délai, on n'attend plus la banque et on joue avec
     # l'oscillateur. Le délai est large pour laisser sa chance à la banque SF3.
@@ -672,41 +737,97 @@ createEngine = (initialOptions = {}) ->
   # programme change reçoivent un programChange : un réglage identique ne
   # relance donc pas le preset en cours de lecture.
   refreshChannelPrograms = ->
+    changed = false
     for entry in state.channelPlan
       program = channelProgram entry
       continue if program is entry.program
       entry.program = program
+      changed = true
       continue unless state.synth
       try
         state.synth.programChange entry.channel, program
         state.programChanges.push {channel: entry.channel, program}
       catch
         null
-    api
+    changed
 
-  # Envoie les programme GM de chaque canal et raccorde les sorties de canal
-  # aux GainNode de piste. Une seule connexion par canal : les pistes d'une
-  # même voix partagent le gain de leur représentante.
+  # --- Mesure de la gigue réelle -------------------------------------------
+  # La gigue n'est plus mesurée à l'envoi (le fil principal peut être en
+  # retard) mais à l'instant où le processeur AudioWorklet traite
+  # effectivement l'événement : son message eventCall porte le currentTime de
+  # l'horloge audio. Une échéance est mémorisée à l'envoi, puis consommée à
+  # l'arrivée de l'événement correspondant.
+  expectSynthEvent = (kind, channel, pitch, intendedAt) ->
+    key = "#{kind}:#{channel}:#{pitch}"
+    list = state.expectedEvents[key] ?= []
+    list.push intendedAt
+    return
+
+  consumeSynthEvent = (kind, channel, pitch, actualTime) ->
+    return unless isFinite actualTime
+    key = "#{kind}:#{channel}:#{pitch}"
+    list = state.expectedEvents[key]
+    return unless list?.length
+    intendedAt = list.shift()
+    delete state.expectedEvents[key] unless list.length
+    return unless state.noteLog? and intendedAt >= state.noteLogStartCtx
+    state.dispatchJitter.push {
+      kind
+      start: intendedAt - state.startCtxTime
+      jitter: actualTime + (state.workletClockOffset ? 0) - intendedAt
+    }
+    return
+
+  # Aligne l'horloge du processeur sur celle du contexte. L'écart est constant
+  # pour un contexte donné ; le minimum des mesures élimine le retard de
+  # livraison des messages au fil principal.
+  sampleWorkletClock = (messages) ->
+    return unless state.ctx and Array.isArray messages
+    now = state.ctx.currentTime
+    for message in messages
+      time = Number message?.currentTime
+      continue unless isFinite time
+      offset = now - time
+      continue if offset < 0
+      state.workletClockOffset = offset unless state.workletClockOffset? and offset >= state.workletClockOffset
+    return
+
+  # Intercepte les messages du processeur avant que la lib ne les traite :
+  # chaque noteOn/noteOff effectif y porte l'horloge audio du worklet, seule
+  # mesure insensible aux retards de livraison vers le fil principal.
+  instrumentSynth = (synth) ->
+    return synth unless synth and typeof synth.handleMessages is 'function'
+    original = synth.handleMessages
+    synth.handleMessages = (messages) ->
+      sampleWorkletClock messages
+      if state.noteLog? and Array.isArray messages
+        for message in messages
+          continue unless message?.type is 'eventCall'
+          event = message.data
+          kind = event?.type
+          continue unless kind is 'noteOn' or kind is 'noteOff'
+          payload = event.data ? {}
+          consumeSynthEvent kind, payload.channel, payload.midiNote, Number(message.currentTime)
+      original.call synth, messages
+    synth
+
+  # Envoie les programme GM de chaque canal puis raccorde les sorties aux
+  # GainNode de piste (déjà raccordées depuis la création, cf.
+  # connectSynthOutputs : on refait la connexion pour rester idempotent après
+  # un changement de plan de canaux).
   setupSynth = (synth) ->
     return unless synth
-    disconnectSpessa()
     state.programChanges = []
     seen = {}
     for entry in state.channelPlan
-      unless seen[entry.channel]?
-        seen[entry.channel] = true
-        try
-          synth.programChange entry.channel, entry.program
-          state.programChanges.push {channel: entry.channel, program: entry.program}
-        catch
-          null
-      node = state.trackGains[entry.tracks[0]]
-      continue unless node
+      continue if seen[entry.channel]?
+      seen[entry.channel] = true
       try
-        synth.connectChannel node, entry.channel
-        state.spessaLinks.push {node, channel: entry.channel}
+        synth.programChange entry.channel, entry.program
+        state.programChanges.push {channel: entry.channel, program: entry.program}
       catch
         null
+    connectSynthOutputs synth
     # Par sécurité, le canal 9 est explicitement un canal de batterie (c'est
     # déjà le cas en GM) : les programmes y sont ignorés au profit du kit.
     try
@@ -763,21 +884,25 @@ createEngine = (initialOptions = {}) ->
         null
     state.sources = []
 
-  # Coupe immédiatement les notes SpessaSynth (all sound off) et oublie les
-  # noteOff en attente : pause, arrêt et seek ne laissent aucune traînée ni
-  # aucun événement futur qui repartirait après la reprise.
-  clearSpessaNotes = ->
-    state.pendingOffs = []
-    state.spessaQueue = []
-    return unless state.synth
-    try
-      state.synth.stopAll true
-    catch
-      null
+  # spessasynth ne purge pas sa file d'événements datés : stopAll(true)
+  # n'arrête que les voix déjà déclenchées, la file du processeur reste et
+  # rejouerait les noteOn à leur heure. Le worklet ne l'expose pas ; le seul
+  # moyen propre de la vider est de détruire le processeur. Le moteur est
+  # reconstruit à la reprise (ensureEngine), sans recréer l'AudioContext ni
+  # recompiler le module AudioWorklet.
+  discardScheduledSynth = ->
+    return unless state.spessaDirty and state.synth
+    state.spessaDirty = false
+    disconnectSpessa()
+    releaseSynth()
+    state.enginePromise = null
+    state.engineMode = null
+    return
 
   cancelAll = ->
     cancelSources()
-    clearSpessaNotes()
+    state.pendingOffs = []
+    discardScheduledSynth()
 
   trackDestination = (trackIndex) ->
     state.trackGains[trackIndex] ? state.masterGain
@@ -818,63 +943,63 @@ createEngine = (initialOptions = {}) ->
     osc.start at
     osc.stop end + FALLBACK_RELEASE + 0.01
 
-  # Envoie une note au synthétiseur. Le noteOff est mémorisé et envoyé par
-  # l'ordonnanceur à son échéance : les événements ne sont pas datés dans le
-  # futur, ce qui permet à pause/seek/stop de tout couper instantanément.
-  # Retourne false si la note n'a pas de canal (repli oscillateur).
-  playSpessa = (note, at, intendedAt = at) ->
+  # L'argument `time` de spessasynth_lib est un
+  # SpessaSynthProcessor.currentTime : l'horloge du worklet, décalée de
+  # workletClockOffset par rapport à AudioContext.currentTime (voir
+  # sampleWorkletClock).
+  spessaTime = (ctxTime) ->
+    ctxTime - (state.workletClockOffset ? 0)
+
+  # Insère un noteOff à sa place dans la file triée par échéance (les durées
+  # varient, l'ordre des noteOn ne suffit pas).
+  scheduleOff = (offTime, channel, pitch) ->
+    list = state.pendingOffs
+    lo = 0
+    hi = list.length
+    while lo < hi
+      mid = (lo + hi) >> 1
+      if list[mid].time <= offTime then lo = mid + 1 else hi = mid
+    list.splice lo, 0, {time: offTime, channel, pitch}
+    return
+
+  # Envoie noteOn et noteOff avec leur heure exacte, à l'avance : le
+  # processeur AudioWorklet les déclenche lui-même à l'échéance, insensible
+  # aux retards du fil principal. Retourne false si la note n'a pas de canal
+  # (repli oscillateur).
+  playSpessa = (note, intendedAt) ->
     synth = state.synth
     channel = state.channelByTrack[note.track]
     return false unless synth and channel?
     pitch = Math.max 0, Math.min 127, Math.round note.pitch
     velocity = Math.max 1, Math.min 127, Math.round(note.velocity ? 100)
+    offTime = intendedAt + Math.max(0.02, note.dur)
     try
-      synth.noteOn channel, pitch, velocity
-      state.pendingOffs.push {
-        time: intendedAt + Math.max(0.02, note.dur)
-        channel
-        pitch
-      }
+      synth.noteOn channel, pitch, velocity, {time: spessaTime(intendedAt)}
+      scheduleOff offTime, channel, pitch
+      expectSynthEvent 'noteOn', channel, pitch, intendedAt
+      expectSynthEvent 'noteOff', channel, pitch, offTime
+      state.spessaDirty = true
       true
     catch
       false
 
-  # Envoie les notes retenues par l'ordonnanceur dont l'instant est arrivé.
-  # L'anticipation ne sert donc qu'à décider quelles notes jouer : rien n'est
-  # daté dans le futur chez SpessaSynth, et la file est annulable.
-  dispatchSpessaQueue = (now) ->
-    return unless state.synth and state.spessaQueue.length
-    remaining = []
-    for item in state.spessaQueue
-      if item.intendedAt <= now
-        if playSpessa item.note, now, item.intendedAt
-          if state.noteLog?
-            state.dispatchJitter.push {start: item.note.start, jitter: now - item.intendedAt}
-        else
-          playOscillator item.note, Math.max(item.intendedAt, now)
-      else
-        remaining.push item
-    state.spessaQueue = remaining
-
-  # Envoie les noteOff dus. Le tri par échéance garde l'ordre quelle que soit
-  # la durée des notes.
-  flushSpessaOffs = (now) ->
+  # Envoie les noteOff dont l'échéance entre dans la fenêtre d'anticipation.
+  # La file étant triée, seul son début est examiné.
+  flushSpessaOffs = (horizon) ->
     return unless state.synth and state.pendingOffs.length
-    remaining = []
-    for pending in state.pendingOffs
-      if pending.time <= now + SPESSA_DUE_EPSILON
-        try
-          state.synth.noteOff pending.channel, pending.pitch
-        catch
-          null
-      else
-        remaining.push pending
-    state.pendingOffs = remaining
+    while state.pendingOffs.length and state.pendingOffs[0].time <= horizon
+      pending = state.pendingOffs.shift()
+      try
+        state.synth.noteOff pending.channel, pending.pitch, {time: spessaTime(pending.time)}
+      catch
+        null
+    return
 
-  scheduleNote = (note, at, intendedAt = at) ->
-    return true if state.engineMode is 'soundfont' and playSpessa note, at, intendedAt
+  scheduleNote = (note, intendedAt, now) ->
+    if state.engineMode is 'soundfont' and playSpessa note, intendedAt
+      return true
     return if state.sources.length >= MAX_VOICES
-    playOscillator note, at
+    playOscillator note, Math.max(intendedAt, now)
     false
 
   clearTimer = ->
@@ -898,13 +1023,11 @@ createEngine = (initialOptions = {}) ->
     now = ctx.currentTime
     current = now - state.startCtxTime
     return if current < 0
-    # L'oscillateur est planifié d'avance dans Web Audio. Les notes
-    # SpessaSynth sont d'abord retenues par le même ordonnanceur (la file
-    # d'anticipation), puis envoyées au moment où elles sont dues : faute
-    # d'API pour annuler des événements datés, cela garantit que
-    # pause/seek/stop coupent réellement tout.
+    # Tout est daté dans le futur : Web Audio pour l'oscillateur, argument
+    # `time` du processeur pour SpessaSynth. Un tick en retard ne décale donc
+    # pas les notes déjà confiées ; il ne peut que réduire l'avance restante.
     horizon = current + SCHEDULE_WINDOW
-    flushSpessaOffs now
+    flushSpessaOffs now + SCHEDULE_WINDOW
     while state.noteIndex < state.notes.length and (state.notes[state.noteIndex].start ? 0) < horizon
       note = state.notes[state.noteIndex]
       state.noteIndex += 1
@@ -922,11 +1045,7 @@ createEngine = (initialOptions = {}) ->
           track: played.track
           offset: intendedAt - state.startCtxTime
         }
-      if state.engineMode is 'soundfont'
-        state.spessaQueue.push {note: played, intendedAt}
-      else
-        scheduleNote played, Math.max(intendedAt, now), intendedAt
-    dispatchSpessaQueue now
+      scheduleNote played, intendedAt, now
     if state.duration > 0 and current >= state.duration
       finish()
 
@@ -965,6 +1084,7 @@ createEngine = (initialOptions = {}) ->
     state.position = 0
     state.noteIndex = 0
     state.noteLog = null
+    state.expectedEvents = {}
     state.dispatchJitter = []
     # La banque reste chargée d'un mouvement à l'autre : seul un moteur
     # retombé sur l'oscillateur (banque absente ou illisible) est retenté. Un
@@ -986,38 +1106,59 @@ createEngine = (initialOptions = {}) ->
     ensureEngine() if state.ctx
     normalized
 
+  startClock = ->
+    ctx = state.ctx
+    return unless ctx
+    state.startCtxTime = ctx.currentTime - state.position
+    state.noteIndex = noteIndexAt state.notes, state.position
+    state.clockStarted = true
+    startTimer()
+
+  # (Re)démarre la lecture à `from`, une fois le moteur prêt. L'horloge ne
+  # démarre qu'à ce moment-là : tant que state.engineMode est null,
+  # scheduleNote jouerait l'oscillateur de repli. La position reste figée sur
+  # `from` pendant l'attente, et un pause, stop, seek ou play survenu
+  # entre-temps est respecté via `token`.
+  restartAt = (from) ->
+    from = Number from
+    from = 0 unless isFinite from
+    from = clampTime from
+    state.position = from
+    state.noteIndex = noteIndexAt state.notes, from
+    state.playing = true
+    state.clockStarted = false
+    clearTimer()
+    token = ++state.playToken
+    ensureEngine().then ->
+      return unless token is state.playToken and state.playing and state.ctx
+      # `state.position` peut avoir changé (seek) pendant le chargement du
+      # moteur : le départ réel se cale sur la position courante.
+      startClock()
+    api
+
+  # Un changement de hauteur ou d'instrument pendant la lecture coupe tout et
+  # reprend à la position courante : les notes déjà confiées au worklet
+  # (ancienne hauteur ou ancien programme) ne doivent pas s'entendre après le
+  # changement. Hors lecture, aucun événement n'est en attente.
+  restartIfPlaying = ->
+    return false unless state.playing and state.ctx and state.clockStarted
+    from = clampTime api.position()
+    cancelAll()
+    restartAt from
+    true
+
   api.play = (fromSeconds = 0, options = {}) ->
     throw new Error "Aucune donnée de lecture chargée" unless state.loaded
     if options.engine? and options.engine isnt state.options.engine
       state.options.engine = options.engine
       resetEngine()
-    ctx = ensureContext()
+    ensureContext()
     api.resume()
+    # Aucun événement daté ne doit survivre au redémarrage : le worklet est
+    # détruit s'il en reste, le nouvel ordonnanceur ne part qu'une fois le
+    # moteur prêt.
     cancelAll()
-    # Aucun ordonnanceur ne doit survivre au redémarrage : l'ancien est coupé
-    # tout de suite, le nouveau ne part qu'une fois le moteur prêt.
-    clearTimer()
-    token = ++state.playToken
-    from = Number fromSeconds
-    from = 0 unless isFinite from
-    from = clampTime from
-    state.position = from
-    state.playing = true
-    # L'horloge ne démarre qu'une fois le moteur prêt : tant que
-    # state.engineMode est null, scheduleNote jouerait l'oscillateur de repli.
-    # La position reste figée sur `from` pendant l'attente, et un pause, stop,
-    # seek ou play survenu entre-temps est respecté via `token`.
-    state.clockStarted = false
-    state.noteIndex = noteIndexAt state.notes, from
-    ensureEngine().then ->
-      return unless token is state.playToken and state.playing
-      # `state.position` peut avoir changé (seek) pendant le chargement du
-      # moteur : le départ réel se cale sur la position courante.
-      state.startCtxTime = ctx.currentTime - state.position
-      state.noteIndex = noteIndexAt state.notes, state.position
-      state.clockStarted = true
-      startTimer()
-    api
+    restartAt fromSeconds
 
   api.pause = ->
     return api unless state.playing
@@ -1027,6 +1168,9 @@ createEngine = (initialOptions = {}) ->
     state.clockStarted = false
     clearTimer()
     cancelAll()
+    # Recharge le moteur en tâche de fond : la reprise n'aura pas à attendre
+    # la reconstruction du worklet.
+    ensureEngine() if state.loaded and state.ctx
     api
 
   api.stop = ->
@@ -1041,11 +1185,12 @@ createEngine = (initialOptions = {}) ->
 
   api.seek = (seconds) ->
     value = clampTime seconds
-    state.position = value
-    state.noteIndex = noteIndexAt state.notes, value
     if state.playing and state.ctx and state.clockStarted
       cancelAll()
-      state.startCtxTime = state.ctx.currentTime - value
+      restartAt value
+    else
+      state.position = value
+      state.noteIndex = noteIndexAt state.notes, value
     api
 
   api.position = ->
@@ -1070,6 +1215,13 @@ createEngine = (initialOptions = {}) ->
   api.startNoteLog = ->
     state.noteLog = []
     state.dispatchJitter = []
+    state.noteLogStartCtx = state.ctx?.currentTime ? 0
+    # Les échéances antérieures au début du journal ne seront plus mesurées :
+    # on les oublie pour qu'un événement déjà traité (ou perdu) ne décale pas
+    # l'appariement des suivants.
+    for own key, list of state.expectedEvents
+      kept = (time for time in list when time >= state.noteLogStartCtx)
+      if kept.length then state.expectedEvents[key] = kept else delete state.expectedEvents[key]
     api
 
   api.getScheduledNotes = -> (state.noteLog ? []).slice()
@@ -1084,12 +1236,14 @@ createEngine = (initialOptions = {}) ->
       state.masterGain.gain.setTargetAtTime volumeToGain(state.masterVolume), state.ctx.currentTime, 0.01
     api
 
-  # Transposition auditive (demi-tons). Les notes déjà programmées (fenêtre
-  # d'anticipation de 150 ms) et les sons en cours gardent leur hauteur : le
-  # changement s'entend à la note suivante. Aucune donnée chargée n'est
-  # modifiée, aucun re-rendu n'est déclenché.
+  # Transposition auditive (demi-tons). En lecture, les notes déjà confiées au
+  # worklet sont annulées et la lecture reprend à la position courante ; hors
+  # lecture, le réglage s'applique au prochain départ. Aucune donnée chargée
+  # n'est modifiée, aucun re-rendu n'est déclenché.
   api.setTranspose = (semitones) ->
+    return api if semitones is state.transposeSemitones
     state.transposeSemitones = semitones
+    restartIfPlaying()
     api
 
   api.getTranspose = -> state.transposeSemitones
@@ -1129,13 +1283,13 @@ createEngine = (initialOptions = {}) ->
         delete state.voicePrograms[label]
     else
       delete state.voicePrograms[label]
-    refreshChannelPrograms()
+    restartIfPlaying() if refreshChannelPrograms()
 
   # « Piano seulement » : toutes les voix mélodiques passent au programme 0,
   # sans modifier les choix par voix (ils reprennent quand on décoche).
   api.setPianoOnly = (enabled) ->
     state.pianoOnly = !!enabled
-    refreshChannelPrograms()
+    restartIfPlaying() if refreshChannelPrograms()
 
   api.destroy = ->
     api.stop()
@@ -1166,19 +1320,26 @@ createEngine = (initialOptions = {}) ->
     for entry in state.programChanges
       {channel: entry.channel, program: entry.program}
 
-  # Diagnostic / tests : gigue de l'ordonnanceur, mesurée à l'envoi réel des
-  # notes SpessaSynth (déclenchement - début musical). Null sans journal.
+  # Diagnostic / tests : gigue de l'ordonnanceur, mesurée à l'instant où le
+  # processeur AudioWorklet traite réellement chaque noteOn/noteOff
+  # (déclenchement effectif - échéance prévue), avec le détail par type.
+  # Null sans journal.
   api.getTimingStats = ->
     log = state.dispatchJitter ? []
     return null unless log.length
-    diffs = for entry in log
-      Number entry.jitter
-    rms = Math.sqrt diffs.reduce(((sum, d) -> sum + d * d), 0) / diffs.length
+    stats = (entries) ->
+      return null unless entries.length
+      diffs = (Number entry.jitter for entry in entries)
+      {
+        count: diffs.length
+        max: Math.max.apply null, (Math.abs(d) for d in diffs)
+        rms: Math.sqrt diffs.reduce(((sum, d) -> sum + d * d), 0) / diffs.length
+        mean: diffs.reduce(((sum, d) -> sum + d), 0) / diffs.length
+      }
     {
-      count: diffs.length
-      max: Math.max.apply null, (Math.abs(d) for d in diffs)
-      rms
-      mean: diffs.reduce(((sum, d) -> sum + d), 0) / diffs.length
+      ...stats(log)
+      on: stats(entry for entry in log when entry.kind is 'noteOn')
+      off: stats(entry for entry in log when entry.kind is 'noteOff')
     }
 
   # Exposé pour les tests purs et les intégrations avancées
