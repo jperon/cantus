@@ -6,33 +6,173 @@ formatDate = (ts) ->
   locale = window.__musicaI18n?.language() ? "en"
   d.toLocaleDateString locale, { day: "numeric", month: "short", year: "numeric" }
 
+# Nom affiché d'une entrée : soulignés en espaces, « - » isolé en tiret
+# demi-cadratin et extension retirée. Le nom stocké en base n'est jamais
+# modifié.
+displayName = (name) ->
+  text = String(name or "")
+    .replace(IMPORT_EXT_RE, "")
+    .replace(/_/g, " ")
+    .replace(/\s+-\s+/g, " – ")
+    .replace(/\s+/g, " ")
+    .trim()
+  text or String(name or "")
+
+# Suppressions en attente : l'entrée disparaît tout de suite, mais ses données
+# ne sont effacées qu'à l'expiration du délai, pour que « Annuler » puisse la
+# restaurer telle quelle (plusieurs suppressions s'empilent). L'identifiant est
+# aussi noté dans localStorage : si la page se ferme avant l'expiration, la
+# suppression est reprise au chargement suivant.
+DELETE_UNDO_MS = 6000
+DELETE_TOMBSTONE_KEY = "musica-deletes-pending"
+pendingDeletes = new Map()
+
+readTombstones = ->
+  try
+    JSON.parse(localStorage.getItem DELETE_TOMBSTONE_KEY) or []
+  catch
+    []
+
+writeTombstones = (ids) ->
+  try
+    if ids.length then localStorage.setItem DELETE_TOMBSTONE_KEY, JSON.stringify ids
+    else localStorage.removeItem DELETE_TOMBSTONE_KEY
+
+addTombstone = (id) ->
+  ids = readTombstones()
+  ids.push id unless id in ids
+  writeTombstones ids
+
+removeTombstone = (id) ->
+  writeTombstones readTombstones().filter (kept) -> kept isnt id
+
+# Suppressions confirmées par la fermeture de la page : reprises au chargement.
+flushStoredDeletes = ->
+  ids = readTombstones()
+  return Promise.resolve() unless ids.length
+  Promise.all(ids.map (id) ->
+    storage.deleteFile(id).then -> removeTombstone id
+  ).catch -> undefined
+
+isPendingDelete = (id) ->
+  pendingDeletes.has(id) or id in readTombstones()
+
+# Fichiers récents de l'accueil (5 au plus)
+RECENT_LIMIT = 5
+
 renderLibrary = ->
+  renderDeleteToasts()
   list = $("library-list")
   storage.listFiles().then (files) ->
-    if files.length is 0
+    visible = (file for file in files when not isPendingDelete file.id)
+    updateClearAllButton visible.length
+    if visible.length is 0
       list.innerHTML = "<div class=\"library-empty\">#{t 'library.empty'}</div>"
       return
     list.innerHTML = ""
-    for file in files
+    for file in visible
       do (file) ->
         item = document.createElement "div"
         item.className = "library-item"
         count = file.files?.length or 0
         meta = formatDate file.addedAt
         meta += " · #{t 'library.fileCount', {count}}" if count > 1
-        item.innerHTML = """
-          <div class="library-item-info">
-            <div class="library-item-name">#{file.name}</div>
-            <div class="library-item-date">#{meta}</div>
-          </div>
-          <button class="library-item-delete" title="#{t 'library.delete'}">✕</button>
-        """
-        item.querySelector(".library-item-info").addEventListener "click", ->
+        name = displayName file.name
+        info = document.createElement "div"
+        info.className = "library-item-info"
+        nameEl = document.createElement "div"
+        nameEl.className = "library-item-name"
+        nameEl.textContent = name
+        nameEl.title = name
+        dateEl = document.createElement "div"
+        dateEl.className = "library-item-date"
+        dateEl.textContent = meta
+        info.appendChild nameEl
+        info.appendChild dateEl
+        remove = document.createElement "button"
+        remove.type = "button"
+        remove.className = "library-item-delete"
+        remove.textContent = "✕"
+        remove.title = t "library.deleteAria", {name}
+        remove.setAttribute "aria-label", remove.title
+        info.addEventListener "click", ->
           openFromLibrary file.id
-        item.querySelector(".library-item-delete").addEventListener "click", (e) ->
+        remove.addEventListener "click", (e) ->
           e.stopPropagation()
           deleteFromLibrary file.id
+        item.appendChild info
+        item.appendChild remove
         list.appendChild item
+
+# « Tout effacer » n'a de sens que s'il reste au moins une entrée visible.
+updateClearAllButton = (count) ->
+  button = $("library-clear-btn")
+  return unless button
+  if count > 0 then button.classList.remove "hidden" else button.classList.add "hidden"
+
+# Bandeau de suppression différée, reconstruit depuis l'état (donc traduit à
+# nouveau si la langue change). Un bandeau par suppression, empilés.
+renderDeleteToasts = ->
+  container = $("library-toasts")
+  return unless container
+  container.innerHTML = ""
+  pendingDeletes.forEach (entry, id) ->
+    toast = document.createElement "div"
+    toast.className = "library-toast"
+    text = document.createElement "span"
+    text.className = "library-toast-text"
+    text.textContent = t "library.deleted", {name: entry.displayName}
+    undo = document.createElement "button"
+    undo.type = "button"
+    undo.className = "library-toast-undo"
+    undo.textContent = t "library.undo"
+    undo.title = t "library.undoAria", {name: entry.displayName}
+    undo.setAttribute "aria-label", undo.title
+    undo.addEventListener "click", -> undoDelete id
+    toast.appendChild text
+    toast.appendChild undo
+    container.appendChild toast
+
+# Accueil : accroche construite à partir de src/formats.coffee (source unique
+# des formats) et fichiers récents de la bibliothèque.
+renderHomeTexts = ->
+  tagline = $("import-tagline")
+  return unless tagline
+  labels = window.__musicaFormats?.formatLabels or []
+  locale = window.__musicaI18n?.language() ? "en"
+  formats = if labels.length is 0
+    ""
+  else
+    try
+      new Intl.ListFormat(locale, {style: "long", type: "conjunction"}).format labels
+    catch
+      labels.join ", "
+  tagline.textContent = t "import.tagline", {formats}
+
+renderRecentFiles = ->
+  section = $("import-recents")
+  list = $("recent-list")
+  return unless section and list
+  storage.listFiles().then (files) ->
+    recent = (file for file in files when not isPendingDelete file.id).slice 0, RECENT_LIMIT
+    list.innerHTML = ""
+    if recent.length is 0
+      section.classList.add "hidden"
+      return
+    section.classList.remove "hidden"
+    for file in recent
+      do (file) ->
+        name = displayName file.name
+        button = document.createElement "button"
+        button.type = "button"
+        button.className = "recent-item"
+        button.textContent = name
+        button.title = t "library.openAria", {name}
+        button.setAttribute "aria-label", button.title
+        button.addEventListener "click", -> openFromLibrary file.id
+        list.appendChild button
+  .catch ->
+    section.classList.add "hidden"
 
 showLibrary = ->
   # Retour à la bibliothèque : la lecture s'arrête et le contexte audio est
@@ -61,38 +201,117 @@ openFromLibrary = (id) ->
     storage.getPosition(id).then (page) ->
       loadSources sources, page
 
+# Retire la partition affichée sans toucher à la bibliothèque.
+resetLoadedScore = ->
+  currentFileId = null
+  currentSources = null
+  sourceCache.clear()
+  loadToken++  # stop background conversions of the deleted score
+  movementLoadTokens.clear()
+  fileLoaded = false
+  # Rien ne reste à charger : retirer l'indicateur et les compteurs
+  hideLoadingIndicator()
+  hideLoading()
+  pageCount = 0
+  movements = []
+  targetPage = null
+  $("page-current").innerHTML = ""
+  pageNumberEl = $("page-number")
+  pageNumberEl.textContent = "" if pageNumberEl
+  pageIndicatorEl = $("page-indicator")
+  pageIndicatorEl.textContent = "" if pageIndicatorEl
+  showImport()
+
+# Suppression différée : les données restent en base jusqu'à l'expiration (ou
+# à la fermeture de la page), ce qui rend « Annuler » immédiat et fidèle.
 deleteFromLibrary = (id) ->
-  storage.deleteFile(id).then ->
-    if currentFileId is id
-      currentFileId = null
-      currentSources = null
-      sourceCache.clear()
-      loadToken++  # stop background conversions of the deleted score
-      movementLoadTokens.clear()
-      fileLoaded = false
-      # Rien ne reste à charger : retirer l'indicateur et les compteurs
-      hideLoadingIndicator()
-      hideLoading()
-      pageCount = 0
-      movements = []
-      targetPage = null
-      $("page-current").innerHTML = ""
-      pageNumberEl = $("page-number")
-      pageNumberEl.textContent = "" if pageNumberEl
-      pageIndicatorEl = $("page-indicator")
-      pageIndicatorEl.textContent = "" if pageIndicatorEl
-      showImport()
+  return if pendingDeletes.has id
+  # La tombe est posée tout de suite : même si la page se ferme avant la
+  # lecture de l'entrée, la suppression sera reprise au chargement suivant.
+  addTombstone id
+  renderLibrary()
+  renderRecentFiles()
+  storage.getFile(id).then (file) ->
+    unless file
+      removeTombstone id
+      renderLibrary()
+      renderRecentFiles()
+      return
+    resetLoadedScore() if currentFileId is id
+    entry =
+      displayName: displayName file.name
+      timer: setTimeout (-> commitDelete id), DELETE_UNDO_MS
+    pendingDeletes.set id, entry
     renderLibrary()
+    renderRecentFiles()
+
+undoDelete = (id) ->
+  entry = pendingDeletes.get id
+  return unless entry
+  clearTimeout entry.timer
+  pendingDeletes.delete id
+  removeTombstone id
+  renderLibrary()
+  renderRecentFiles()
+
+commitDelete = (id) ->
+  entry = pendingDeletes.get id
+  return unless entry
+  clearTimeout entry.timer
+  pendingDeletes.delete id
+  storage.deleteFile(id).then ->
+    removeTombstone id
+    renderLibrary()
+    renderRecentFiles()
+
+# Fermer la page confirme les suppressions encore en attente.
+flushPendingDeletes = ->
+  pendingDeletes.forEach (entry, id) ->
+    clearTimeout entry.timer
+    storage.deleteFile id
+  pendingDeletes.clear()
+
+window.addEventListener "pagehide", flushPendingDeletes
+
+showClearDialog = ->
+  $("clear-overlay").classList.remove "hidden"
+  $("clear-cancel").focus()
+
+hideClearDialog = ->
+  $("clear-overlay").classList.add "hidden"
+
+clearLibrary = ->
+  hideClearDialog()
+  pendingDeletes.forEach (entry) -> clearTimeout entry.timer
+  pendingDeletes.clear()
+  writeTombstones []
+  storage.clearAll().then ->
+    resetLoadedScore() if fileLoaded or currentFileId?
+    renderLibrary()
+    renderRecentFiles()
+
+setupClearLibrary = ->
+  $("library-clear-btn").addEventListener "click", showClearDialog
+  $("clear-cancel").addEventListener "click", hideClearDialog
+  $("clear-confirm").addEventListener "click", clearLibrary
+  $("clear-overlay").addEventListener "click", (e) ->
+    hideClearDialog() if e.target is $("clear-overlay")
+  document.addEventListener "keydown", (e) ->
+    return unless e.key is "Escape"
+    hideClearDialog() unless $("clear-overlay").classList.contains "hidden"
 
 # Start app after Verovio is ready: show library or import
 startApp = ->
   # A file was already picked while the worker was starting: keep it
   return if currentSources?.length
-  storage.listFiles().then (files) ->
-    if files.length > 0
-      showLibrary()
-    else
-      showImport()
+  flushStoredDeletes().then ->
+    renderHomeTexts()
+    renderRecentFiles()
+    storage.listFiles().then (files) ->
+      if files.length > 0
+        showLibrary()
+      else
+        showImport()
 
 # Navigation by tap
 setupNavigation = ->
@@ -198,6 +417,7 @@ handleFolderImport = (fileList) ->
     .then ->
       storage.saveEntry(name, sources).then (id) ->
         currentFileId = id
+        renderRecentFiles()
         loadSources sources, 1
     .catch (err) ->
       hideLoading()
@@ -218,6 +438,7 @@ handleFileImport = (file) ->
       sources = [{name: file.name, data}]
       storage.saveEntry(name, sources).then (id) ->
         currentFileId = id
+        renderRecentFiles()
         loadSources sources, 1
     .catch (err) ->
       hideLoading()
@@ -255,4 +476,8 @@ setupImport = ->
   folderInput.addEventListener "change", (e) ->
     handleFolderImport e.target.files
     e.target.value = ""
+
+  setupClearLibrary()
+  renderHomeTexts()
+  renderRecentFiles()
 

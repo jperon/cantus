@@ -109,6 +109,65 @@ async function runPage(browser, url, pageName, results) {
       L.record(results, '1. Boutons de navigation cliquables (viewport 500×900)', pageName,
         badHits.length === 0 ? 'OK' : 'ÉCHEC',
         badHits.length ? badHits.map((h) => `${h.action} recouvert par ${h.hit}`).join(', ') : 'tous accessibles');
+
+      // Accueil : le fichier importé figure dans les récents et s'ouvre.
+      await page.reload({ waitUntil: 'domcontentloaded', timeout: 60000 });
+      await L.waitReady(page, 60000);
+      await page.waitForTimeout(400);
+      await L.openLibrary(page);
+      await page.click('#library-close');
+      await page.waitForFunction(() => !document.getElementById('import-section').classList.contains('hidden'), null, { timeout: 10000 });
+      const recent = await page.$$eval('#recent-list .recent-item', (items) => items.map((b) => ({
+        name: b.textContent.trim(), title: b.getAttribute('title'), h: Math.round(b.getBoundingClientRect().height),
+      })));
+      const recentOk = recent.length === 1 && recent[0].name === 'telemann-sonatas-for-two-recorders' &&
+        recent[0].h >= 44 && /^Ouvrir /.test(recent[0].title || '');
+      L.record(results, '1. Accueil : fichier récent de la bibliothèque, cible ≥ 44 px', pageName,
+        recentOk ? 'OK' : 'ÉCHEC', JSON.stringify(recent));
+      await page.click('#recent-list .recent-item');
+      const recentFirst = await L.waitFirstSvg(page, 180000);
+      L.record(results, '1. Accueil : un fichier récent ouvre la partition', pageName,
+        recentFirst.svgCount > 0 ? 'OK' : 'ÉCHEC', `1er SVG en ${recentFirst.ms} ms`);
+
+      // Bibliothèque : « Tout effacer » demande confirmation et vide la base.
+      await L.openLibrary(page);
+      const beforeClear = await page.evaluate(() => ({
+        items: document.querySelectorAll('#library-list .library-item').length,
+        clearVisible: !document.getElementById('library-clear-btn').classList.contains('hidden'),
+      }));
+      await page.click('#library-clear-btn');
+      await page.waitForFunction(() => !document.getElementById('clear-overlay').classList.contains('hidden'), null, { timeout: 10000 });
+      await page.click('#clear-cancel');
+      const afterCancel = await page.evaluate(() => ({
+        overlay: !document.getElementById('clear-overlay').classList.contains('hidden'),
+        items: document.querySelectorAll('#library-list .library-item').length,
+      }));
+      await page.click('#library-clear-btn');
+      await page.waitForFunction(() => !document.getElementById('clear-overlay').classList.contains('hidden'), null, { timeout: 10000 });
+      await page.click('#clear-confirm');
+      await page.waitForFunction(() => document.querySelector('#library-list .library-empty'), null, { timeout: 10000 });
+      const afterClear = await page.evaluate(() => ({
+        empty: !!document.querySelector('#library-list .library-empty'),
+        clearHidden: document.getElementById('library-clear-btn').classList.contains('hidden'),
+        importHidden: document.getElementById('import-section').classList.contains('hidden'),
+      }));
+      const dbCount = await page.evaluate(() => new Promise((resolve) => {
+        const req = indexedDB.open('musica');
+        req.onsuccess = () => {
+          const db = req.result;
+          const all = db.transaction('files', 'readonly').objectStore('files').getAll();
+          all.onsuccess = () => resolve(all.result.length);
+          all.onerror = () => resolve(-1);
+        };
+        req.onerror = () => resolve(-1);
+      }));
+      const clearOk = beforeClear.items === 1 && beforeClear.clearVisible &&
+        !afterCancel.overlay && afterCancel.items === 1 &&
+        afterClear.empty && afterClear.clearHidden && !afterClear.importHidden && dbCount === 0;
+      L.record(results, '1. Bibliothèque : « Tout effacer » avec confirmation vide la base', pageName,
+        clearOk ? 'OK' : 'ÉCHEC',
+        JSON.stringify({ beforeClear, afterCancel, afterClear, dbCount }));
+
       const relevant = L.summarize(errors);
       L.record(results, '6. Erreurs JS', pageName, relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
     } catch (e) {
@@ -153,6 +212,13 @@ async function runPage(browser, url, pageName, results) {
       L.record(results, '1. Import .mscz seul (Byrd) : affichage + navigation', pageName,
         first.svgCount > 0 && nav.rightChanged && nav.tapChanged ? 'OK' : 'ÉCHEC',
         `affiche en ${first.ms} ms, ${info.total} pages, flèches ${nav.initial}→${nav.afterRight}, tap →${nav.afterTap}`);
+      // Nom affiché nettoyé (soulignés, « - » isolé), nom stocké inchangé.
+      await L.openLibrary(page);
+      const byrdNames = (await L.libraryEntries(page)).map((e) => e.name);
+      const cleanedOk = byrdNames.includes('Ave Verum Corpus – William Byrd');
+      L.record(results, '1. Bibliothèque : nom affiché nettoyé', pageName,
+        cleanedOk ? 'OK' : 'ÉCHEC', JSON.stringify(byrdNames));
+      await page.click('#library-close');
       // Aller jusqu'à la page 6 (le fichier en a 8) puis mémoriser
       await L.gotoPage(page, 1);
       await L.resetScrollTop(page);

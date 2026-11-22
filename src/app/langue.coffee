@@ -51,6 +51,8 @@ refreshDynamicTexts = ->
   renderBuildDate()
   renderTransport()
   updateCommandBarSpace()
+  renderHomeTexts?()
+  renderRecentFiles?()
   unless $("settings-overlay")?.classList.contains "hidden"
     renderPartsList()
     renderTempoUi()

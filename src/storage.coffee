@@ -73,6 +73,18 @@ deleteFile = (id) ->
         resolve()
       tx.onerror = -> reject tx.error
 
+# Vide toute la bibliothèque : partitions et positions de lecture.
+clearAll = ->
+  ensureDB().then (d) ->
+    new Promise (resolve, reject) ->
+      tx = d.transaction ["files", "positions"], "readwrite"
+      tx.objectStore("files").clear()
+      tx.objectStore("positions").clear()
+      tx.oncomplete = ->
+        console.log "IndexedDB suppression: bibliothèque entière"
+        resolve()
+      tx.onerror = -> reject tx.error
+
 # Positions store
 savePosition = (fileId, page) ->
   ensureDB().then (d) ->
@@ -101,6 +113,7 @@ window.__musicaStorage = {
   listFiles
   getFile
   deleteFile
+  clearAll
   savePosition
   getPosition
 }

@@ -230,20 +230,55 @@ async function runPage(browser, url, pageName, results) {
       const inProgress = infoAtFirst.loadingHidden === false;
       await L.openLibrary(page);
       const entries = await L.libraryEntries(page);
+      const firstEntryName = entries[0]?.name;
       await page.click('#library-list .library-item:nth-child(1) .library-item-delete');
-      await page.waitForTimeout(1500);
+      await page.waitForTimeout(500);
       const afterDelete = await L.pageInfo(page);
+      const pending = await dbFiles(page);
+      const toast = await page.evaluate(() => {
+        const t = document.querySelector('.library-toast');
+        return t ? {
+          text: t.querySelector('.library-toast-text')?.textContent || '',
+          undo: t.querySelector('.library-toast-undo')?.textContent || '',
+          undoHeight: Math.round(t.querySelector('.library-toast-undo')?.getBoundingClientRect().height || 0),
+        } : null;
+      });
+      const listAfterDelete = await page.$$eval('#library-list .library-empty, #library-list .library-item',
+        (els) => els.map((e) => e.textContent.trim().slice(0, 40)));
+      const deferredOk = entries.length === 1 && afterDelete.svgCount === 0 && afterDelete.importHidden === false &&
+        pending.length === 1 && (toast?.text || '').includes(`${firstEntryName} supprimé`) &&
+        toast?.undo === 'Annuler' && toast.undoHeight >= 44 &&
+        listAfterDelete.some((t) => /Aucun fichier/.test(t));
+      L.record(results, '2. Suppression différée : entrée masquée, données gardées, bandeau « Annuler »', pageName,
+        inProgress && deferredOk ? 'OK' : 'ÉCHEC',
+        `chargement en cours : ${inProgress} ; 1er SVG ${first.ms} ms (${infoAtFirst.total} pages annoncées), ` +
+        `SVG=${afterDelete.svgCount}, fichiers en base=${pending.length}, bandeau=${JSON.stringify(toast)}, liste=${JSON.stringify(listAfterDelete)}`);
+
+      // « Annuler » restaure l'entrée et ses données.
+      await page.click('.library-toast-undo');
+      await page.waitForTimeout(700);
+      const restoredEntries = await L.libraryEntries(page);
+      const restoredFiles = await dbFiles(page);
+      const toastGone = await page.$$eval('.library-toast', (els) => els.length);
+      const undoOk = restoredEntries.length === 1 && restoredFiles.length === 1 && toastGone === 0;
+      L.record(results, '2. Annuler restaure l\'entrée et ses données', pageName,
+        undoOk ? 'OK' : 'ÉCHEC',
+        `entrées=${JSON.stringify(restoredEntries)}, fichiers en base=${restoredFiles.length}, bandeaux=${toastGone}`);
+
+      // Nouvelle suppression, confirmée à l'expiration du délai.
+      await page.click('#library-list .library-item:nth-child(1) .library-item-delete');
       await page.waitForTimeout(7000);
       const later = await L.pageInfo(page);
       const files = await dbFiles(page);
       const list = await page.$$eval('#library-list .library-empty, #library-list .library-item',
         (els) => els.map((e) => e.textContent.trim().slice(0, 40)));
-      const dataOk = afterDelete.svgCount === 0 && files.length === 0 && list.some((t) => /Aucun fichier/.test(t)) &&
-        afterDelete.importHidden === false;
-      L.record(results, '2. Suppression de l\'entrée pendant le chargement de fond : données et écran', pageName,
-        inProgress && dataOk ? 'OK' : 'ÉCHEC',
-        `chargement en cours au moment de la suppression : ${inProgress} ; 1er SVG ${first.ms} ms (${infoAtFirst.total} pages annoncées), ` +
-        `après suppression SVG=${afterDelete.svgCount}, fichiers en base=${files.length}, liste=${JSON.stringify(list)}`);
+      const toastAfter = await page.$$eval('.library-toast', (els) => els.length);
+      const clearHidden = await page.evaluate(() => document.getElementById('library-clear-btn').classList.contains('hidden'));
+      const expiredOk = files.length === 0 && list.some((t) => /Aucun fichier/.test(t)) &&
+        toastAfter === 0 && later.importHidden === false && clearHidden;
+      L.record(results, '2. Suppression confirmée à l\'expiration (6 s)', pageName,
+        expiredOk ? 'OK' : 'ÉCHEC',
+        `fichiers en base=${files.length}, bandeaux=${toastAfter}, liste=${JSON.stringify(list)}, « Tout effacer » ${clearHidden ? 'masqué' : 'VISIBLE'}`);
       const spinnerGone = later.loadingHidden === true;
       L.record(results, '2. Suppression pendant le chargement : indicateur de chargement rangé', pageName,
         spinnerGone ? 'OK' : 'ÉCHEC',

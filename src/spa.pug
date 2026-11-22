@@ -20,12 +20,16 @@ html(lang="en")
       #tap-left
       #tap-right
       #import-section
-        h1(data-i18n="import.title") MusicXML Reader
-        p(data-i18n="import.subtitle") Open a MusicXML file to get started
-        button#import-btn(data-i18n="import.openFile") Open a file
-        input#file-input(type="file" multiple accept=importAccept)
-        button#folder-btn(data-i18n="import.openFolder") Open a folder
-        input#folder-input(type="file" webkitdirectory accept=importAccept)
+        .import-content
+          h1(data-i18n="import.title") Cantus
+          p#import-tagline.import-tagline Open scores in MusicXML, MuseScore, LilyPond, ABC and MIDI.
+          button#import-btn(data-i18n="import.openFile") Open a file
+          input#file-input(type="file" multiple accept=importAccept)
+          button#folder-btn(data-i18n="import.openFolder") Open a folder
+          input#folder-input(type="file" webkitdirectory accept=importAccept)
+          #import-recents.hidden
+            h2#import-recents-title(data-i18n="import.recent") Recent
+            #recent-list
     #overlay-loading
       .spinner
       p(data-i18n="loading") Loading…
@@ -161,11 +165,20 @@ html(lang="en")
         h2(data-i18n="library.title") Library
         button#library-close(data-i18n-aria-label="library.close" aria-label="Close library") ✕
       #library-list
+      #library-toasts
       #library-actions
+        button#library-clear-btn.hidden(type="button" data-i18n="library.clearAll") Clear all
         button#library-import-btn(data-i18n="library.addFile") Add a file
         input#library-file-input(type="file" multiple accept=importAccept)
         button#library-folder-btn(data-i18n="library.addFolder") Add a folder
         input#library-folder-input(type="file" webkitdirectory accept=importAccept)
+    #clear-overlay.hidden
+      #clear-dialog(role="dialog" aria-modal="true" aria-labelledby="clear-title")
+        h2#clear-title(data-i18n="library.clearTitle") Clear everything?
+        p(data-i18n="library.clearMessage") All saved scores and their reading positions will be deleted. This cannot be undone.
+        #clear-actions
+          button#clear-cancel(type="button" data-i18n="library.cancel") Cancel
+          button#clear-confirm(type="button" data-i18n="library.clearConfirm") Delete everything
     #export-overlay.hidden
       #export-dialog(role="dialog" aria-modal="true" aria-labelledby="export-title")
         #export-header

@@ -13,6 +13,7 @@ hideError = ->
   $("overlay-error").classList.remove "visible"
 
 showImport = ->
+  renderRecentFiles?()
   $("import-section").classList.remove "hidden"
   $("btn-library").classList.add "hidden"
   $("btn-menu").classList.add "hidden"
@@ -365,9 +366,13 @@ purgeCacheFarPages = (page) ->
 savePositionDebounced = ->
   return unless currentFileId
   clearTimeout positionTimer if positionTimer
+  # La partition peut être fermée ou supprimée avant l'échéance : la position
+  # n'est enregistrée que si l'entrée est toujours celle qui est affichée.
+  fileId = currentFileId
   positionTimer = setTimeout ->
+    return unless currentFileId is fileId
     page = displayedPage()
-    storage.savePosition currentFileId, page
+    storage.savePosition fileId, page
   , 1000
 
 maxScrollPos = -> (pageCount * 2) - 2

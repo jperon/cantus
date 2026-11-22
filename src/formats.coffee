@@ -23,17 +23,17 @@ FORMATS = [
   # MusicXML (lu directement ; .mxl est décompressé par mxl.coffee). `.xml` est
   # trop générique pour être réclamé par le partage Android : il reste accepté
   # à l'ouverture par le système, d'où `share: false`.
-  {extensions: ['xml'], scoretk: false, share: false}
-  {extensions: ['musicxml'], scoretk: false}
-  {extensions: ['mxl'], scoretk: false}
+  {label: 'MusicXML', extensions: ['xml'], scoretk: false, share: false}
+  {label: 'MusicXML', extensions: ['musicxml'], scoretk: false}
+  {label: 'MusicXML', extensions: ['mxl'], scoretk: false}
   # MuseScore (.mscz = archive, .mscx = XML)
-  {extensions: ['mscz', 'mscx'], scoretk: true, from: {mscz: 'mscz', mscx: 'mscx'}}
+  {label: 'MuseScore', extensions: ['mscz', 'mscx'], scoretk: true, from: {mscz: 'mscz', mscx: 'mscx'}}
   # LilyPond
-  {extensions: ['ly', 'lilypond'], scoretk: true, from: {ly: 'ly', lilypond: 'lilypond'}}
+  {label: 'LilyPond', extensions: ['ly', 'lilypond'], scoretk: true, from: {ly: 'ly', lilypond: 'lilypond'}}
   # ABC
-  {extensions: ['abc'], scoretk: true, from: {abc: 'abc'}}
+  {label: 'ABC', extensions: ['abc'], scoretk: true, from: {abc: 'abc'}}
   # MIDI : transcriptions, sans notation d'origine ; scoretk attend `midi`
-  {extensions: ['mid', 'midi'], scoretk: true, from: {mid: 'midi', midi: 'midi'}}
+  {label: 'MIDI', extensions: ['mid', 'midi'], scoretk: true, from: {mid: 'midi', midi: 'midi'}}
 ]
 
 # Types MIME des formats. `extensions` : ce qu'un fichier de ce type peut être
@@ -67,6 +67,12 @@ for format in FORMATS
 
 extensions = baseExtensions.concat scoretkExtensions
 
+# Libellés des formats, sans doublon, dans l'ordre d'import : une seule liste
+# pour l'accroche de l'accueil (aucun nom de format écrit ailleurs).
+formatLabels = []
+for format in FORMATS
+  formatLabels.push format.label unless format.label in formatLabels
+
 # `from` toujours explicite : `detect` classerait un .mscx (XML sans
 # <museScore) en musicxml, et un .ly ou .abc pourrait être mal classé selon son
 # contenu.
@@ -94,6 +100,7 @@ api = {
   baseExtensions
   scoretkExtensions
   extensions
+  formatLabels
   scoretkFrom
   mimeExtensions
   fileHandlerAccept

@@ -892,18 +892,19 @@ async function runLanguage(browser, url, pageName, results) {
       lang: document.documentElement.lang,
       title: document.title,
       heading: document.querySelector('#import-section h1')?.textContent,
-      subtitle: document.querySelector('#import-section p')?.textContent,
+      tagline: document.querySelector('#import-tagline')?.textContent,
       menuSettings: document.getElementById('menu-settings')?.textContent?.trim(),
       description: document.querySelector('meta[name="description"]')?.content || '',
       navigatorLanguage: navigator.language,
       stored: localStorage.getItem('musica-language'),
     }));
     L.record(results, '3. Langue : anglais par défaut sans préférence (navigateur anglais)', pageName,
-      en.lang === 'en' && en.title === 'MusicXML Reader' && en.heading === 'MusicXML Reader' &&
-        en.subtitle === 'Open a MusicXML file to get started' && en.menuSettings === 'Settings' &&
+      en.lang === 'en' && en.title === 'MusicXML Reader' && en.heading === 'Cantus' &&
+        /MusicXML, MuseScore, LilyPond, ABC,? and MIDI/.test(en.tagline || '') &&
+        en.menuSettings === 'Settings' &&
         en.stored === null && /offline MusicXML reader/.test(en.description) ? 'OK' : 'ÉCHEC',
       `navigator ${en.navigatorLanguage}, <html lang> « ${en.lang} », titre « ${en.title} », ` +
-      `sous-titre « ${en.subtitle} », réglages « ${en.menuSettings} », préférence ${en.stored}`);
+      `accroche « ${en.tagline} », réglages « ${en.menuSettings} », préférence ${en.stored}`);
 
     // Un fichier est nécessaire pour que le bouton Réglages soit visible.
     await L.importFile(page, L.FILES.telemannXml);
@@ -929,7 +930,7 @@ async function runLanguage(browser, url, pageName, results) {
       lang: document.documentElement.lang,
       title: document.title,
       heading: document.querySelector('#import-section h1')?.textContent,
-      subtitle: document.querySelector('#import-section p')?.textContent,
+      tagline: document.querySelector('#import-tagline')?.textContent,
       settingsTitle: document.querySelector('#settings-header h2')?.textContent,
       buildDate: document.getElementById('build-date')?.textContent || '',
       playAria: document.getElementById('transport-play')?.getAttribute('aria-label'),
@@ -938,10 +939,10 @@ async function runLanguage(browser, url, pageName, results) {
     }));
     L.record(results, '3. Langue : passage au français à chaud (statique, dynamique, <html lang>)', pageName,
       fr.lang === 'fr' && fr.title === 'Liseuse MusicXML' &&
-        fr.heading === 'Liseuse MusicXML' && fr.subtitle === 'Ouvrir un fichier MusicXML pour commencer' &&
+        fr.heading === 'Cantus' && fr.tagline === 'Ouvrez des partitions MusicXML, MuseScore, LilyPond, ABC et MIDI.' &&
         fr.settingsTitle === 'Réglages' && /^Version du /.test(fr.buildDate) &&
         fr.playAria === 'Lecture' && fr.language === 'fr' && fr.stored === 'fr' ? 'OK' : 'ÉCHEC',
-      `<html lang> « ${fr.lang} », titre « ${fr.title} », réglages « ${fr.settingsTitle} », ` +
+      `<html lang> « ${fr.lang} », titre « ${fr.title} », accroche « ${fr.tagline} », réglages « ${fr.settingsTitle} », ` +
       `date « ${fr.buildDate} », lecture « ${fr.playAria} », préférence « ${fr.stored} »`);
 
     await L.closeSettings(page);
@@ -958,7 +959,7 @@ async function runLanguage(browser, url, pageName, results) {
       importTitle: document.querySelector('#import-section h1')?.textContent,
     }));
     L.record(results, '3. Langue : message d’erreur dynamique en français', pageName,
-      /^Aucun fichier compatible/.test(frError.message) && frError.importTitle === 'Liseuse MusicXML' ? 'OK' : 'ÉCHEC',
+      /^Aucun fichier compatible/.test(frError.message) && frError.importTitle === 'Cantus' ? 'OK' : 'ÉCHEC',
       `message « ${frError.message} », titre d’import « ${frError.importTitle} »`);
 
     await page.reload({ waitUntil: 'domcontentloaded', timeout: 60000 });
@@ -971,7 +972,7 @@ async function runLanguage(browser, url, pageName, results) {
       language: document.getElementById('language-select')?.value,
     }));
     L.record(results, '3. Langue : préférence française conservée au rechargement', pageName,
-      reloaded.lang === 'fr' && reloaded.heading === 'Liseuse MusicXML' &&
+      reloaded.lang === 'fr' && reloaded.heading === 'Cantus' &&
         reloaded.stored === 'fr' && reloaded.language === 'fr' ? 'OK' : 'ÉCHEC',
       `<html lang> « ${reloaded.lang} », titre « ${reloaded.heading} », ` +
       `préférence « ${reloaded.stored} », sélecteur « ${reloaded.language} »`);
