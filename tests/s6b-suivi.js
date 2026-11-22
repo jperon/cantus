@@ -3,6 +3,7 @@
 // demi-pages, puis cale au premier marqueur de la page après un changement de
 // page. index.html et spa.html.
 const C = require('./s6-common');
+const fs = require('fs');
 const L = C.L;
 const {
   WAIT, bounded, waitReady, waitFirstSvg, waitBackgroundLoaded, reloadPage,
@@ -23,6 +24,24 @@ async function runPage(browser, url, pageName, results) {
       await waitFirstSvg(page);
       await waitBackgroundLoaded(page);
       await page.waitForTimeout(800);
+      // « Suivre le défilement » actif par défaut : à l'arrêt, la barre de
+      // position reste visible et la touche au centre ne la masque pas.
+      const barAtStop = await page.evaluate(() => ({
+        follow: JSON.parse(localStorage.getItem('musica-settings') || '{}').followPlayback !== false,
+        bar: !document.getElementById('command-bar').classList.contains('hidden'),
+        transport: !document.getElementById('transport').classList.contains('hidden'),
+      }));
+      await L.tap(page, 'center');
+      await page.waitForTimeout(250);
+      const barAfterTap = await page.evaluate(() => ({
+        bar: !document.getElementById('command-bar').classList.contains('hidden'),
+        transport: !document.getElementById('transport').classList.contains('hidden'),
+      }));
+      L.record(results, '6. Suivre le défilement : barre de position visible à l’arrêt, touche centrale sans effet', pageName,
+        barAtStop.follow && barAtStop.bar && barAtStop.transport && barAfterTap.bar && barAfterTap.transport
+          ? 'OK' : 'ÉCHEC',
+        `suivi ${barAtStop.follow}, barre ${barAtStop.bar} → ${barAfterTap.bar}, ` +
+        `transport ${barAtStop.transport} → ${barAfterTap.transport}`);
       const first = await L.pageInfo(page);
       await page.click('#transport-play');
       await waitState(page, 'playing');
@@ -122,6 +141,55 @@ async function runPage(browser, url, pageName, results) {
         `${changes.length - 1} changements (${perMinute(changes.length - 1)}/min) dont ${pageChanges} changements de page ` +
         `et ${halfTransitions} demi-pages (${perMinute(halfTransitions)}/min) ; ancien suivi page entière : ${perMinute(pageChanges)}/min`);
       await stopPlayback(page);
+
+      // Glissé du curseur à l'arrêt : la vue suit pendant le geste (même
+      // fonction de suivi que la lecture), la position de lecture ne bouge
+      // qu'au relâchement.
+      await L.gotoPage(page, 1);
+      await page.waitForTimeout(500);
+      const dragStart = {
+        page: await displayedPageNumber(page),
+        pos: await horizontalScrollPos(page),
+        state: await state(page),
+      };
+      const dragDuration = dragStart.state.duration;
+      await page.$eval('#transport-seek', (el, ratio) => {
+        el.value = String(Math.round(ratio * 1000));
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+      }, 0.5);
+      let dragMoved = false;
+      try {
+        await bounded('défilement pendant le glissé du curseur', WAIT.seekToPage,
+          page.waitForFunction((prev) => {
+            const m = (document.getElementById('page-number')?.textContent || '').match(/(\d+)\s*\//);
+            return m && parseInt(m[1], 10) !== prev;
+          }, dragStart.page, { timeout: WAIT.seekToPage, polling: 50 }));
+        dragMoved = true;
+      } catch {
+        // laissé à false : la vue n'a pas suivi le geste
+      }
+      const dragDuring = {
+        page: await displayedPageNumber(page),
+        pos: await horizontalScrollPos(page),
+        state: await state(page),
+      };
+      // Relâchement : comportement de seek existant, la position passe au
+      // temps visé.
+      await page.$eval('#transport-seek', (el) =>
+        el.dispatchEvent(new Event('change', { bubbles: true })));
+      await page.waitForTimeout(300);
+      const dragAfter = await state(page);
+      const dragExpected = 0.5 * dragDuration;
+      const dragPreviewOk = dragMoved && dragDuring.pos != null && dragDuring.pos > dragStart.pos &&
+        dragDuring.state.position === dragStart.state.position;
+      const dragReleaseOk = dragDuration > 0 && Math.abs(dragAfter.position - dragExpected) <= 400;
+      L.record(results, '6. Glissé du curseur à l’arrêt : vue déplacée pendant le geste, lecture au relâchement', pageName,
+        dragPreviewOk && dragReleaseOk ? 'OK' : 'ÉCHEC',
+        `vue ${dragStart.page}@${dragStart.pos} → ${dragDuring.page}@${dragDuring.pos} (déplacée ${dragMoved}), ` +
+        `position pendant ${dragDuring.state.position} ms (départ ${dragStart.state.position} ms), ` +
+        `relâchement ${dragAfter.position} ms (cible ${Math.round(dragExpected)} ms)`);
+      await stopPlayback(page);
+      await waitState(page, 'stopped');
     } catch (e) {
       L.record(results, '6. Suivi horizontal', pageName, 'ÉCHEC', 'exception du test : ' + e.message);
     }
@@ -274,6 +342,19 @@ async function runPage(browser, url, pageName, results) {
         el.dispatchEvent(new Event('change', { bubbles: true }));
       });
       await L.closeSettings(page);
+      // Réglage désactivé : la touche au centre retrouve son comportement
+      // d'origine (masquer / réafficher).
+      await L.tap(page, 'center');
+      await page.waitForTimeout(250);
+      const barHiddenFollowOff = await page.evaluate(
+        () => document.getElementById('command-bar').classList.contains('hidden'));
+      await L.tap(page, 'center');
+      await page.waitForTimeout(250);
+      const barShownFollowOff = await page.evaluate(
+        () => !document.getElementById('command-bar').classList.contains('hidden'));
+      L.record(results, '6. followPlayback=false : la touche centrale masque puis réaffiche la barre', pageName,
+        barHiddenFollowOff && barShownFollowOff ? 'OK' : 'ÉCHEC',
+        `masquée ${barHiddenFollowOff}, réaffichée ${barShownFollowOff}`);
       const followOffStartPage = await displayedPageNumber(page);
       const targetFollowOffPage = followOffStartPage + 1;
       const targetFollowOff = firstOfPage[targetFollowOffPage];
@@ -398,6 +479,101 @@ async function runPage(browser, url, pageName, results) {
     L.record(results, '6. Erreurs JS (voix groupée masquée)', pageName,
       relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
     await ctxGroups.close();
+  }
+
+  // Téléphone 390×844 : la barre de position reste visible à l'arrêt avec le
+  // suivi actif, et le glissé du curseur déplace la vue pendant le geste
+  // (mise en page verticale ou horizontale selon la décision de « Auto »).
+  {
+    const PHONE = { width: 390, height: 844 };
+    const shot = (suffix) => `/tmp/cantus-suivi/telephone-${pageName.replace('.html', '')}-${suffix}.png`;
+    try { fs.mkdirSync('/tmp/cantus-suivi', { recursive: true }); } catch { /* capture facultative */ }
+    const { page, ctx: ctxPhone, errors: errorsPhone } =
+      await L.newPage(browser, url, { pageName, viewport: PHONE });
+    try {
+      await waitReady(page);
+      await L.importFile(page, L.FILES.telemannXml);
+      await waitFirstSvg(page);
+      await waitBackgroundLoaded(page);
+      await page.waitForTimeout(800);
+      const mode = await page.evaluate(() =>
+        document.querySelector('#page-current .scroll-wrapper')?.classList.contains('vertical')
+          ? 'vertical' : 'horizontal');
+      const bar = await page.evaluate(() => {
+        const rect = document.getElementById('command-bar').getBoundingClientRect();
+        return {
+          follow: JSON.parse(localStorage.getItem('musica-settings') || '{}').followPlayback !== false,
+          bar: !document.getElementById('command-bar').classList.contains('hidden'),
+          transport: !document.getElementById('transport').classList.contains('hidden'),
+          fits: rect.left >= -0.5 && rect.right <= window.innerWidth + 0.5 &&
+            rect.bottom >= window.innerHeight - 1,
+        };
+      });
+      // Touche au centre de l'écran téléphone : la barre reste visible.
+      await page.mouse.click(PHONE.width / 2, PHONE.height / 2);
+      await page.waitForTimeout(250);
+      const barAfterTap = await page.evaluate(
+        () => !document.getElementById('command-bar').classList.contains('hidden'));
+
+      // Les marqueurs de suivi n'arrivent qu'avec les données de lecture.
+      await page.click('#transport-play');
+      await waitState(page, 'playing');
+      await stopPlayback(page);
+      await waitState(page, 'stopped');
+      await L.gotoPage(page, 1);
+      await page.waitForTimeout(500);
+      try { await page.screenshot({ path: shot('arret') }); } catch { /* capture facultative */ }
+      const readView = () => page.evaluate(() => {
+        const m = (document.getElementById('page-number')?.textContent || '').match(/(\d+)\s*\//);
+        return {
+          page: m ? parseInt(m[1], 10) : null,
+          top: document.getElementById('page-current')?.scrollTop ?? 0,
+          state: window.__musicaPlaybackState(),
+        };
+      });
+      const before = await readView();
+      await page.$eval('#transport-seek', (el) => {
+        el.value = '600';
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+      let dragMoved = false;
+      try {
+        await bounded('défilement téléphone pendant le glissé du curseur', WAIT.seekToPage,
+          page.waitForFunction((prev) => {
+            const slot = document.getElementById('page-current');
+            const m = (document.getElementById('page-number')?.textContent || '').match(/(\d+)\s*\//);
+            const page = m ? parseInt(m[1], 10) : null;
+            return (slot && slot.scrollTop > prev.top + 10) || (page != null && page !== prev.page);
+          }, before, { timeout: WAIT.seekToPage, polling: 50 }));
+        dragMoved = true;
+      } catch {
+        // laissé à false : la vue n'a pas suivi le geste
+      }
+      const during = await readView();
+      try { await page.screenshot({ path: shot('glisse') }); } catch { /* capture facultative */ }
+      await page.$eval('#transport-seek', (el) =>
+        el.dispatchEvent(new Event('change', { bubbles: true })));
+      await page.waitForTimeout(300);
+      const after = await state(page);
+      const expected = 0.6 * before.state.duration;
+      const previewOk = dragMoved && during.state.position === before.state.position;
+      const releaseOk = before.state.duration > 0 && Math.abs(after.position - expected) <= 400;
+      L.record(results, `6. Téléphone 390×844 (${mode}) : barre persistante, glissé qui déplace la vue`, pageName,
+        bar.follow && bar.bar && bar.transport && bar.fits && barAfterTap && previewOk && releaseOk
+          ? 'OK' : 'ÉCHEC',
+        `suivi ${bar.follow}, barre ${bar.bar} → ${barAfterTap} (dans l’écran ${bar.fits}), ` +
+        `transport ${bar.transport}, vue ${before.page}@${before.top} → ${during.page}@${during.top} ` +
+        `(déplacée ${dragMoved}), position pendant ${during.state.position} ms ` +
+        `(départ ${before.state.position} ms), relâchement ${after.position} ms ` +
+        `(cible ${Math.round(expected)} ms)`);
+      await stopPlayback(page);
+    } catch (e) {
+      L.record(results, '6. Téléphone 390×844', pageName, 'ÉCHEC', 'exception du test : ' + e.message);
+    }
+    const relevant = L.summarize(errorsPhone);
+    L.record(results, '6. Erreurs JS (téléphone 390×844)', pageName,
+      relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
+    await ctxPhone.close();
   }
 
 }

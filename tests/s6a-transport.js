@@ -60,6 +60,29 @@ async function runPage(browser, url, pageName, results) {
       reader: Math.round(document.getElementById('reader').getBoundingClientRect().height),
       viewport: innerHeight,
     }));
+    // Suivi du défilement actif (défaut) : la barre de position reste visible
+    // en permanence, la touche au centre ne la masque plus.
+    await page.mouse.click(250, 300);
+    await page.waitForTimeout(250);
+    const afterCenterFollowOn = await page.evaluate(() => ({
+      visible: !document.getElementById('command-bar').classList.contains('hidden'),
+      reader: Math.round(document.getElementById('reader').getBoundingClientRect().height),
+      follow: JSON.parse(localStorage.getItem('musica-settings') || '{}').followPlayback !== false,
+    }));
+    L.record(results, '6. Suivre le défilement : la touche au centre ne masque pas la barre', pageName,
+      afterCenterFollowOn.follow && afterCenterFollowOn.visible &&
+        afterCenterFollowOn.reader === heights.reader ? 'OK' : 'ÉCHEC',
+      `suivi ${afterCenterFollowOn.follow}, barre ${afterCenterFollowOn.visible ? 'visible' : 'masquée'}, ` +
+      `lecteur ${heights.reader}→${afterCenterFollowOn.reader} px`);
+
+    // Réglage désactivé : comportement d'origine (masquer/afficher, le contenu
+    // récupère la hauteur).
+    await L.openSettings(page);
+    await page.$eval('#follow-playback', (el) => {
+      el.checked = false;
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await L.closeSettings(page);
     await page.mouse.click(250, 300);
     await page.waitForTimeout(250);
     const afterHide = await page.evaluate(() => ({
@@ -72,11 +95,18 @@ async function runPage(browser, url, pageName, results) {
       visible: !document.getElementById('command-bar').classList.contains('hidden'),
       reader: Math.round(document.getElementById('reader').getBoundingClientRect().height),
     }));
-    L.record(results, '6. Touche au centre : barre masquée, contenu agrandi, puis barre revenue', pageName,
+    L.record(results, '6. Touche au centre (suivi désactivé) : barre masquée, contenu agrandi, puis barre revenue', pageName,
       !afterHide.visible && afterShow.visible && afterHide.reader === heights.viewport &&
         afterShow.reader === heights.reader && heights.reader < heights.viewport ? 'OK' : 'ÉCHEC',
       `lecteur ${heights.reader}→${afterHide.reader}→${afterShow.reader} px (écran ${heights.viewport}), ` +
       `barre ${visibleAfter ? 'visible' : 'masquée'}→${afterHide.visible ? 'visible' : 'masquée'}→${afterShow.visible ? 'visible' : 'masquée'}`);
+    // Réactiver le suivi pour la suite du scénario.
+    await L.openSettings(page);
+    await page.$eval('#follow-playback', (el) => {
+      el.checked = true;
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await L.closeSettings(page);
 
     // Sélecteur de page : l'indicateur « 1/12 » ouvre champ + curseur.
     await page.click('#page-number');
