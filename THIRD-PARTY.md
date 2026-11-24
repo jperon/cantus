@@ -113,6 +113,22 @@ Limited and others, distribué sous GNU GPL v3 seulement (GPL-3.0-only). Il
 n'est chargé que lors de l'import d'un fichier `.mscz`, `.mscx`, `.ly`,
 `.lilypond`, `.abc`, `.mid` ou `.midi`.
 
+## De âlde Friezen (fixture d'import de dossier LilyPond)
+
+- Licence : CC0 1.0 Universal (texte complet dans
+  `tests/fixtures/alde-friezen/LICENSE`)
+- Source : <https://github.com/MacLotsen/alde-friezen>, commit
+  `bba32e7492d2bfe581b15b5d82179db132937702` (preuve : `LICENSE:1` et
+  `README.md:68-71` du dépôt amont)
+- Fichiers : `tests/fixtures/alde-friezen/{partituer.ly,fideo.ly,noaten.ily}`
+- Texte : Eeltsje Halbertsma / Jacobus van Loon (1876) ; mélodie : Heinrich
+  Christian Schnoor ; mise en page : Erik Nijenhuis, 2026.
+
+Ces trois fichiers (deux `.ly` qui partagent le même `noaten.ily`) servent de
+fixture au scénario `tests/s13-ly-includes.js` : ils vérifient qu'un dossier
+LilyPond à fichiers interdépendants donne deux pièces jouables. Aucun
+ Makefile amont n'est exécuté.
+
 ---
 
 La combinaison distribuée est soumise à la GNU GPL v3. Les sources de Cantus

@@ -22,6 +22,8 @@ const FILES = {
   // Fixture synthétique : deux parties, chacune dans un part-group.
   suiviGroupesXml: path.join(__dirname, 'fixtures', 'suivi-groupes.xml'),
   magnificatDir: path.join(DATA, 'magnificat'),
+  // Lot CC0 de trois fichiers LilyPond liés (deux .ly partagent noaten.ily).
+  lyIncludesDir: path.join(__dirname, 'fixtures', 'alde-friezen'),
   // Fichier réel du 1er mouvement du Magnificat de Bach (bug de boucle de
   // lecture signalé sur la version publiée 821b248).
   magnificatBachMscz: path.join(DATA, 'magnificat-bach/01- Magnificat.mscz'),

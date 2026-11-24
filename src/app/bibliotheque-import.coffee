@@ -350,11 +350,15 @@ setupNavigation = ->
 
 # Ask the worker to convert a scoretk file (MuseScore, LilyPond, ABC, MIDI) to
 # MusicXML. `name` permet au worker de déduire `from` de l'extension.
-convertScoretkToXml = (buffer, name) ->
+# `includes` (table chemin relatif -> octets) est transmise telle quelle au
+# résolveur d'\include de scoretk pour les sources LilyPond d'un dossier.
+convertScoretkToXml = (buffer, name, includes) ->
   new Promise (resolve, reject) ->
     id = ++scoretkRequestId
     pendingScoretk.set id, {resolve, reject}
-    worker.postMessage { type: "convertScoretk", id, bytes: buffer, name }, [buffer]
+    message = { type: "convertScoretk", id, bytes: buffer, name }
+    message.includes = includes if includes?
+    worker.postMessage message, [buffer]
 
 # Extensions importables : dérivées de src/formats.coffee, source unique
 # partagée avec build.js (attribut `accept`) et le service worker.
@@ -368,6 +372,29 @@ IMPORT_EXTENSIONS_TEXT = (".#{ext}" for ext in IMPORT_EXTENSIONS).join ', '
 
 # Extensions gardées dans un dossier (les autres, p. ex. .pdf, sont ignorées)
 isCompatibleFile = (name) -> IMPORT_EXT_RE.test name
+
+# Auxiliaires typiques d'un dossier LilyPond : .ily, .lyi. Les autres
+# extensions sont gardées si un \include les cite (voir includeTargets).
+isLilypondAuxiliary = (name) -> /\.(ily|lyi)$/i.test name
+
+# Chemin relatif à la racine du dossier importé (sans son premier segment,
+# fourni par webkitRelativePath). En sélection multiple, le nom du fichier
+# suffit.
+relativePath = (file) ->
+  raw = file.webkitRelativePath or file.name or ""
+  parts = raw.split "/"
+  parts.shift() if parts.length > 1
+  parts.join "/"
+
+# Chemins demandés par les \include d'une source. Seule la forme textuelle
+# est reconnue, comme dans le sous-ensemble lu par scoretk.
+includeTargets = (text) ->
+  targets = []
+  pattern = /\\include\s+(?:"([^"]+)"|'([^']+)')/g
+  while (match = pattern.exec text)
+    target = (match[1] or match[2]).replace /^\.\//, ""
+    targets.push target
+  targets
 
 baseName = (name) -> name.replace IMPORT_EXT_RE, ""
 
@@ -394,31 +421,74 @@ entryNameFor = (files) ->
   # « 01- », « 02- »… ne donne qu'un numéro : préférer le premier nom
   if prefix is "" or /^\d+$/.test prefix then baseName names[0] else prefix
 
-# Dossier : plusieurs fichiers compatibles forment une seule entrée
+# Dossier : une seule entrée, mais seuls les fichiers principaux deviennent
+# des partitions. Les fichiers cités par un \include (noaten.ily, ou un .ly
+# inclus par un autre .ly) restent dans l'entrée comme sources auxiliaires et
+# sont transmis à scoretk avec l'option additive `includes`.
 handleFolderImport = (fileList) ->
-  files = Array.from(fileList or []).filter (file) -> isCompatibleFile file.name
-  unless files.length > 0
+  files = Array.from(fileList or [])
+  if files.length is 0
     return showError t("errors.noCompatibleFile", {extensions: IMPORT_EXTENSIONS_TEXT})
   showLoading()
   hideImport()
   hideLibrary()
 
   files.sort (a, b) -> a.name.localeCompare b.name, undefined, {numeric: true}
-  name = entryNameFor files
 
-  # Read files one by one: a folder can be large
-  sources = []
+  # Read files one by one: a folder can be large. Their text is needed to
+  # know which ones are included by another and must not become pieces.
+  entries = []
   readNext = (index) ->
-    return Promise.resolve() if index >= files.length
+    return Promise.resolve entries if index >= files.length
     readFileBuffer(files[index]).then (data) ->
-      sources.push {name: files[index].name, data}
+      entries.push {
+        name: files[index].name
+        path: relativePath files[index]
+        webkitRelativePath: files[index].webkitRelativePath
+        data
+      }
       readNext index + 1
   readNext(0)
-    .then ->
-      storage.saveEntry(name, sources).then (id) ->
+    .then (all) ->
+      byPath = {}
+      for info in all
+        byPath[info.path] = info
+      included = new Set()
+      decoder = new TextDecoder()
+      for info in all
+        for target in includeTargets decoder.decode new Uint8Array(info.data)
+          exact = byPath[target]
+          included.add exact if exact? and exact isnt info
+          # LilyPond cherche aussi dans le dossier du fichier incluant : un
+          # \include "noaten.ily" depuis sub/ peut viser sub/noaten.ily.
+          base = target.split("/").pop()
+          for other in all when other isnt info and other.name is base
+            included.add other
+
+      # Un fichier compatible non inclus est une pièce ; les .ily et les
+      # fichiers inclus restent des sources auxiliaires de la même entrée.
+      kept = (info for info in all when isCompatibleFile(info.name) or isLilypondAuxiliary(info.name) or included.has info)
+      unless kept.length > 0
+        showError t("errors.noCompatibleFile", {extensions: IMPORT_EXTENSIONS_TEXT})
+        showImport()
+        showLibraryBtn()
+        return
+      name = entryNameFor kept
+      for info in kept
+        if isCompatibleFile(info.name) and not included.has info
+          info.role = "main"
+          # Table complète du dossier, indexée comme dans webkitRelativePath.
+          # Seuls les .ly en ont besoin : pas de recopie pour les .mscz.
+          if /\.(ly|lilypond)$/i.test info.name
+            info.includes = {}
+            for other in kept when other isnt info
+              info.includes[other.path] = other.data
+        else
+          info.role = "aux"
+      storage.saveEntry(name, kept).then (id) ->
         currentFileId = id
         renderRecentFiles()
-        loadSources sources, 1
+        loadSources kept, 1
     .catch (err) ->
       hideLoading()
       showError t("errors.folderRead", {error: err.message or err})
@@ -452,12 +522,13 @@ handleImportFiles = (fileList) ->
   return unless files.length > 0
   # Un fichier seul est filtré ici aussi (partage Android, sélection directe) :
   # une extension inconnue est refusée proprement au lieu d'échouer au rendu.
-  files = files.filter (file) -> isCompatibleFile file.name
-  unless files.length > 0
-    showError t("errors.noCompatibleFile", {extensions: IMPORT_EXTENSIONS_TEXT})
-    showImport()
-    return
+  # Plusieurs fichiers forment un dossier : handleFolderImport garde alors les
+  # auxiliaires cités par un \include, même avec une extension inhabituelle.
   if files.length is 1
+    unless isCompatibleFile files[0].name
+      showError t("errors.noCompatibleFile", {extensions: IMPORT_EXTENSIONS_TEXT})
+      showImport()
+      return
     handleFileImport files[0]
   else
     handleFolderImport files

@@ -846,10 +846,18 @@ handleMessage = (e) ->
         registerSource e.data.sourceId, e.data.xml
 
       when "convertScoretk"
-        { id, bytes, name } = e.data
+        { id, bytes, name, includes } = e.data
         from = scoretkFrom name
+        options = { from }
+        if includes?
+          # Les fichiers d'un dossier arrivent comme ArrayBuffers (clonage
+          # structuré) ; scoretk attend des Uint8Array pour l'option `includes`.
+          entries = {}
+          for path, data of includes
+            entries[path] = new Uint8Array data
+          options.includes = entries
         loadScoretk()
-          .then (api) -> api.convert new Uint8Array(bytes), { from }
+          .then (api) -> api.convert new Uint8Array(bytes), options
           .then (result) ->
             xml = new TextDecoder().decode result
             self.postMessage { type: "scoretkConverted", id, xml }

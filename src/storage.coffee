@@ -27,8 +27,11 @@ generateId = ->
 
 # Files store
 # Une entrée est un fichier seul ou un dossier : files contient le contenu brut
-# des sources ({name, data}), sans conversion à l'import. Les anciennes entrées
-# {xml} restent lisibles.
+# des sources ({name, data}), sans conversion à l'import. Dans un dossier, les
+# fichiers auxiliaires d'un \include gardent `role: "aux"` et les pièces .ly
+# portent une table `includes` (chemin relatif -> octets) ; les anciennes
+# entrées, sans ces champs, restent lisibles telles quelles. Les anciennes
+# entrées {xml} restent lisibles aussi.
 saveEntry = (name, files) ->
   ensureDB().then (d) ->
     new Promise (resolve, reject) ->

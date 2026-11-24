@@ -24,7 +24,9 @@ convertSource = (source) ->
       showTranscriptionNotice() if /\.midi?$/i.test name
       # le worker détache le tampon qu'il reçoit : lui donner une copie. Les
       # .ly et .abc sont du texte : scoretk attend leurs octets UTF-8 bruts.
-      convertScoretkToXml data.slice(0), name
+      # `includes` vient de l'import d'un dossier : table des autres fichiers
+      # par chemin relatif, pour résoudre les \include LilyPond.
+      convertScoretkToXml data.slice(0), name, source.includes
   else
     Promise.resolve new TextDecoder().decode new Uint8Array(data)
 
@@ -73,10 +75,13 @@ ensureWorkerSource = (index, info) ->
     xml: info.xml
 
 # Charge une entrée : un fichier seul est une source, un dossier en a plusieurs.
+# Les sources auxiliaires d'un dossier (.ily, fichiers inclus) sont conservées
+# dans l'entrée mais ne deviennent pas des pièces. Les anciennes entrées, sans
+# `role`, gardent leur comportement : toutes leurs sources sont chargées.
 # La première source est convertie et affichée tout de suite, les suivantes
 # sont ajoutées en tâche de fond.
 loadSources = (sources, startPage = 1) ->
-  currentSources = sources
+  currentSources = (source for source in sources when source.role isnt "aux")
   sourceCache.clear()
   startLoad startPage
 
