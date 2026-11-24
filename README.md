@@ -18,11 +18,13 @@ Cantus opens:
 
 Use **Open a file** or **Open a folder**. A folder, or a selection of several files, becomes one library item; LilyPond files pulled in by `\include` stay with the piece they belong to.
 
+When Cantus is installed on Android, you can share one or more scores to it from another app.
+
 MuseScore, LilyPond, ABC and MIDI files are converted by the optional scoretk converter. MIDI carries no notation, so Cantus shows an automatic transcription and tells you so.
 
 ### Read
 
-- Turn pages by tapping the left or right side of the score, with the arrow keys or Space, or with the page-number button.
+- Turn pages by tapping the left or right side of the score, with the left/right arrow keys or Space, or with the page-number button.
 - Choose **Layout**: **Auto**, **Horizontal** or **Vertical**.
 - Scroll **Per page** or **Per system**, with an adjustable **Overlap**.
 - Set **Zoom** from 30 % to 80 %, **Hide empty staves**, and a **Theme**: **White**, **Sepia** or **Dark**.
@@ -65,7 +67,7 @@ The interface is available in English, French, Spanish, Italian and German. It s
 
 ### One-file version
 
-A build can also produce `dist/spa.html`, a single HTML file with the application, the engraver, the converter and the sound samples inside. Everything it needs is in that file, so it can be kept and opened on its own. See the build instructions below.
+The ready-to-use single-file version is available at <https://jperon.github.io/cantus/spa.html> (about 25 MB). It is one HTML file with the application, the engraver, the converter and the sound samples inside. Everything it needs is in that file, so it can be kept and opened on its own. You can also build it; see the build instructions below.
 
 ## Privacy
 
@@ -78,7 +80,7 @@ The app makes network requests for its own files: the page, scripts, sound sampl
 - **Optional converter.** Builds made without the scoretk package can open MusicXML and MXL only, and cannot export. MuseScore, LilyPond, ABC and MIDI import require it.
 - **MIDI is a transcription.** A MIDI file contains no notation, so the score you see is generated from the notes.
 - **Playback details.** Fermata and breath marks are ignored, and a two-chord tremolo sounds from its first chord only.
-- **Android sharing.** The Android share target accepts one file at a time.
+- **Remote `?file=` links.** A remote `?file=` address is read as plain text, so only uncompressed MusicXML works, and the remote server must allow access from other sites.
 - **Browser installation.** Installation and "Open with" support depend on the browser; in Safari, installation goes through **Add to Home Screen**.
 
 ## Build from source
