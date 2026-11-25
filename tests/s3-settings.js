@@ -42,6 +42,72 @@ async function openSettingsNarrow(page) {
   );
 }
 
+// Déplace le curseur « Taille du texte » comme un glissement utilisateur
+// (libellé en direct, puis enregistrement et rechargement).
+async function setTextSize(page, value) {
+  await page.$eval('#text-size-range', (el, v) => {
+    el.value = String(v);
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  }, value);
+}
+
+// Mesures du premier SVG MusicXML affiché : taille d'une syllabe chantée et
+// hauteur de portée (écart entre la première et la dernière ligne de portée,
+// sans les paroles).
+async function musicXmlTextMetrics(page) {
+  return page.evaluate(() => {
+    const svg = document.querySelector('#page-current .scroll-page svg');
+    if (!svg) return null;
+    const lyric = [...svg.querySelectorAll('g.verse g.syl text, g.verse text')]
+      .find((el) => /\S/.test(el.textContent));
+    const sized = lyric?.querySelector('tspan[font-size]') || lyric;
+    const staff = svg.querySelector('g.staff');
+    const lineTops = [];
+    if (staff) {
+      for (const path of staff.children) {
+        if (path.tagName.toLowerCase() !== 'path' || !path.getAttribute('stroke')) continue;
+        const r = path.getBoundingClientRect();
+        lineTops.push(r.top, r.bottom);
+      }
+    }
+    const rect = (el) => {
+      const r = el.getBoundingClientRect();
+      return { w: Math.round(r.width * 100) / 100, h: Math.round(r.height * 100) / 100 };
+    };
+    return {
+      text: lyric?.textContent.trim() || '',
+      lyric: lyric ? rect(lyric) : null,
+      sizedFont: sized ? parseFloat(getComputedStyle(sized).fontSize) || 0 : 0,
+      staffHeight: lineTops.length >= 2
+        ? Math.round((Math.max(...lineTops) - Math.min(...lineTops)) * 100) / 100 : 0,
+      page: svg.closest('.scroll-page')?.dataset.page || null,
+    };
+  });
+}
+
+// Position des deux réglages courts (Zoom et Taille du texte) : côte à côte
+// ou empilés selon la largeur.
+async function settingsPairLayout(page) {
+  return page.evaluate(() => {
+    const zoom = document.getElementById('zoom-range').closest('.settings-group');
+    const text = document.getElementById('text-size-range').closest('.settings-group');
+    const overlay = document.getElementById('settings-overlay');
+    const box = (el) => {
+      const r = el.getBoundingClientRect();
+      return { left: Math.round(r.left), right: Math.round(r.right), top: Math.round(r.top),
+        bottom: Math.round(r.bottom), width: Math.round(r.width) };
+    };
+    return {
+      zoom: box(zoom),
+      text: box(text),
+      viewport: window.innerWidth,
+      overlayOverflow: overlay.scrollWidth - overlay.clientWidth,
+      contentOverflow: Math.max(zoom.scrollWidth - zoom.clientWidth, text.scrollWidth - text.clientWidth),
+    };
+  });
+}
+
 async function runTelemann(browser, url, pageName, results) {
   const { page, ctx, errors } = await L.newPage(browser, url, { pageName });
   try {
@@ -194,6 +260,171 @@ async function runTelemann(browser, url, pageName, results) {
     L.record(results, '6. Erreurs JS (réglages Telemann)', pageName, relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
   } catch (e) {
     L.record(results, '3. Réglages Telemann', pageName, 'ÉCHEC', 'exception du test : ' + e.message);
+  }
+  await ctx.close();
+}
+
+// Réglage global « Taille du texte » : défaut et persistance, rendu MusicXML
+// (paroles agrandies, portée inchangée, cache), puis disposition à deux
+// colonnes avec le Zoom.
+async function runTextSize(browser, url, pageName, results) {
+  const { page, ctx, errors } = await L.newPage(browser, url, { pageName });
+  try {
+    await importLoaded(page, L.FILES.telemannXml, 60000);
+    await L.openSettings(page);
+    const initial = await page.evaluate(() => {
+      const range = document.getElementById('text-size-range');
+      const group = range?.closest('.settings-group');
+      const saved = JSON.parse(localStorage.getItem('musica-settings') || '{}');
+      return {
+        label: group?.querySelector('.settings-label')?.textContent?.trim() || '',
+        value: document.getElementById('text-size-value')?.textContent?.trim() || '',
+        range: range?.value,
+        min: range?.min,
+        max: range?.max,
+        step: range?.step,
+        aria: range?.getAttribute('aria-label') || '',
+        stored: saved.textSize,
+        previousLabel: group?.previousElementSibling?.querySelector('.settings-label')?.textContent?.trim() || '',
+      };
+    });
+    const defaultsOk = initial.label === 'Taille du texte' && initial.value === '100 %' &&
+      initial.range === '100' && initial.min === '50' && initial.max === '175' &&
+      initial.step === '5' && /texte chanté/i.test(initial.aria) &&
+      initial.stored === undefined && initial.previousLabel === 'Zoom';
+    L.record(results, '3. Taille du texte : défaut 100 %, libellé et bornes du curseur', pageName,
+      defaultsOk ? 'OK' : 'ÉCHEC',
+      `libellé « ${initial.label} », valeur « ${initial.value} », curseur ${initial.range} ` +
+      `[${initial.min}–${initial.max}, pas ${initial.step}], aria « ${initial.aria} », ` +
+      `enregistré ${initial.stored}, groupe précédent « ${initial.previousLabel} »`);
+
+    await setTextSize(page, 150);
+    await page.waitForTimeout(300);
+    const changed = await page.evaluate(() => {
+      const saved = JSON.parse(localStorage.getItem('musica-settings') || '{}');
+      return {
+        range: document.getElementById('text-size-range')?.value,
+        value: document.getElementById('text-size-value')?.textContent?.trim(),
+        stored: saved.textSize,
+      };
+    });
+    L.record(results, '3. Taille du texte : 150 % appliqué et enregistré', pageName,
+      changed.range === '150' && changed.value === '150 %' && changed.stored === 150 ? 'OK' : 'ÉCHEC',
+      `curseur ${changed.range}, libellé « ${changed.value} », réglage ${changed.stored}`);
+
+    // Rechargement complet : la valeur revient de localStorage avant tout
+    // rendu. Un fichier est rouvert pour que le bouton Réglages soit visible.
+    await page.reload({ waitUntil: 'domcontentloaded', timeout: 60000 });
+    await L.waitReady(page, 60000);
+    await page.waitForTimeout(500);
+    await L.openLibraryEntry(page, 0);
+    await L.waitFirstSvg(page, 60000);
+    await L.waitBackgroundLoaded(page, 60000);
+    await L.openSettings(page);
+    const restored = await page.evaluate(() => ({
+      range: document.getElementById('text-size-range')?.value,
+      value: document.getElementById('text-size-value')?.textContent?.trim(),
+    }));
+    L.record(results, '3. Taille du texte : valeur restaurée après rechargement de la page', pageName,
+      restored.range === '150' && restored.value === '150 %' ? 'OK' : 'ÉCHEC',
+      `curseur ${restored.range}, libellé « ${restored.value} » (attendu 150 / « 150 % »)`);
+
+    await setTextSize(page, 100);
+    await page.waitForTimeout(300);
+    await L.closeSettings(page);
+
+    // MusicXML avec paroles : agrandir le texte ne touche pas la portée.
+    await importLoaded(page, L.FILES.parolesXml, 60000);
+    const m100 = await musicXmlTextMetrics(page);
+    if (!m100?.lyric || !m100.staffHeight) {
+      throw new Error('paroles ou lignes de portée introuvables dans le SVG MusicXML');
+    }
+
+    await L.markSvg(page);
+    await setTextSize(page, 150);
+    await waitNewSvg(page, 60000);
+    await L.waitBackgroundLoaded(page, 60000);
+    await page.waitForTimeout(800);
+    const m150 = await musicXmlTextMetrics(page);
+    if (!m150?.lyric) throw new Error('paroles introuvables après passage à 150 %');
+    const growth = m150.lyric.h / m100.lyric.h;
+    const staffSame = Math.abs(m150.staffHeight - m100.staffHeight) <= 2;
+    const grewOk = growth >= 1.35 && growth <= 1.65 && staffSame;
+    L.record(results, '3. Taille du texte 150 % : paroles agrandies, hauteur de portée inchangée', pageName,
+      grewOk ? 'OK' : 'ÉCHEC',
+      `syllabe « ${m100.text} » ${m100.lyric.h} → ${m150.lyric.h} px (×${growth.toFixed(2)}), ` +
+      `police ${m100.sizedFont} → ${m150.sizedFont} px, portée ${m100.staffHeight} → ${m150.staffHeight} px`);
+
+    // Retour à 100 % : le cache doit servir le rendu de 100 %, pas celui de
+    // 150 % resté sous la même clé.
+    await L.markSvg(page);
+    await setTextSize(page, 100);
+    await waitNewSvg(page, 60000);
+    await L.waitBackgroundLoaded(page, 60000);
+    await page.waitForTimeout(800);
+    const back = await musicXmlTextMetrics(page);
+    const backOk = !!back?.lyric &&
+      Math.abs(back.lyric.h - m100.lyric.h) <= 0.6 &&
+      Math.abs(back.staffHeight - m100.staffHeight) <= 2;
+    L.record(results, '3. Taille du texte : retour à 100 %, rendu initial servi par le cache', pageName,
+      backOk ? 'OK' : 'ÉCHEC',
+      `syllabe ${back?.lyric?.h} px (initial ${m100.lyric.h}), portée ${back?.staffHeight} px ` +
+      `(initial ${m100.staffHeight}), police ${back?.sizedFont} (initial ${m100.sizedFont})`);
+
+    // Zoom : la taille du texte suit la portée, leur rapport reste constant.
+    await setTextSize(page, 150);
+    await waitNewSvg(page, 60000);
+    await L.waitBackgroundLoaded(page, 60000);
+    const m150b = await musicXmlTextMetrics(page);
+    await L.openSettings(page);
+    await page.$eval('#zoom-range', (el) => {
+      el.value = '60';
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await L.closeSettings(page);
+    await waitNewSvg(page, 60000);
+    await L.waitBackgroundLoaded(page, 60000);
+    await page.waitForTimeout(800);
+    const m150z = await musicXmlTextMetrics(page);
+    const ratioBefore = m150b.lyric.h / m150b.staffHeight;
+    const ratioAfter = m150z.lyric.h / m150z.staffHeight;
+    const ratioOk = Math.abs(ratioAfter / ratioBefore - 1) <= 0.12;
+    const zoomMoved = Math.abs(m150z.staffHeight - m150b.staffHeight) > 1;
+    L.record(results, '3. Taille du texte et zoom : rapport paroles / portée constant', pageName,
+      ratioOk && zoomMoved ? 'OK' : 'ÉCHEC',
+      `portée ${m150b.staffHeight} → ${m150z.staffHeight} px, syllabe ${m150b.lyric.h} → ${m150z.lyric.h} px, ` +
+      `rapport ${ratioBefore.toFixed(3)} → ${ratioAfter.toFixed(3)}`);
+
+    // Disposition : côte à côte sur un écran large, empilés sinon.
+    await page.setViewportSize({ width: 1200, height: 900 });
+    await page.waitForTimeout(600);
+    await L.openSettings(page);
+    const wide = await settingsPairLayout(page);
+    const wideOk = Math.abs(wide.zoom.top - wide.text.top) <= 2 &&
+      Math.abs(wide.zoom.width - wide.text.width) <= 2 &&
+      (wide.zoom.right <= wide.text.left + 1 || wide.text.right <= wide.zoom.left + 1);
+    L.record(results, '3. Taille du texte à 1200 px : à côté du Zoom, deux colonnes égales', pageName,
+      wideOk ? 'OK' : 'ÉCHEC',
+      `zoom ${JSON.stringify(wide.zoom)}, texte ${JSON.stringify(wide.text)}`);
+
+    await page.setViewportSize({ width: 360, height: 720 });
+    await page.waitForTimeout(600);
+    const narrow = await settingsPairLayout(page);
+    const narrowOk = narrow.text.top >= narrow.zoom.bottom - 1 &&
+      narrow.zoom.left >= 0 && narrow.zoom.right <= 361 &&
+      narrow.text.left >= 0 && narrow.text.right <= 361 &&
+      narrow.overlayOverflow <= 0 && narrow.contentOverflow <= 0;
+    L.record(results, '3. Taille du texte à 360 px : sous le Zoom, sans débordement', pageName,
+      narrowOk ? 'OK' : 'ÉCHEC',
+      `zoom ${JSON.stringify(narrow.zoom)}, texte ${JSON.stringify(narrow.text)}, ` +
+      `débordement recouvrement ${narrow.overlayOverflow} px / contenu ${narrow.contentOverflow} px`);
+    await L.closeSettings(page);
+
+    const relevant = L.summarize(errors);
+    L.record(results, '6. Erreurs JS (taille du texte)', pageName, relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
+  } catch (e) {
+    L.record(results, '3. Taille du texte', pageName, 'ÉCHEC', 'exception du test : ' + e.message);
   }
   await ctx.close();
 }
@@ -1498,6 +1729,7 @@ async function runVoiceLayout(browser, url, pageName, results) {
   try {
     for (const pageName of PAGES) {
       await runTelemann(browser, url, pageName, results);
+      await runTextSize(browser, url, pageName, results);
       await runZoomAndScroll(browser, url, pageName, results);
       await runBackNavigation(browser, url, pageName, results);
       await runWheelBack(browser, url, pageName, results);

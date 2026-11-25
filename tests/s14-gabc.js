@@ -194,6 +194,78 @@ async function setLayout(page, layout) {
   await L.closeSettings(page);
 }
 
+// Réglage global « Taille du texte », même geste que le zoom (direct sur le
+// curseur, sans ouvrir les réglages : les gestionnaires sont déjà branchés).
+async function setTextSize(page, value) {
+  await page.evaluate((v) => {
+    const range = document.getElementById('text-size-range');
+    range.value = String(v);
+    range.dispatchEvent(new Event('input', { bubbles: true }));
+    range.dispatchEvent(new Event('change', { bubbles: true }));
+  }, value);
+}
+
+// Attend que la première syllabe de la vue courante atteigne la hauteur
+// voulue : le rechargement (mise en page grégorienne ou Verovio) est
+// asynchrone.
+async function waitLyricHeight(page, selector, test, height, timeout = 120000) {
+  await page.waitForFunction(({ selector, test, height }) => {
+    const el = document.querySelector('#page-current .scroll-page svg')?.querySelector(selector);
+    if (!el) return false;
+    const h = el.getBoundingClientRect().height;
+    if (!(h > 0)) return false;
+    return test === 'grew' ? h >= height * 1.25 : Math.abs(h - height) <= Math.max(0.6, height * 0.06);
+  }, { selector, test, height }, { timeout, polling: 200 });
+}
+
+// Mesures de la vue carrée : une syllabe (text.lyric) et l'écart entre les
+// lignes de portée (g.staffLines), que la taille du texte ne doit pas changer.
+async function squareTextMetrics(page) {
+  return page.evaluate(() => {
+    const svg = document.querySelector('#page-current .scroll-page svg');
+    if (!svg) return null;
+    const lyric = [...svg.querySelectorAll('text.lyric')].find((el) => /\S/.test(el.textContent));
+    const lines = [...svg.querySelectorAll('g.staffLines line')];
+    const bounds = lines.map((line) => line.getBoundingClientRect());
+    return {
+      text: lyric?.textContent.trim() || '',
+      lyricHeight: lyric ? Math.round(lyric.getBoundingClientRect().height * 100) / 100 : 0,
+      lyricFont: lyric ? parseFloat(getComputedStyle(lyric).fontSize) || 0 : 0,
+      staffHeight: bounds.length
+        ? Math.round((Math.max(...bounds.map((r) => r.bottom)) -
+          Math.min(...bounds.map((r) => r.top))) * 100) / 100 : 0,
+      remade: !svg.hasAttribute('data-test-mark'),
+    };
+  });
+}
+
+// Même mesure dans la vue classique (MusicXML rendu par Verovio) : syllabe
+// dans g.verse, hauteur de portée donnée par les cinq lignes (path) de g.staff.
+async function classicTextMetrics(page) {
+  return page.evaluate(() => {
+    const svg = document.querySelector('#page-current .scroll-page svg');
+    if (!svg) return null;
+    const lyric = [...svg.querySelectorAll('g.verse g.syl text, g.verse text')]
+      .find((el) => /\S/.test(el.textContent));
+    const staff = svg.querySelector('g.staff');
+    const ys = [];
+    if (staff) {
+      for (const path of staff.children) {
+        if (path.tagName.toLowerCase() !== 'path' || !path.getAttribute('stroke')) continue;
+        const r = path.getBoundingClientRect();
+        ys.push(r.top, r.bottom);
+      }
+    }
+    return {
+      text: lyric?.textContent.trim() || '',
+      lyricHeight: lyric ? Math.round(lyric.getBoundingClientRect().height * 100) / 100 : 0,
+      lyricFont: lyric ? parseFloat(getComputedStyle(lyric.querySelector('tspan[font-size]') || lyric).fontSize) || 0 : 0,
+      staffHeight: ys.length >= 2
+        ? Math.round((Math.max(...ys) - Math.min(...ys)) * 100) / 100 : 0,
+    };
+  });
+}
+
 async function runPage(browser, url, pageName, results) {
   const { page, ctx, errors } = await L.newPage(browser, url, {
     pageName, viewport: { width: 360, height: 720 },
@@ -826,6 +898,83 @@ async function runScoretkAbsent(browser, url, pageName, results) {
   await ctx.close();
 }
 
+// Réglage « Taille du texte » pour un gabc : paroles agrandies, portée
+// inchangée, rien de rogné en vue carrée, puis même effet en vue classique.
+async function runTextSizeGabc(browser, url, pageName, results) {
+  const { page, ctx, errors } = await L.newPage(browser, url, {
+    pageName, viewport: { width: 360, height: 720 },
+  });
+  try {
+    await L.waitReady(page);
+    await importGabc(page, KYRIE);
+    const s100 = await squareTextMetrics(page);
+    if (!s100?.lyricHeight || !s100.staffHeight) {
+      throw new Error('paroles ou lignes de portée introuvables dans la vue carrée');
+    }
+    await page.evaluate(() => {
+      document.querySelector('#page-current .scroll-page svg')?.setAttribute('data-test-mark', '1');
+    });
+
+    await setTextSize(page, 150);
+    await waitLyricHeight(page, 'text.lyric', 'grew', s100.lyricHeight);
+    await L.waitBackgroundLoaded(page, 60000);
+    await page.waitForTimeout(400);
+    const s150 = await squareTextMetrics(page);
+    const growth = s150.lyricHeight / s100.lyricHeight;
+    const staffSame = Math.abs(s150.staffHeight - s100.staffHeight) <= 1.5;
+    L.record(results, '14. Taille du texte 150 % (carré) : paroles agrandies, portée inchangée', pageName,
+      growth >= 1.35 && growth <= 1.65 && staffSame && s150.remade ? 'OK' : 'ÉCHEC',
+      `syllabe « ${s100.text} » ${s100.lyricHeight} → ${s150.lyricHeight} px (×${growth.toFixed(2)}), ` +
+      `police ${s100.lyricFont} → ${s150.lyricFont} px, portée ${s100.staffHeight} → ${s150.staffHeight} px, ` +
+      `SVG refait ${s150.remade}`);
+
+    const bounds = await viewBoxState(page);
+    L.record(results, '14. Taille du texte 150 % (carré) : paroles non rognées dans le viewBox', pageName,
+      bounds.ok && bounds.count > 20 ? 'OK' : 'ÉCHEC',
+      `${bounds.count} éléments dans ${bounds.svgs} SVG, viewBox ${JSON.stringify(bounds.viewBox)}` +
+      (bounds.failures.length ? `, hors cadre ${JSON.stringify(bounds.failures)}` : ''));
+
+    // Retour à 100 % : le rendu initial revient, aucune page de 150 % réutilisée.
+    await setTextSize(page, 100);
+    await waitLyricHeight(page, 'text.lyric', 'same', s100.lyricHeight);
+    await L.waitBackgroundLoaded(page, 60000);
+    await page.waitForTimeout(400);
+    const sBack = await squareTextMetrics(page);
+    L.record(results, '14. Taille du texte : retour à 100 % (carré), rendu initial', pageName,
+      Math.abs(sBack.lyricHeight - s100.lyricHeight) <= 0.6 &&
+      Math.abs(sBack.staffHeight - s100.staffHeight) <= 1.5 ? 'OK' : 'ÉCHEC',
+      `syllabe ${sBack.lyricHeight} px (initial ${s100.lyricHeight}), ` +
+      `portée ${sBack.staffHeight} px (initial ${s100.staffHeight})`);
+
+    // Vue classique : le MusicXML converti reçoit la même taille de paroles.
+    await page.click('#notation-toggle');
+    await waitNotationReady(page);
+    const c100 = await classicTextMetrics(page);
+    if (!c100?.lyricHeight || !c100.staffHeight) {
+      throw new Error('paroles ou portée introuvables dans la vue classique');
+    }
+    await setTextSize(page, 150);
+    await waitLyricHeight(page, 'g.verse g.syl text', 'grew', c100.lyricHeight);
+    await L.waitBackgroundLoaded(page, 60000);
+    await page.waitForTimeout(400);
+    const c150 = await classicTextMetrics(page);
+    const classicGrowth = c150.lyricHeight / c100.lyricHeight;
+    L.record(results, '14. Taille du texte 150 % (vue classique) : paroles agrandies, portée inchangée', pageName,
+      classicGrowth >= 1.35 && classicGrowth <= 1.65 &&
+      Math.abs(c150.staffHeight - c100.staffHeight) <= 2 ? 'OK' : 'ÉCHEC',
+      `syllabe « ${c100.text} » ${c100.lyricHeight} → ${c150.lyricHeight} px (×${classicGrowth.toFixed(2)}), ` +
+      `police ${c100.lyricFont} → ${c150.lyricFont} px, portée ${c100.staffHeight} → ${c150.staffHeight} px`);
+
+    const relevant = L.summarize(errors);
+    L.record(results, '6. Erreurs JS (taille du texte gabc)', pageName,
+      relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
+  } catch (e) {
+    L.record(results, '14. Taille du texte gabc', pageName, 'ÉCHEC',
+      'exception du test : ' + e.message);
+  }
+  await ctx.close();
+}
+
 // Bouton présent, accessible, utilisable à 360 px, aller-retour clavier,
 // export et transport propres à chaque vue.
 async function runToggle(browser, url, pageName, results) {
@@ -1287,6 +1436,7 @@ async function runRapid(browser, url, pageName, results) {
       await runLarge(browser, url, pageName, results);
       await runRace(browser, url, pageName, results);
       await runMixed(browser, url, pageName, results);
+      await runTextSizeGabc(browser, url, pageName, results);
       await runToggle(browser, url, pageName, results);
       await runGabcPlayback(browser, url, pageName, results);
       await runLongPosition(browser, url, pageName, results);

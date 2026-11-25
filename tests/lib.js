@@ -21,6 +21,8 @@ const FILES = {
   laFouleMxl: path.join(ROOT, 'La_foule.mxl'),
   // Fixture synthétique : deux parties, chacune dans un part-group.
   suiviGroupesXml: path.join(__dirname, 'fixtures', 'suivi-groupes.xml'),
+  // Fixture synthétique avec paroles : une portée, une syllabe par note.
+  parolesXml: path.join(__dirname, 'fixtures', 'paroles.xml'),
   magnificatDir: path.join(DATA, 'magnificat'),
   // Lot CC0 de trois fichiers LilyPond liés (deux .ly partagent noaten.ily).
   lyIncludesDir: path.join(__dirname, 'fixtures', 'alde-friezen'),
