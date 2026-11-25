@@ -283,10 +283,13 @@ loadFirstSource = (token) ->
 
 # La vue classique d'un gabc a échoué (conversion scoretk ou absence du
 # paquet) : revenir à la notation carrée, qui n'en dépend pas, plutôt que de
-# laisser un écran vide. La préférence enregistrée n'est pas modifiée : elle
-# reste le choix explicite de l'utilisateur.
+# laisser un écran vide. Le retour est mémorisé pour ne pas répéter l'échec à
+# chaque ouverture.
 replierEnNotationCarree = (index, token, err, reprendre) ->
   notationView = "square"
+  # La vue classique est inutilisable pour ce fichier : mémoriser le retour
+  # en carré évite de réafficher l'erreur à chaque ouverture.
+  saveNotationView()
   rafraichirBasculeNotation()
   showError t "errors.notationFallback", {error: err?.message or err}
   sourceCache.delete index
