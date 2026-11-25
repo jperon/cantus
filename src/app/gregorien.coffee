@@ -66,8 +66,11 @@ chargerExsurge = ->
 STAFF_HEIGHT_MIN = 24
 STAFF_HEIGHT_PAR_ZOOM = 1.25
 # Marge ajoutée autour de l'encombrement réel : elle laisse respirer le titre,
-# la clef, le custos et les paroles descendantes, sans les rogner.
+# la clef, le custos et les paroles descendantes, sans les rogner. Le guidon de
+# fin de ligne reçoit en plus une réserve à droite : sa boîte frôlait le bord du
+# viewBox avec la marge générale seule.
 MARGE_GABC = 8
+MARGE_CUSTOS = 12
 
 hauteurPorteeGabc = (scale) ->
   pct = if isFinite(scale) and scale > 0 then scale else 40
@@ -168,7 +171,7 @@ construireSvgs = (score, ctxt, largeur, titre) ->
       hote.removeChild svg
       x = box.x - MARGE_GABC
       y = box.y - MARGE_GABC
-      largeurSvg = Math.max 1, box.width + 2 * MARGE_GABC
+      largeurSvg = Math.max 1, box.width + 2 * MARGE_GABC + MARGE_CUSTOS
       hauteurSvg = Math.max 1, box.height + 2 * MARGE_GABC
       svg.setAttribute 'width', largeurSvg
       svg.setAttribute 'height', hauteurSvg
