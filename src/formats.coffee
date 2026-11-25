@@ -34,6 +34,9 @@ FORMATS = [
   {label: 'ABC', extensions: ['abc'], scoretk: true, from: {abc: 'abc'}}
   # MIDI : transcriptions, sans notation d'origine ; scoretk attend `midi`
   {label: 'MIDI', extensions: ['mid', 'midi'], scoretk: true, from: {mid: 'midi', midi: 'midi'}}
+  # GABC : notation carrée lue directement par exsurge, sans scoretk ni
+  # conversion MusicXML (voir src/app/gregorien.coffee).
+  {label: 'GABC', extensions: ['gabc'], scoretk: false}
 ]
 
 # Types MIME des formats. `extensions` : ce qu'un fichier de ce type peut être
@@ -52,7 +55,8 @@ MIME_TYPES = [
   {type: 'audio/x-musescore', extensions: ['mscx'], fallback: 'mscx', fileHandler: false}
   {type: 'text/x-lilypond', extensions: ['ly', 'lilypond'], fallback: 'ly'}
   {type: 'text/vnd.abc', extensions: ['abc'], fallback: 'abc'}
-  {type: 'text/plain', extensions: ['ly', 'lilypond', 'abc']}
+  {type: 'text/x-gabc', extensions: ['gabc'], fallback: 'gabc'}
+  {type: 'text/plain', extensions: ['ly', 'lilypond', 'abc', 'gabc']}
   {type: 'audio/midi', extensions: ['mid', 'midi'], fallback: 'mid'}
   {type: 'audio/x-midi', extensions: ['mid', 'midi'], fallback: 'mid'}
 ]

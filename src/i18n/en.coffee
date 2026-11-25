@@ -139,6 +139,8 @@ registerLanguage 'en', 'English',
   'errors.noCompatibleFile': 'No compatible file ({extensions})'
   'errors.sourceSkipped': 'File skipped ({name}): {error}'
   'errors.scoretkUnavailable': 'import unavailable for this format: the scoretk package is missing from this build'
+  'errors.gabcInvalid': 'Invalid gabc file: no notes or unreadable content'
+  'errors.gabcUnavailable': 'Square-note notation engine unavailable'
   'errors.movement': 'Movement {id} error: {message}'
   'notice.midiTranscription': 'MIDI file: score transcribed automatically, without the original notation.'
 

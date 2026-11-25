@@ -137,6 +137,8 @@ registerLanguage 'de', 'Deutsch',
   'errors.noCompatibleFile': 'Keine kompatible Datei ({extensions})'
   'errors.sourceSkipped': 'Datei übersprungen ({name}): {error}'
   'errors.scoretkUnavailable': 'Import für dieses Format nicht verfügbar: Das Paket scoretk fehlt in dieser Version'
+  'errors.gabcInvalid': 'Ungültige gabc-Datei: keine Noten oder unlesbarer Inhalt'
+  'errors.gabcUnavailable': 'Motor für Quadratnotation nicht verfügbar'
   'errors.movement': 'Fehler im Satz {id}: {message}'
   'notice.midiTranscription': 'MIDI-Datei: Partitur automatisch übertragen, ohne ursprüngliche Notation.'
 

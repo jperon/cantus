@@ -137,6 +137,8 @@ registerLanguage 'fr', 'Français',
   'errors.noCompatibleFile': 'Aucun fichier compatible ({extensions})'
   'errors.sourceSkipped': 'Fichier ignoré ({name}) : {error}'
   'errors.scoretkUnavailable': "import de ce format indisponible : paquet scoretk absent de cette version"
+  'errors.gabcInvalid': 'fichier gabc invalide : aucune note ou contenu illisible'
+  'errors.gabcUnavailable': 'moteur de notation carrée indisponible'
   'errors.movement': 'Erreur mouvement {id} : {message}'
   'notice.midiTranscription': "Fichier MIDI : partition transcrite automatiquement, sans notation d'origine."
 

@@ -137,6 +137,8 @@ registerLanguage 'it', 'Italiano',
   'errors.noCompatibleFile': 'Nessun file compatibile ({extensions})'
   'errors.sourceSkipped': 'File ignorato ({name}): {error}'
   'errors.scoretkUnavailable': 'importazione non disponibile per questo formato: il pacchetto scoretk manca in questa build'
+  'errors.gabcInvalid': 'file gabc non valido: nessuna nota o contenuto illeggibile'
+  'errors.gabcUnavailable': 'motore di notazione quadrata non disponibile'
   'errors.movement': 'Errore nel movimento {id}: {message}'
   'notice.midiTranscription': 'File MIDI: spartito trascritto automaticamente, senza la notazione originale.'
 
