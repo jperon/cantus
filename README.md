@@ -4,6 +4,15 @@ Cantus is a free sheet music reader that runs in the browser and works offline. 
 
 **Open Cantus: <https://jperon.github.io/cantus/>**
 
+<img src="pwa/screenshots/desktop-1.png" width="720" alt="Cantus desktop view during playback of De âlde Friezen, with the current measure highlighted">
+
+<p>
+  <img src="pwa/screenshots/mobile-1.png" width="240" alt="Cantus reader on a phone showing the score of De âlde Friezen">
+  <img src="pwa/screenshots/mobile-2.png" width="240" alt="Cantus Settings panel open over the score of De âlde Friezen">
+</p>
+
+*De âlde Friezen (CC0), the score used in these screenshots.*
+
 ## What you can do
 
 ### Open scores
