@@ -4,7 +4,9 @@
 // page. index.html et spa.html.
 const C = require('./s6-common');
 const fs = require('fs');
+const path = require('path');
 const L = C.L;
+const KYRIE = path.join(__dirname, 'fixtures', 'gabc', 'kyrie.gabc');
 const {
   WAIT, bounded, waitReady, waitFirstSvg, waitBackgroundLoaded, reloadPage,
   state, waitState, transportHidden, positionGrowing, horizontalScrollPos,
@@ -242,8 +244,14 @@ async function runPage(browser, url, pageName, results) {
         if (!(mark.page in firstOfPage)) firstOfPage[mark.page] = mark.t;
       }
 
-      // 1. Aucune donnée de lecture chargée : changer de page ne doit déclencher
-      // ni chargement (getPlaybackData) ni déplacement.
+      // 1. Les données du mouvement affiché sont préchargées à l'ouverture :
+      // changer de page ne déclenche aucune nouvelle demande et cale la
+      // position sur le début de la page, sans lancer la lecture.
+      await bounded('données de lecture préchargées', WAIT.playbackData,
+        page.waitForFunction(() => {
+          const s = window.__musicaPlaybackState?.();
+          return !!(s && s.hasData && s.duration > 0);
+        }, null, { timeout: WAIT.playbackData, polling: 50 }));
       await page.evaluate(() => {
         const w = window.__musicaWorker;
         window.__pbRequestsAfterChange = 0;
@@ -266,11 +274,13 @@ async function runPage(browser, url, pageName, results) {
         requests: window.__pbRequestsAfterChange,
       }));
       const noDataOk = noData.page === 2 && noData.state.state === 'stopped' &&
-        noData.state.position === 0 && noData.state.hasData === false && noData.requests === 0;
-      L.record(results, '6. Sans données : changer de page ne charge rien et ne déplace pas la lecture', pageName,
+        noData.state.hasData === true &&
+        Math.abs(noData.state.position - firstOfPage[2]) <= 150 && noData.requests === 0;
+      L.record(results, '6. Données préchargées : changer de page ne recharge rien et cale la position sur la page', pageName,
         noDataOk ? 'OK' : 'ÉCHEC',
-        `page ${noData.page}, état ${noData.state.state}, position ${noData.state.position} ms, ` +
-        `données ${noData.state.hasData}, demandes getPlaybackData ${noData.requests}`);
+        `page ${noData.page}, état ${noData.state.state}, position ${noData.state.position} ms ` +
+        `(cible ${firstOfPage[2]} ms), données ${noData.state.hasData}, ` +
+        `demandes getPlaybackData ${noData.requests}`);
 
       // 2. Lecture en cours + page suivante : la tête se cale au premier
       // marqueur de la nouvelle page et la lecture continue. La page de départ
@@ -715,6 +725,164 @@ async function runPage(browser, url, pageName, results) {
     await ctxEmpty.close();
   }
 
+  // Barre de position active avant la première lecture : les données du
+  // mouvement affiché sont préchargées sans lancer la lecture, si bien que la
+  // navigation au curseur et un ▶ depuis une page fonctionnent dès
+  // l'ouverture.
+  {
+    const { page, ctx, errors } = await L.newPage(browser, url, { pageName });
+    try {
+      await waitReady(page);
+      await L.importFile(page, L.FILES.telemannXml);
+      await waitFirstSvg(page);
+      await waitBackgroundLoaded(page);
+
+      // (a) Aucune lecture lancée : curseur actif, libellé de durée non nul,
+      // état arrêté.
+      let preloaded = null;
+      try {
+        await bounded('préchargement des données de lecture', WAIT.playbackData,
+          page.waitForFunction(() => {
+            const seek = document.getElementById('transport-seek');
+            const s = window.__musicaPlaybackState?.();
+            return !!(seek && !seek.disabled && s && s.duration > 0);
+          }, null, { timeout: WAIT.playbackData, polling: 50 }));
+        preloaded = await page.evaluate(() => {
+          const seek = document.getElementById('transport-seek');
+          const text = document.getElementById('transport-time')?.textContent || '';
+          const m = text.match(/^(\d+):(\d{2}) \/ (\d+):(\d{2})$/);
+          return {
+            state: window.__musicaPlaybackState(),
+            disabled: seek?.disabled,
+            text,
+            total: m ? Number(m[3]) * 60 + Number(m[4]) : 0,
+            transport: !document.getElementById('transport').classList.contains('hidden'),
+          };
+        });
+      } catch {
+        preloaded = null;
+      }
+      L.record(results, '6. Barre de position active dès l’ouverture, sans lecture', pageName,
+        preloaded && preloaded.disabled === false && preloaded.total > 0 &&
+          preloaded.state.state === 'stopped' && preloaded.state.duration > 0 &&
+          preloaded.state.hasData === true && preloaded.transport ? 'OK' : 'ÉCHEC',
+        preloaded
+          ? `curseur actif ${preloaded.disabled === false}, libellé « ${preloaded.text} » ` +
+            `(${preloaded.total} s), état ${preloaded.state.state}, durée ${preloaded.state.duration} ms, ` +
+            `données ${preloaded.state.hasData}, transport visible ${preloaded.transport}`
+          : 'aucun préchargement observé');
+
+      // (b) Glissé du curseur à l'arrêt, suivi actif : la vue suit le geste et
+      // ▶ part de la position choisie.
+      const dragStart = await state(page);
+      const dragPage = await displayedPageNumber(page);
+      await page.$eval('#transport-seek', (el) => {
+        el.value = '500';
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+      let dragMoved = false;
+      try {
+        await bounded('vue déplacée pendant le glissé', WAIT.seekToPage,
+          page.waitForFunction((prev) => {
+            const m = (document.getElementById('page-number')?.textContent || '').match(/(\d+)\s*\//);
+            return m && parseInt(m[1], 10) !== prev;
+          }, dragPage, { timeout: WAIT.seekToPage, polling: 50 }));
+        dragMoved = true;
+      } catch {
+        // laissé à false : la vue n'a pas suivi le geste
+      }
+      await page.$eval('#transport-seek', (el) =>
+        el.dispatchEvent(new Event('change', { bubbles: true })));
+      await page.waitForTimeout(300);
+      const dragAfter = await state(page);
+      const dragExpected = 0.5 * dragStart.duration;
+      const dragLandedPage = await displayedPageNumber(page);
+      await page.click('#transport-play');
+      await waitState(page, 'playing');
+      await page.waitForTimeout(200);
+      const dragPlaying = await state(page);
+      const dragOk = dragStart.duration > 0 && dragMoved &&
+        Math.abs(dragAfter.position - dragExpected) <= 400 &&
+        dragPlaying.state === 'playing' &&
+        Math.abs(dragPlaying.position - dragExpected) <= 800;
+      L.record(results, '6. Glissé du curseur à l’arrêt : vue déplacée, ▶ part de la position choisie', pageName,
+        dragOk ? 'OK' : 'ÉCHEC',
+        `vue p.${dragPage} → p.${dragLandedPage} (déplacée ${dragMoved}), ` +
+        `durée ${dragStart.duration} ms, relâchement ${dragAfter.position} ms ` +
+        `(cible ${Math.round(dragExpected)}), lecture ${dragPlaying.position} ms, état ${dragPlaying.state}`);
+      await stopPlayback(page);
+      await waitState(page, 'stopped');
+
+      // (c) Aller à une page puis ▶ : la lecture part du début de cette page.
+      const total = (await L.pageInfo(page)).total;
+      const targetPage = Math.min(2, total);
+      await L.gotoPage(page, targetPage);
+      await page.waitForTimeout(700);
+      const expected = await page.evaluate(async (target) => {
+        const result = getMovementForPage(target);
+        if (!result) return null;
+        const probe = await window.__musicaPlaybackProbe();
+        const mark = (probe.marks || []).find((m) => Number(m.page) === result.localPage);
+        return {
+          page: target,
+          movementId: result.movement.id,
+          localPage: result.localPage,
+          position: mark ? Number(mark.t) : 0,
+        };
+      }, targetPage);
+      const pageBefore = await state(page);
+      await page.click('#transport-play');
+      await waitState(page, 'playing');
+      await page.waitForTimeout(200);
+      const pagePlaying = await state(page);
+      const pageOk = expected && pageBefore.state === 'stopped' &&
+        Math.abs(pageBefore.position - expected.position) <= 400 &&
+        pagePlaying.state === 'playing' && pagePlaying.movementId === expected.movementId &&
+        Math.abs(pagePlaying.position - expected.position) <= 800;
+      L.record(results, '6. Aller à une page puis ▶ : la lecture part de cette page', pageName,
+        pageOk ? 'OK' : 'ÉCHEC',
+        expected
+          ? `page ${targetPage} (mouvement ${expected.movementId}, page locale ${expected.localPage}), ` +
+            `cible ${expected.position} ms, arrêté ${pageBefore.position} ms, ` +
+            `lecture ${pagePlaying.position} ms, état ${pagePlaying.state}`
+          : 'page cible introuvable');
+      await stopPlayback(page);
+      await waitState(page, 'stopped');
+
+      // (d) gabc en notation carrée : transport masqué et aucune donnée de
+      // lecture demandée, même avec le préchargement.
+      await page.evaluate(() => {
+        const w = window.__musicaWorker;
+        window.__pbAfterGabc = 0;
+        const orig = w.postMessage.bind(w);
+        w.postMessage = function (msg) {
+          if (msg && msg.type === 'getPlaybackData') window.__pbAfterGabc += 1;
+          return orig(msg);
+        };
+      });
+      await L.importFile(page, KYRIE);
+      await page.waitForSelector('#page-current .scroll-page svg .note[source-index]', { timeout: WAIT.firstSvg });
+      await page.waitForTimeout(800);
+      const gabc = await page.evaluate(() => ({
+        hidden: document.getElementById('transport').classList.contains('hidden'),
+        requests: window.__pbAfterGabc,
+        state: window.__musicaPlaybackState(),
+      }));
+      L.record(results, '6. gabc carré : transport masqué, aucune donnée de lecture demandée', pageName,
+        gabc.hidden && gabc.requests === 0 && gabc.state.state === 'stopped' &&
+          gabc.state.hasData === false ? 'OK' : 'ÉCHEC',
+        `transport masqué ${gabc.hidden}, demandes getPlaybackData ${gabc.requests}, ` +
+        `état ${gabc.state.state}, données ${gabc.state.hasData}`);
+    } catch (e) {
+      L.record(results, '6. Barre de position avant lecture', pageName, 'ÉCHEC',
+        'exception du test : ' + e.message);
+    }
+    const relevant = L.summarize(errors);
+    L.record(results, '6. Erreurs JS (barre de position avant lecture)', pageName,
+      relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
+    await ctx.close();
+  }
+
   // Téléphone 390×844 : la barre de position reste visible à l'arrêt avec le
   // suivi actif, et le glissé du curseur déplace la vue pendant le geste
   // (mise en page verticale ou horizontale selon la décision de « Auto »).
@@ -813,5 +981,6 @@ async function runPage(browser, url, pageName, results) {
 }
 
 // Durées observées le 18/11/2026 (index.html + spa.html) : 53 à 71 s selon
-// la charge ; budget ~2,5× le maximum.
-C.main(runPage, { budgetMs: 180000, summary: 'S6B' });
+// la charge ; le préchargement de la barre de position ajoute un contexte par
+// page. Budget ~2,5× le maximum.
+C.main(runPage, { budgetMs: 300000, summary: 'S6B' });
