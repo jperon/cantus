@@ -325,48 +325,34 @@ positionsPage = (movement, page, carre) ->
       []
 
 # Dernière note de position ≤ repere, dans les mouvements de la source. Les
-# positions sont croissantes : recherche dichotomique de la page, avec un
-# balayage linéaire de repli si une page vide fausse le découpage.
+# positions sont croissantes : parcours linéaire des pages, arrêt à la
+# première page dont la première note dépasse le repère.
 trouverPageCible = (sourceIndex, repere, carre) ->
   cibles = movements.filter (m) ->
     m.sourceIndex is sourceIndex and m.loaded and (m.pageCount ? 0) > 0
-  parcourir = (index, candidat) ->
+  index = 0
+  page = 1
+  candidat = null
+  etape = ->
     return Promise.resolve candidat if index >= cibles.length
     m = cibles[index]
-    positionsPage(m, 1, carre).then (premieres) ->
-      positionsPage(m, m.pageCount, carre).then (dernieres) ->
-        if dernieres.length and dernieres[dernieres.length - 1] <= repere
-          suivant = {movementId: m.id, page: m.pageCount, pos: dernieres[dernieres.length - 1]}
-          return parcourir index + 1, suivant
-        if premieres.length and premieres[0] > repere
-          return candidat ? {movementId: m.id, page: 1, pos: premieres[0]}
-        chercher = (lo, hi, best) ->
-          return Promise.resolve best if lo > hi
-          mid = Math.floor (lo + hi) / 2
-          positionsPage(m, mid, carre).then (positions) ->
-            if positions.length is 0
-              # Page sans note : balayage séquentiel de ce mouvement.
-              dernier = candidat
-              etape = (page) ->
-                return Promise.resolve dernier if page > m.pageCount
-                positionsPage(m, page, carre).then (liste) ->
-                  for pos in liste
-                    dernier = {movementId: m.id, page, pos} if pos <= repere
-                  etape page + 1
-              return etape 1
-            if positions[0] <= repere
-              chercher mid + 1, hi, mid
-            else
-              chercher lo, mid - 1, best
-        chercher(1, m.pageCount, 1).then (best) ->
-          positionsPage(m, best, carre).then (positions) ->
-            positions = premieres if positions.length is 0
-            pos = null
-            for candidate in positions when candidate <= repere
-              pos = candidate
-            pos ?= positions[0]
-            {movementId: m.id, page: best, pos}
-  parcourir 0, null
+    unless page <= m.pageCount
+      index += 1
+      page = 1
+      return etape()
+    positionsPage(m, page, carre).then (positions) ->
+      if positions.length and positions[0] > repere
+        return candidat ? {movementId: m.id, page, pos: positions[0]}
+      pos = null
+      for candidate in positions when candidate <= repere
+        pos = candidate
+      candidat = {movementId: m.id, page, pos} if pos?
+      # La page suivante commence au-delà du repère : la cible est ici.
+      return Promise.resolve candidat if positions.length and
+        positions[positions.length - 1] > repere
+      page += 1
+      etape()
+  etape()
 
 trouverNoteCible = (cible) ->
   carre = notationView is "square"

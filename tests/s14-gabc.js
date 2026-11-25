@@ -753,8 +753,10 @@ async function runLongPosition(browser, url, pageName, results) {
       before.headerLen === LONG_HEADER && reference != null && reference > LONG_HEADER + 50 ? 'OK' : 'ÉCHEC',
       `en-tête ${before.headerLen} (attendu ${LONG_HEADER}), repère ${reference}, page ${targetPage}/${start.total}`);
 
+    const switchStart = Date.now();
     await clickToggle(page);
     await waitNotationReady(page);
+    const switchMs = Date.now() - switchStart;
     const classic = await notationState(page);
     const classicVisible = await visibleNotePositions(page, 'classic', LONG_HEADER);
     const target = classic.probe?.target;
@@ -763,7 +765,10 @@ async function runLongPosition(browser, url, pageName, results) {
       reference != null && target.pos <= reference &&
       classicVisible.some((note) => note.pos <= reference) &&
       classicVisible.some((note) => note.pos === target.pos) ? 'OK' : 'ÉCHEC',
-      `repère ${reference}, cible ${JSON.stringify(target)}, visibles ${JSON.stringify(classicVisible.slice(0, 4))}`);
+      `repère ${reference}, cible ${JSON.stringify(target)}, visibles ${JSON.stringify(classicVisible.slice(0, 4))}, bascule ${switchMs} ms`);
+    L.record(results, '14. Bascules : durée mesurée sur la longue fixture', pageName,
+      switchMs > 0 && switchMs < 60000 ? 'OK' : 'ÉCHEC',
+      `${switchMs} ms pour ${start.total} pages carrées`);
 
     const returnReference = classicVisible[0]?.pos;
     await clickToggle(page);
