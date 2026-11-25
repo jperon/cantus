@@ -17,6 +17,17 @@ nix run .#apk          # scripts/build-apk.sh (voir ci-dessous)
 Les applications se lancent depuis la racine du dépôt : elles ré-entrent dans
 le devShell pour retrouver les variables d'environnement.
 
+Pour régénérer en plus les captures PWA (Chromium headless fourni par le
+flake), ajouter `--screenshots` :
+
+```sh
+node build.js --screenshots
+```
+
+Les images sont écrites dans `pwa/screenshots/` puis recopiées dans
+`dist/screenshots/` ; procédure détaillée, partition utilisée et licence dans
+`pwa/screenshots/README.md`.
+
 ## Dépendances externes du build
 
 `build.js` lit deux chemins hors du dépôt :
@@ -58,6 +69,7 @@ instructions exécutées au chargement sont conservées.
 | `sources.coffee` | Conversion scoretk et chargement séquentiel des sources/mouvements. |
 | `bibliotheque-import.coffee` | Bibliothèque, navigation tactile, import de fichiers/dossiers. |
 | `reglages-ui.coffee` | Panneau de réglages (liste des voix, contrôles). |
+| `export.coffee` | Dialogue et téléchargement de l'export. |
 | `integration.coffee` | Stockage et quota, protocole, URL, partage, messages d'erreur. |
 | `init.coffee` | Câblage des modules au `DOMContentLoaded`. |
 
@@ -133,7 +145,8 @@ module puis un dictionnaire par langue (`I18N_SOURCES`) et l'injecte en
 
 1. ajouter la clé dans `src/i18n/en.coffee` (référence) ;
 2. ajouter la même clé, avec les mêmes `{paramètres}`, dans chaque autre
-   dictionnaire (`src/i18n/fr.coffee` aujourd'hui) ;
+   dictionnaire (`src/i18n/fr.coffee`, `es.coffee`, `it.coffee` et
+   `de.coffee`) ;
 3. dans le HTML, poser `data-i18n="clé"` (texte), `data-i18n-title`,
    `data-i18n-aria-label`, `data-i18n-placeholder` ou `data-i18n-content`
    (attribut `content` d'une balise `meta`). Le texte source reste l'anglais ;
@@ -152,13 +165,14 @@ application, sans accès aux dictionnaires) restent en anglais.
 Créer `src/i18n/<code>.coffee` sur le modèle de `fr.coffee` :
 
 ```coffee
-registerLanguage 'es', 'Español',
+registerLanguage 'pt', 'Português',
   'app.title': '…'
   # … toutes les clés de en.coffee
 ```
 
 puis ajouter le fichier à `I18N_SOURCES` dans `build.js`, après `en.coffee`.
-Le sélecteur « Langue / Language » des réglages est alimenté par
+Le sélecteur de langue des réglages (« Language » en anglais, « Langue » en
+français) est alimenté par
 `languages()` : aucune autre modification n'est nécessaire. Une langue sans
 dictionnaire n'apparaît pas dans la liste.
 
@@ -265,7 +279,7 @@ remappées. Les changements de tempo internes du morceau sont donc conservés
 proportionnellement.
 
 Les données brutes du worker restent dans `playbackCache` (clé mémoire) et dans
-le cache persistant (`musica-playback-cache-v6`, tempo et unité compris) :
+le cache persistant (`musica-playback-cache-v8`, tempo et unité compris) :
 changer le tempo ne les invalide pas et ne touche jamais le cache SVG. Pendant
 la lecture,
 un changement relance le moteur à la même position musicale
@@ -293,8 +307,9 @@ Deux réglages indépendants, propres au fichier, en demi-tons de −12 à +12
   150 ms gardent leur hauteur). Les pistes de percussion (canal MIDI 10) ne
   sont jamais transposées.
 
-Le panneau affiche deux `<select>` compacts sur une même ligne, libellés
-« Affichage » et « Lecture », cibles tactiles de 44 px.
+Le panneau affiche deux `<select>` compacts, un par réglage, libellés
+« Transposition de la partition » et « Transposition du son » (en anglais
+« Score transposition » et « Sound transposition »), cibles tactiles de 44 px.
 
 ### Limites connues de scoretk
 
