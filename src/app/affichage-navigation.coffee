@@ -347,6 +347,9 @@ displayView = ->
     pendingPageScroll = null if scrollMode is "horizontal"
 
   refreshVerticalLayout()
+  # Le bouton de bascule ne concerne que les mouvements issus d'un gabc ; il
+  # est réévalué à chaque changement de page ou de mouvement.
+  rafraichirBasculeNotation?()
 
 prefetch = ->
   page = displayedPage()

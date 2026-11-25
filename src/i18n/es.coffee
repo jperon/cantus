@@ -107,6 +107,8 @@ registerLanguage 'es', 'Español',
   'nav.menuLabel': 'Acciones de la partitura'
   'nav.export': 'Exportar'
   'nav.settings': 'Ajustes'
+  'notation.square': 'Cuadrada'
+  'notation.toggleTitle': 'Cambiar entre notación cuadrada y clásica'
 
   'export.title': 'Exportar la partitura'
   'export.close': 'Cerrar la exportación'
@@ -139,6 +141,8 @@ registerLanguage 'es', 'Español',
   'errors.scoretkUnavailable': 'importación no disponible para este formato: falta el paquete scoretk en esta compilación'
   'errors.gabcInvalid': 'archivo gabc no válido: sin notas o contenido ilegible'
   'errors.gabcUnavailable': 'motor de notación cuadrada no disponible'
+  'errors.notationNeedsScoretk': 'La notación clásica requiere el paquete scoretk, ausente en esta versión.'
+  'errors.notationFallback': 'La notación clásica falló ({error}); se muestra la notación cuadrada.'
   'errors.movement': 'Error en el movimiento {id}: {message}'
   'notice.midiTranscription': 'Archivo MIDI: partitura transcrita automáticamente, sin la notación original.'
 

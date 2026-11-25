@@ -107,6 +107,8 @@ registerLanguage 'de', 'Deutsch',
   'nav.menuLabel': 'Partituraktionen'
   'nav.export': 'Exportieren'
   'nav.settings': 'Einstellungen'
+  'notation.square': 'Quadrat'
+  'notation.toggleTitle': 'Zwischen Quadrat- und klassischer Notation wechseln'
 
   'export.title': 'Partitur exportieren'
   'export.close': 'Export schließen'
@@ -139,6 +141,8 @@ registerLanguage 'de', 'Deutsch',
   'errors.scoretkUnavailable': 'Import für dieses Format nicht verfügbar: Das Paket scoretk fehlt in dieser Version'
   'errors.gabcInvalid': 'Ungültige gabc-Datei: keine Noten oder unlesbarer Inhalt'
   'errors.gabcUnavailable': 'Motor für Quadratnotation nicht verfügbar'
+  'errors.notationNeedsScoretk': 'Die klassische Notation benötigt das scoretk-Paket, das in dieser Version fehlt.'
+  'errors.notationFallback': 'Die klassische Notation ist fehlgeschlagen ({error}); die Quadratnotation wird angezeigt.'
   'errors.movement': 'Fehler im Satz {id}: {message}'
   'notice.midiTranscription': 'MIDI-Datei: Partitur automatisch übertragen, ohne ursprüngliche Notation.'
 

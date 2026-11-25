@@ -30,29 +30,59 @@ convertSource = (source) ->
   else
     Promise.resolve new TextDecoder().decode new Uint8Array(data)
 
+# Convertit un gabc en MusicXML pour la vue classique, avec les octets UTF-8
+# du texte décodé. Aucune donnée n'est réimportée : la source est déjà en
+# mémoire.
+convertirGabcEnXml = (source) ->
+  texte = decoderTexteGabc source?.data
+  # convertScoretkToXml transfère le tampon (ArrayBuffer), pas la vue.
+  octets = new TextEncoder().encode texte
+  convertScoretkToXml octets.buffer, source.name, source.includes
+
 # XML converti et découpage en mouvements d'une source, gardés pour la
 # partition courante (le zoom, le redimensionnement et les voix rechargent
-# sans reconvertir)
-ensureSource = (index) ->
+# sans reconvertir). `token` empêche une conversion remplacée par une bascule
+# d'écrire son résultat dans le cache de la nouvelle vue.
+ensureSource = (index, token) ->
   cached = sourceCache.get index
   return Promise.resolve cached if cached
   source = currentSources?[index]
   return Promise.reject new Error "source inconnue" unless source
   if estGabc source
-    # Le gabc n'est pas converti : il est décodé puis mis en page par exsurge.
     return Promise.resolve().then ->
-      info = preparerSourceGabc source
+      return if token? and token isnt loadToken
+      if notationView is "classic"
+        unless window.__musicaScoretkAvailable
+          throw new Error t "errors.notationNeedsScoretk"
+        texte = decoderTexteGabc source.data
+        convertirGabcEnXml(source).then (xml) ->
+          return if token? and token isnt loadToken
+          info = {
+            xml
+            splitInfo: detectSplitPoints xml
+            gabc: true
+            notation: "classic"
+            enteteLongueur: longueurEnteteGabc texte
+          }
+          sourceCache.set index, info
+          info
+      else
+        info = preparerSourceGabc source
+        info.notation = "square"
+        sourceCache.set index, info
+        info
+  else
+    convertSource(source).then (xml) ->
+      return if token? and token isnt loadToken
+      info = {xml, splitInfo: detectSplitPoints xml}
       sourceCache.set index, info
       info
-  convertSource(source).then (xml) ->
-    info = {xml, splitInfo: detectSplitPoints xml}
-    sourceCache.set index, info
-    info
 
 # Ajoute les mouvements d'une source à la fin de la liste globale
 appendSourceMovements = (index, info) ->
+  gabc = estGabc currentSources?[index]
   if info.gregorien
-    # Une source gabc est un seul mouvement, sans découpage en mouvements.
+    # Une source gabc en notation carrée est un seul mouvement, sans découpage.
     movements.push
       id: movements.length + 1
       pageCount: 0
@@ -61,6 +91,8 @@ appendSourceMovements = (index, info) ->
       sourceIndex: index
       localIndex: 0
       gregorien: true
+      gabc: true
+      enteteLongueur: info.enteteLongueur ? 0
     console.log "Source #{index + 1}/#{currentSources.length} : 1 mouvement(s), #{movements.length} au total"
     return
   splitPoints = info.splitInfo.splitPoints ? []
@@ -68,7 +100,7 @@ appendSourceMovements = (index, info) ->
   bounds = [0, ...splitPoints, totalMeasures]
   count = splitPoints.length + 1
   for localIndex in [0...count]
-    movements.push
+    movement =
       id: movements.length + 1
       pageCount: 0
       pushed: 0
@@ -79,6 +111,12 @@ appendSourceMovements = (index, info) ->
       # en découpe la timeline scoretk.
       measureStart: bounds[localIndex] ? 0
       measureEnd: bounds[localIndex + 1] ? null
+    if gabc
+      # Vue classique d'un gabc : le mouvement suit le chemin MusicXML, mais
+      # garde son origine pour le bouton de bascule et la position.
+      movement.gabc = true
+      movement.enteteLongueur = info.enteteLongueur ? 0
+    movements.push movement
   console.log "Source #{index + 1}/#{currentSources.length} : #{count} mouvement(s), #{movements.length} au total"
 
 # Enregistre une fois par source le XML complet dans le worker : le MIDI
@@ -101,6 +139,7 @@ ensureWorkerSource = (index, info) ->
 loadSources = (sources, startPage = 1) ->
   currentSources = (source for source in sources when source.role isnt "aux")
   sourceCache.clear()
+  reinitialiserBascule()
   startLoad startPage
 
 # Recharge la partition courante (redimensionnement, zoom, voix) : les XML
@@ -114,6 +153,10 @@ reloadScore = (startPage) ->
 # timeline scoretk, qui ne dépendent ni de la mise en page ni des voix masquées.
 startLoad = (startPage = 1, keepSources = false) ->
   token = ++loadToken
+  # Une restauration de position d'une bascule précédente ne vaut plus rien :
+  # la bascule courante la repose après startLoad.
+  positionBascule = null
+  derniereCibleBascule = null
   # Nouveau chargement (fichier, rechargement, zoom, voix) : le transport
   # repart de zéro et le moteur audio libère son contexte.
   hideTransport()
@@ -122,6 +165,7 @@ startLoad = (startPage = 1, keepSources = false) ->
   loadPartSettings()
   loadPlaybackTempo()
   loadTransposition()
+  loadNotationView()
   fileTempoRequest = null
   fileTempoError = false
   scrollPos = 0
@@ -191,7 +235,7 @@ loadFirstSource = (token) ->
   return finishLoad(token) if nextSourceToLoad >= currentSources.length
 
   index = nextSourceToLoad++
-  ensureSource(index)
+  ensureSource(index, token)
     .then (info) ->
       return unless token is loadToken
       appendSourceMovements index, info
@@ -232,8 +276,23 @@ loadFirstSource = (token) ->
       natureTransportAffichee = "xml"
     .catch (err) ->
       return unless token is loadToken
+      if estGabc(currentSources?[index]) and notationView is "classic"
+        return replierEnNotationCarree index, token, err
       reportSourceError index, err
       loadFirstSource token
+
+# La vue classique d'un gabc a échoué (conversion scoretk ou absence du
+# paquet) : revenir à la notation carrée, qui n'en dépend pas, plutôt que de
+# laisser un écran vide. La préférence enregistrée n'est pas modifiée : elle
+# reste le choix explicite de l'utilisateur.
+replierEnNotationCarree = (index, token, err, reprendre) ->
+  notationView = "square"
+  rafraichirBasculeNotation()
+  showError t "errors.notationFallback", {error: err?.message or err}
+  sourceCache.delete index
+  nextSourceToLoad = index
+  # Reprendre la chaîne interrompue : premier chargement ou suite des sources.
+  (reprendre ? loadFirstSource) token
 
 # Report a source that could not be converted, without stopping the others
 reportSourceError = (index, err) ->
@@ -286,13 +345,15 @@ stepLoad = (token) ->
   # 2. Convert the next source, then append its movements
   if nextSourceToLoad < currentSources.length
     index = nextSourceToLoad++
-    ensureSource(index)
+    ensureSource(index, token)
       .then (info) ->
         return unless token is loadToken
         appendSourceMovements index, info
         stepLoad token
       .catch (err) ->
         return unless token is loadToken
+        if estGabc(currentSources?[index]) and notationView is "classic"
+          return replierEnNotationCarree index, token, err, stepLoad
         reportSourceError index, err
         stepLoad token
     return
@@ -310,6 +371,9 @@ finishLoad = (token) ->
     showImport()
     showLibraryBtn()
   tryNavigateTarget()
+  # Bascule carré / classique : retrouver la note repère une fois tous les
+  # mouvements connus.
+  restaurerPositionBascule()
 
 # Go to the remembered page as soon as its movement is loaded, without waiting
 # for the remaining sources
@@ -384,6 +448,9 @@ chargerGregorienMovement = (movementId, info) ->
         mv = movements.find (m) -> m.id is movementId
         return reject new Error "mouvement inconnu" unless mv
         mv.gregorienSvgs = result.svgs
+        # Longueur d'en-tête mesurée par exsurge : le repère des source-index
+        # est exactement celui de la mise en page.
+        mv.enteteLongueur = result.enteteLongueur if result.enteteLongueur?
         resolve result
       .catch (err) ->
         reject err

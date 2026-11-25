@@ -50,6 +50,7 @@ refreshDynamicTexts = ->
     el.textContent = t "loading"
   renderBuildDate()
   renderTransport()
+  rafraichirBasculeNotation?()
   updateCommandBarSpace()
   renderHomeTexts?()
   renderRecentFiles?()

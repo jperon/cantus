@@ -107,6 +107,8 @@ registerLanguage 'fr', 'Français',
   'nav.menuLabel': 'Actions de la partition'
   'nav.export': 'Exporter'
   'nav.settings': 'Réglages'
+  'notation.square': 'Carré'
+  'notation.toggleTitle': 'Basculer entre notation carrée et classique'
 
   'export.title': 'Exporter la partition'
   'export.close': 'Fermer l’export'
@@ -139,6 +141,8 @@ registerLanguage 'fr', 'Français',
   'errors.scoretkUnavailable': "import de ce format indisponible : paquet scoretk absent de cette version"
   'errors.gabcInvalid': 'fichier gabc invalide : aucune note ou contenu illisible'
   'errors.gabcUnavailable': 'moteur de notation carrée indisponible'
+  'errors.notationNeedsScoretk': 'La notation classique nécessite le paquet scoretk, absent de cette version.'
+  'errors.notationFallback': 'La notation classique a échoué ({error}) ; retour à la notation carrée.'
   'errors.movement': 'Erreur mouvement {id} : {message}'
   'notice.midiTranscription': "Fichier MIDI : partition transcrite automatiquement, sans notation d'origine."
 

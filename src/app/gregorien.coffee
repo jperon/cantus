@@ -22,8 +22,21 @@ decoderTexteGabc = (data) ->
   # UTF-8 strict : un fichier illisible est signalé plutôt que rendu de travers.
   new TextDecoder('utf-8', {fatal: true}).decode new Uint8Array data
 
+# Longueur de l'en-tête gabc en unités UTF-16, ligne %% et son saut de ligne
+# compris : même repère que les source-index d'exsurge (relatifs au corps) et
+# que les -o des notes MusicXML de scoretk (absolus). Les caractères hors BMP
+# (𝄞, paire de substitution) comptent donc pour deux unités, comme en
+# JavaScript.
+longueurEnteteGabc = (texte) ->
+  source = String texte ? ""
+  return 0 unless /^\uFEFF?(?:[ \t\r]*(?:[%#][^\n]*)?\n)*[ \t]*[\w-_.]+[ \t]*:/.test source
+  regex = /(?:^\uFEFF?|\n)[ \t]*(%%+)[ \t\r]*(\r?\n|$)(?:[ \t\r]*\r?\n)*/g
+  match = regex.exec source
+  if match then match.index + match[0].length else 0
+
 preparerSourceGabc = (source) ->
-  {gregorien: true, texte: decoderTexteGabc source?.data}
+  texte = decoderTexteGabc source?.data
+  {gregorien: true, gabc: true, notation: "square", texte, enteteLongueur: longueurEnteteGabc texte}
 
 # --- Chargement paresseux d'exsurge ---------------------------------------
 promesseExsurge = null
@@ -207,7 +220,8 @@ miseEnPageGabc = (texte, {scale, largeur} = {}) ->
         score.layoutChantLines ctxt, largeurMiseEnPage
         unless score.lines?.length
           throw new Error t 'errors.gabcInvalid'
-        {svgs: construireSvgs(score, ctxt, largeurMiseEnPage, nom), mode: 'vertical'}
+        {svgs: construireSvgs(score, ctxt, largeurMiseEnPage, nom), mode: 'vertical',
+          enteteLongueur: exsurge.GabcHeader.getLength texte}
       catch err
         throw err if err?.message is t 'errors.gabcInvalid'
         throw new Error "#{t 'errors.gabcInvalid'} (#{err?.message or err})"
@@ -218,3 +232,209 @@ mouvementAffiche = ->
   getMovementForPage(displayedPage())?.movement or null
 
 estGregorienAffiche = -> !!mouvementAffiche()?.gregorien
+
+# --- Bascule carré / classique ---------------------------------------------
+# La vue classique est le MusicXML converti par scoretk : même découpage, même
+# worker, même transport et même export qu'un MusicXML ordinaire. Le choix est
+# propre au fichier (notationView, réglages-voix.coffee) et commun à toutes ses
+# sources gabc. Une bascule recharge par startLoad, en gardant les sources et
+# le jeton loadToken : les chargements remplacés sont ignorés.
+
+# Restauration de position en cours : tant qu'elle n'a pas abouti, le bouton
+# et les tests savent qu'une bascule n'est pas terminée.
+positionBascule = null
+derniereCibleBascule = null
+dernierRepereGabc = null
+dernierMouvementGabc = null
+
+# Position source (unités UTF-16 depuis le début du fichier) d'un élément de
+# note : source-index relatif au corps en carré, -o absolu dans l'id MusicXML.
+positionNoteElement = (el, enteteLongueur, carre) ->
+  if carre
+    index = el.getAttribute 'source-index'
+    return null unless index?
+    classes = " #{(el.getAttribute('class') or '')} "
+    return null unless classes.includes " note "
+    value = enteteLongueur + Number index
+    return if isFinite(value) then value else null
+  match = (el.getAttribute('id') or '').match /-o(\d+)-e\d+$/
+  if match then Number(match[1]) else null
+
+# Première note visible par position source dans la vue courante. Sert de
+# repère avant la bascule : la cible sera la dernière note de position ≤ ce
+# repère dans la nouvelle vue.
+positionPremiereNoteVisible = ->
+  mv = mouvementAffiche()
+  return null unless mv?.gabc
+  carre = notationView is "square"
+  selector = if carre then ".note[source-index]" else "[id]"
+  slot = $ "page-current"
+  rect = slot.getBoundingClientRect()
+  best = null
+  for el in slot.querySelectorAll ".scroll-page svg #{selector}"
+    pos = positionNoteElement el, (mv.enteteLongueur ? 0), carre
+    continue unless pos?
+    box = el.getBoundingClientRect()
+    continue unless box.bottom > rect.top and box.top < rect.bottom and
+      box.right > rect.left and box.left < rect.right
+    best = pos if best is null or pos < best
+  best
+
+rafraichirBasculeNotation = ->
+  btn = $ "notation-toggle"
+  return unless btn
+  mv = mouvementAffiche()
+  dernierMouvementGabc = mv if mv?.gabc
+  visible = !!mv?.gabc and fileLoaded
+  btn.classList.toggle "hidden", not visible
+  btn.setAttribute "aria-pressed", if notationView is "square" then "true" else "false"
+  btn.disabled = false
+
+# Bascule demandée par le bouton. Le choix est enregistré avant le
+# rechargement ; la position est mémorisée pour la restaurer à l'arrivée.
+basculerVueNotation = ->
+  mv = mouvementAffiche()
+  mv = dernierMouvementGabc unless mv?.gabc
+  return unless mv?.gabc
+  cible = if notationView is "square" then "classic" else "square"
+  if cible is "classic" and not window.__musicaScoretkAvailable
+    showError t "errors.notationNeedsScoretk"
+    rafraichirBasculeNotation()
+    return
+  pos = positionPremiereNoteVisible()
+  dernierRepereGabc = {sourceIndex: mv.sourceIndex, pos} if pos?
+  repere = if dernierRepereGabc?.sourceIndex is mv.sourceIndex then dernierRepereGabc else null
+  notationView = cible
+  saveNotationView()
+  rafraichirBasculeNotation()
+  # Les XML/découpages en cache valent pour l'ancienne vue : les reconvertir.
+  sourceCache.clear()
+  startLoad 1, true
+  # startLoad relit la préférence enregistrée ; si localStorage est
+  # indisponible, le choix courant doit quand même s'appliquer à ce
+  # chargement (la conversion commence dans une microtâche).
+  notationView = cible
+  positionBascule = if repere? then {
+    sourceIndex: repere.sourceIndex
+    pos: repere.pos
+    token: loadToken
+  } else null
+
+# Positions source des notes d'une page rendue, triées et dédoublonnées.
+positionsPage = (movement, page, carre) ->
+  requestPage(movement.id, page).then (svg) ->
+    return [] unless svg
+    try
+      doc = new DOMParser().parseFromString svg, "image/svg+xml"
+      selector = if carre then ".note[source-index]" else "[id]"
+      positions = []
+      for el in doc.querySelectorAll selector
+        pos = positionNoteElement el, (movement.enteteLongueur ? 0), carre
+        positions.push pos if pos?
+      positions.sort (a, b) -> a - b
+      Array.from new Set positions
+    catch
+      []
+
+# Dernière note de position ≤ repere, dans les mouvements de la source. Les
+# positions sont croissantes : recherche dichotomique de la page, avec un
+# balayage linéaire de repli si une page vide fausse le découpage.
+trouverPageCible = (sourceIndex, repere, carre) ->
+  cibles = movements.filter (m) ->
+    m.sourceIndex is sourceIndex and m.loaded and (m.pageCount ? 0) > 0
+  parcourir = (index, candidat) ->
+    return Promise.resolve candidat if index >= cibles.length
+    m = cibles[index]
+    positionsPage(m, 1, carre).then (premieres) ->
+      positionsPage(m, m.pageCount, carre).then (dernieres) ->
+        if dernieres.length and dernieres[dernieres.length - 1] <= repere
+          suivant = {movementId: m.id, page: m.pageCount, pos: dernieres[dernieres.length - 1]}
+          return parcourir index + 1, suivant
+        if premieres.length and premieres[0] > repere
+          return candidat ? {movementId: m.id, page: 1, pos: premieres[0]}
+        chercher = (lo, hi, best) ->
+          return Promise.resolve best if lo > hi
+          mid = Math.floor (lo + hi) / 2
+          positionsPage(m, mid, carre).then (positions) ->
+            if positions.length is 0
+              # Page sans note : balayage séquentiel de ce mouvement.
+              dernier = candidat
+              etape = (page) ->
+                return Promise.resolve dernier if page > m.pageCount
+                positionsPage(m, page, carre).then (liste) ->
+                  for pos in liste
+                    dernier = {movementId: m.id, page, pos} if pos <= repere
+                  etape page + 1
+              return etape 1
+            if positions[0] <= repere
+              chercher mid + 1, hi, mid
+            else
+              chercher lo, mid - 1, best
+        chercher(1, m.pageCount, 1).then (best) ->
+          positionsPage(m, best, carre).then (positions) ->
+            positions = premieres if positions.length is 0
+            pos = null
+            for candidate in positions when candidate <= repere
+              pos = candidate
+            pos ?= positions[0]
+            {movementId: m.id, page: best, pos}
+  parcourir 0, null
+
+trouverNoteCible = (cible) ->
+  carre = notationView is "square"
+  selector = if carre then ".note[source-index]" else "[id]"
+  mv = movements.find (m) -> m.id is cible.movementId
+  entete = mv?.enteteLongueur ? 0
+  for el in $("page-current").querySelectorAll ".scroll-page svg #{selector}"
+    return el if positionNoteElement(el, entete, carre) is cible.pos
+  null
+
+# Amène la note cible dans la zone visible (la page est déjà rendue par le
+# balayage ou arrive au frame suivant).
+defilerVersNote = (cible) ->
+  essai = (n) ->
+    el = trouverNoteCible cible
+    if el?
+      slot = $ "page-current"
+      top = el.getBoundingClientRect().top - slot.getBoundingClientRect().top + slot.scrollTop
+      slot.scrollTop = Math.max 0, top - 8
+      showIndicator()
+      savePositionDebounced()
+      return Promise.resolve()
+    return Promise.resolve() if n > 120
+    new Promise((resolve) -> requestAnimationFrame resolve).then -> essai n + 1
+  essai 0
+
+restaurerPositionApresBascule = (cible) ->
+  carre = notationView is "square"
+  trouverPageCible(cible.sourceIndex, cible.pos, carre).then (target) ->
+    return unless cible.token is loadToken and target?
+    derniereCibleBascule = target
+    goToPage getGlobalPage target.movementId, target.page
+    defilerVersNote target
+
+# Appelée par finishLoad : restaure la position de la bascule une fois toutes
+# les sources converties et les mouvements connus.
+restaurerPositionBascule = ->
+  cible = positionBascule
+  return unless cible? and cible.token is loadToken
+  restaurerPositionApresBascule cible
+    .catch (err) ->
+      console.warn "Restauration de position impossible : #{err?.message or err}"
+    .then ->
+      positionBascule = null if positionBascule is cible
+      rafraichirBasculeNotation()
+
+# Nouvelle entrée : aucune position de bascule à conserver.
+reinitialiserBascule = ->
+  positionBascule = null
+  derniereCibleBascule = null
+  dernierRepereGabc = null
+  dernierMouvementGabc = null
+
+setupNotationToggle = ->
+  $("notation-toggle")?.addEventListener "click", basculerVueNotation
+
+# Sonde de debug pour les tests : vue courante, restauration en cours, cible.
+window.__musicaNotationProbe = ->
+  {view: notationView, restore: positionBascule, target: derniereCibleBascule}

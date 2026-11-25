@@ -291,6 +291,29 @@ partsVariant = ->
   return variant if visualTranspose is 0
   "#{variant}|t#{visualTranspose}"
 
+# Vue des sources gabc, réglage par fichier : "square" (défaut) ou "classic".
+# En dossier mixte, la valeur vaut pour toutes les sources gabc de l'entrée.
+notationView = "square"
+
+loadNotationView = ->
+  notationView = "square"
+  return unless currentFileId
+  try
+    saved = localStorage.getItem "musica-notation-#{currentFileId}"
+    notationView = "classic" if saved is "classic"
+  catch
+    # localStorage unavailable (file:// on some browsers)
+
+saveNotationView = ->
+  return unless currentFileId
+  try
+    if notationView is "classic"
+      localStorage.setItem "musica-notation-#{currentFileId}", "classic"
+    else
+      localStorage.removeItem "musica-notation-#{currentFileId}"
+  catch
+    # localStorage unavailable (file:// on some browsers)
+
 # Variante du XML que le worker a chargé pour un mouvement (voir
 # movementVariants). Tant qu'un mouvement n'a pas été chargé, les réglages
 # courants font foi.

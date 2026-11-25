@@ -206,6 +206,7 @@ resetLoadedScore = ->
   currentFileId = null
   currentSources = null
   sourceCache.clear()
+  reinitialiserBascule()
   loadToken++  # stop background conversions of the deleted score
   movementLoadTokens.clear()
   fileLoaded = false
@@ -361,8 +362,9 @@ convertScoretkToXml = (buffer, name, includes) ->
     worker.postMessage message, [buffer]
 
 # Extensions importables : dérivées de src/formats.coffee, source unique
-# partagée avec build.js (attribut `accept`) et le service worker.
-IMPORT_EXTENSIONS = window.__musicaFormats.baseExtensions.concat SCORETK_EXTENSIONS
+# partagée avec build.js (attribut `accept`) et le service worker. Sans
+# doublon : gabc est à la fois lisible directement et convertible.
+IMPORT_EXTENSIONS = Array.from new Set window.__musicaFormats.baseExtensions.concat SCORETK_EXTENSIONS
 
 # Regex unique, construite une fois : test d'extension et retrait de l'extension
 IMPORT_EXT_RE = new RegExp "\\.(#{IMPORT_EXTENSIONS.join '|'})$", 'i'

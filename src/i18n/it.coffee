@@ -107,6 +107,8 @@ registerLanguage 'it', 'Italiano',
   'nav.menuLabel': 'Azioni della partitura'
   'nav.export': 'Esporta'
   'nav.settings': 'Impostazioni'
+  'notation.square': 'Quadrata'
+  'notation.toggleTitle': 'Passa tra notazione quadrata e classica'
 
   'export.title': 'Esporta la partitura'
   'export.close': 'Chiudi l’esportazione'
@@ -139,6 +141,8 @@ registerLanguage 'it', 'Italiano',
   'errors.scoretkUnavailable': 'importazione non disponibile per questo formato: il pacchetto scoretk manca in questa build'
   'errors.gabcInvalid': 'file gabc non valido: nessuna nota o contenuto illeggibile'
   'errors.gabcUnavailable': 'motore di notazione quadrata non disponibile'
+  'errors.notationNeedsScoretk': 'La notazione classica richiede il pacchetto scoretk, assente in questa versione.'
+  'errors.notationFallback': 'La notazione classica non è riuscita ({error}); viene mostrata la notazione quadrata.'
   'errors.movement': 'Errore nel movimento {id}: {message}'
   'notice.midiTranscription': 'File MIDI: spartito trascritto automaticamente, senza la notazione originale.'
 

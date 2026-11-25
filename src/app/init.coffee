@@ -6,6 +6,7 @@ document.addEventListener "DOMContentLoaded", ->
   setupLanguage()
   setupNavigation()
   setupCommandBar()
+  setupNotationToggle()
   setupTransport()
   setupImport()
   setupLibrary()

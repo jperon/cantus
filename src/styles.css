@@ -1384,6 +1384,7 @@ body.theme-dark .spinner-small {
 .transport-btn,
 .nav-btn,
 #page-number,
+#notation-toggle,
 #btn-library,
 #btn-menu,
 #command-menu button,
@@ -1426,6 +1427,20 @@ body.theme-dark .spinner-small {
   font-size: 20px;
 }
 
+/* Bascule de notation des sources gabc : libellé court (une ligne à 360 px),
+   état courant porté par aria-pressed. */
+#notation-toggle {
+  font-size: 13px;
+  padding: 0 10px;
+  white-space: nowrap;
+}
+
+#notation-toggle[aria-pressed="true"] {
+  background: #e8e8e8;
+  font-weight: 600;
+}
+
+#notation-toggle.hidden,
 #btn-library.hidden,
 #btn-menu.hidden {
   display: none;
@@ -1434,6 +1449,7 @@ body.theme-dark .spinner-small {
 .transport-btn:active,
 .nav-btn:active,
 #page-number:active,
+#notation-toggle:active,
 #btn-library:active,
 #btn-menu:active,
 #command-menu button:active,
@@ -1639,6 +1655,7 @@ body.theme-sepia #page-jump {
 body.theme-sepia .transport-btn,
 body.theme-sepia .nav-btn,
 body.theme-sepia #page-number,
+body.theme-sepia #notation-toggle,
 body.theme-sepia #btn-library,
 body.theme-sepia #btn-menu,
 body.theme-sepia #command-menu button,
@@ -1647,6 +1664,10 @@ body.theme-sepia #page-jump-input {
   background: #f4ecd8;
   border-color: #9c8355;
   color: #2c1810;
+}
+
+body.theme-sepia #notation-toggle[aria-pressed="true"] {
+  background: #e8dcc0;
 }
 
 body.theme-sepia #transport-time,
@@ -1671,6 +1692,7 @@ body.theme-dark #page-jump {
 body.theme-dark .transport-btn,
 body.theme-dark .nav-btn,
 body.theme-dark #page-number,
+body.theme-dark #notation-toggle,
 body.theme-dark #btn-library,
 body.theme-dark #btn-menu,
 body.theme-dark #command-menu button,
@@ -1684,10 +1706,15 @@ body.theme-dark #page-jump-input {
 body.theme-dark .transport-btn:active,
 body.theme-dark .nav-btn:active,
 body.theme-dark #page-number:active,
+body.theme-dark #notation-toggle:active,
 body.theme-dark #btn-library:active,
 body.theme-dark #btn-menu:active,
 body.theme-dark #command-menu button:active,
 body.theme-dark #page-jump button:active {
+  background: #3a3a3a;
+}
+
+body.theme-dark #notation-toggle[aria-pressed="true"] {
   background: #3a3a3a;
 }
 

@@ -109,6 +109,8 @@ registerLanguage 'en', 'English',
   'nav.menuLabel': 'Score actions'
   'nav.export': 'Export'
   'nav.settings': 'Settings'
+  'notation.square': 'Square'
+  'notation.toggleTitle': 'Switch between square and classical notation'
 
   'export.title': 'Export the score'
   'export.close': 'Close export'
@@ -141,6 +143,8 @@ registerLanguage 'en', 'English',
   'errors.scoretkUnavailable': 'import unavailable for this format: the scoretk package is missing from this build'
   'errors.gabcInvalid': 'Invalid gabc file: no notes or unreadable content'
   'errors.gabcUnavailable': 'Square-note notation engine unavailable'
+  'errors.notationNeedsScoretk': 'Classical notation requires the scoretk package, which is missing from this build.'
+  'errors.notationFallback': 'Classical notation failed ({error}); showing square notation.'
   'errors.movement': 'Movement {id} error: {message}'
   'notice.midiTranscription': 'MIDI file: score transcribed automatically, without the original notation.'
 
