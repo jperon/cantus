@@ -22,21 +22,9 @@ decoderTexteGabc = (data) ->
   # UTF-8 strict : un fichier illisible est signalé plutôt que rendu de travers.
   new TextDecoder('utf-8', {fatal: true}).decode new Uint8Array data
 
-# Longueur de l'en-tête gabc en unités UTF-16, ligne %% et son saut de ligne
-# compris : même repère que les source-index d'exsurge (relatifs au corps) et
-# que les -o des notes MusicXML de scoretk (absolus). Les caractères hors BMP
-# (𝄞, paire de substitution) comptent donc pour deux unités, comme en
-# JavaScript.
-longueurEnteteGabc = (texte) ->
-  source = String texte ? ""
-  return 0 unless /^\uFEFF?(?:[ \t\r]*(?:[%#][^\n]*)?\n)*[ \t]*[\w-_.]+[ \t]*:/.test source
-  regex = /(?:^\uFEFF?|\n)[ \t]*(%%+)[ \t\r]*(\r?\n|$)(?:[ \t\r]*\r?\n)*/g
-  match = regex.exec source
-  if match then match.index + match[0].length else 0
-
 preparerSourceGabc = (source) ->
   texte = decoderTexteGabc source?.data
-  {gregorien: true, gabc: true, notation: "square", texte, enteteLongueur: longueurEnteteGabc texte}
+  {gregorien: true, gabc: true, notation: "square", texte}
 
 # --- Chargement paresseux d'exsurge ---------------------------------------
 promesseExsurge = null

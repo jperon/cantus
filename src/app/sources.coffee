@@ -54,7 +54,6 @@ ensureSource = (index, token) ->
       if notationView is "classic"
         unless window.__musicaScoretkAvailable
           throw new Error t "errors.notationNeedsScoretk"
-        texte = decoderTexteGabc source.data
         convertirGabcEnXml(source).then (xml) ->
           return if token? and token isnt loadToken
           info = {
@@ -62,7 +61,6 @@ ensureSource = (index, token) ->
             splitInfo: detectSplitPoints xml
             gabc: true
             notation: "classic"
-            enteteLongueur: longueurEnteteGabc texte
           }
           sourceCache.set index, info
           info
@@ -92,7 +90,6 @@ appendSourceMovements = (index, info) ->
       localIndex: 0
       gregorien: true
       gabc: true
-      enteteLongueur: info.enteteLongueur ? 0
     console.log "Source #{index + 1}/#{currentSources.length} : 1 mouvement(s), #{movements.length} au total"
     return
   splitPoints = info.splitInfo.splitPoints ? []
@@ -113,9 +110,8 @@ appendSourceMovements = (index, info) ->
       measureEnd: bounds[localIndex + 1] ? null
     if gabc
       # Vue classique d'un gabc : le mouvement suit le chemin MusicXML, mais
-      # garde son origine pour le bouton de bascule et la position.
+      # garde son origine pour le bouton de bascule.
       movement.gabc = true
-      movement.enteteLongueur = info.enteteLongueur ? 0
     movements.push movement
   console.log "Source #{index + 1}/#{currentSources.length} : #{count} mouvement(s), #{movements.length} au total"
 
