@@ -604,6 +604,20 @@ setupSettings = ->
     if fileLoaded and currentSources?.length
       reloadScore displayedPage()
 
+  # Taille du texte : même comportement que le zoom (libellé en direct,
+  # enregistrement et rechargement à la fin du glissement).
+  $("text-size-range").addEventListener "input", (e) ->
+    $("text-size-value").textContent = formatPercent e.target.value
+
+  $("text-size-range").addEventListener "change", (e) ->
+    val = parseInt e.target.value
+    applyTextSize val
+    settings = loadSettings()
+    settings.textSize = textSize
+    saveSettings settings
+    if fileLoaded and currentSources?.length
+      reloadScore displayedPage()
+
   # Theme buttons
   for btn in document.querySelectorAll(".theme-btn")
     do (btn) ->

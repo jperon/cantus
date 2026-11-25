@@ -22,6 +22,8 @@ registerLanguage 'de', 'Deutsch',
   'settings.sectionApplication': 'Anwendung'
   'settings.zoom': 'Zoom'
   'settings.zoomAria': 'Zoom der Partitur in Prozent'
+  'settings.textSize': 'Textgröße'
+  'settings.textSizeAria': 'Größe des Gesangstextes in Prozent'
   'settings.hideEmptyStaves': 'Leere Notensysteme ausblenden'
   'settings.hideEmptyStavesHint': 'In jedem System außer dem ersten werden Notensysteme ohne Noten ausgeblendet.'
   'settings.language': 'Sprache'

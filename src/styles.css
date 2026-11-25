@@ -463,6 +463,18 @@ html, body {
   border-bottom: 1px solid #e9e9e9;
 }
 
+/* Réglages courts côte à côte quand la largeur le permet : deux colonnes
+   égales, empilées sinon (aucune media query). */
+.settings-pair {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.settings-pair > .settings-group {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
 .settings-label {
   display: block;
   font-size: 14px;

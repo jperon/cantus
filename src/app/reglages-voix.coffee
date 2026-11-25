@@ -15,7 +15,13 @@ getMovementForPage = (globalPage) ->
   null
 
 # Settings defaults
-defaultSettings = { zoom: 40, theme: "white", tapSize: 30, scrollUnit: "page", overlap: 0, layout: "auto", masterVolume: 80, followPlayback: true, hideEmptyStaves: false, highlightMeasure: false, expandRepeats: true, pianoOnly: false }
+defaultSettings = { zoom: 40, theme: "white", tapSize: 30, scrollUnit: "page", overlap: 0, layout: "auto", masterVolume: 80, followPlayback: true, hideEmptyStaves: false, highlightMeasure: false, expandRepeats: true, pianoOnly: false, textSize: 100 }
+
+# Bornes et pas du réglage « Taille du texte » : pourcentage de la taille de
+# base du texte chanté, indépendant du zoom.
+TEXT_SIZE_MIN = 50
+TEXT_SIZE_MAX = 175
+TEXT_SIZE_STEP = 5
 
 # Bornes des transpositions visuelle et auditive, en demi-tons.
 TRANSPOSE_MIN = -12
@@ -72,6 +78,18 @@ applyZoom = (zoom) ->
   currentScale = zoom
   $("zoom-range").value = zoom
   $("zoom-value").textContent = formatPercent zoom
+
+# Taille du texte chanté, en pourcentage de la taille de base. Une valeur
+# illisible ou hors bornes est ramenée à un pourcentage valide (pas du
+# curseur), pour que l'affichage et le rendu restent cohérents.
+applyTextSize = (size) ->
+  value = parseInt size, 10
+  value = 100 unless isFinite value
+  value = Math.max TEXT_SIZE_MIN, Math.min TEXT_SIZE_MAX, value
+  value = Math.round(value / TEXT_SIZE_STEP) * TEXT_SIZE_STEP
+  textSize = value
+  $("text-size-range").value = value
+  $("text-size-value").textContent = formatPercent value
 
 applyScrollSettings = (unit, overlap) ->
   currentScrollUnit = unit or "page"
@@ -138,6 +156,7 @@ applyAllSettings = ->
   applyTheme settings.theme
   applyTapSize settings.tapSize
   applyZoom settings.zoom
+  applyTextSize settings.textSize
   applyScrollSettings settings.scrollUnit or "page", settings.overlap or 0
   applyLayoutSetting settings.layout
   applyMasterVolume settings.masterVolume
@@ -288,6 +307,9 @@ partsVariant = ->
   # la variante aussi. Suffixe absent quand l'option est au défaut (aucune
   # condensation) : les clés existantes restent valables.
   variant = "#{variant}|c" if hideEmptyStaves
+  # Taille du texte chanté : le rendu Verovio et le viewBox grégorien en
+  # dépendent, donc la variante aussi.
+  variant = "#{variant}|x#{textSize}" if textSize isnt 100
   return variant if visualTranspose is 0
   "#{variant}|t#{visualTranspose}"
 

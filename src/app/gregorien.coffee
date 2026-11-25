@@ -73,18 +73,23 @@ hauteurPorteeGabc = (scale) ->
   pct = if isFinite(scale) and scale > 0 then scale else 40
   Math.max STAFF_HEIGHT_MIN, Math.round(pct * STAFF_HEIGHT_PAR_ZOOM)
 
-tailleTexteGabc = (scale) ->
+tailleTexteGabc = (scale, textSize) ->
   pct = if isFinite(scale) and scale > 0 then scale else 40
-  Math.max 12, Math.round(pct * 0.55)
+  # Taille de base à 100 % : la taille du texte suit le zoom.
+  base = Math.max 12, Math.round(pct * 0.55)
+  # Réglage « Taille du texte » appliqué APRÈS le calcul de base, sans
+  # toucher à la hauteur de portée.
+  facteur = if isFinite(textSize) and textSize > 0 then textSize else 100
+  Math.round base * facteur / 100
 
 largeurPageGabc = ->
   Math.max 200, Math.floor(window.innerWidth or 360)
 
-creerContexteGabc = (scale, exsurge) ->
+creerContexteGabc = (scale, textSize, exsurge) ->
   ctxt = new exsurge.ChantContext()
   # Même police que le texte des partitions Verovio (embarquée dans le CSS).
   ctxt.setFont "'Cantus Serif', 'Liberation Serif', 'Times New Roman', serif",
-    tailleTexteGabc scale
+    tailleTexteGabc scale, textSize
   # Noir : les thèmes sépia et sombre appliquent déjà leur filtre à la zone de
   # lecture (styles.css, body.theme-*).
   ctxt.setRubricColor '#000'
@@ -180,7 +185,7 @@ construireSvgs = (score, ctxt, largeur, titre) ->
 
 # Met un gabc en page à la largeur voulue : une ligne de chant = une page.
 # Résout {svgs, mode} ; rejette un gabc vide, sans note ou illisible.
-miseEnPageGabc = (texte, {scale, largeur} = {}) ->
+miseEnPageGabc = (texte, {scale, textSize, largeur} = {}) ->
   chargerExsurge().then (exsurge) ->
     # Mesurer après le chargement de la police évite un viewBox calculé sur une
     # police de repli plus large ou plus haute.
@@ -191,7 +196,7 @@ miseEnPageGabc = (texte, {scale, largeur} = {}) ->
       # ensuite autour de l'encombrement réel.
       largeurMiseEnPage = Math.max 200, Math.floor(largeur - 2 * MARGE_GABC)
       try
-        ctxt = creerContexteGabc scale, exsurge
+        ctxt = creerContexteGabc scale, textSize, exsurge
         header = new exsurge.GabcHeader texte
         mappings = exsurge.Gabc.createMappingsFromSource ctxt, texte
         unless mappings?.length

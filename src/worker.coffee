@@ -165,13 +165,17 @@ systemCount = (svgString) ->
 # mise en page naturelle. En mode horizontal, une page ne contient qu'un
 # système (systemMaxPerPage) : sans cela, une page suivante ou un mouvement
 # moins fourni en afficherait deux, superposés dans la vue paginée.
-loadMovement = (movementId, xmlString, pageWidth, pageHeight, scale = 40, sourceId = null, measureStart = 0, measureEnd = null, transpose = 0, mode = null, hideEmptyStaves = false, loadToken = null) ->
+loadMovement = (movementId, xmlString, pageWidth, pageHeight, scale = 40, textSize = 100, sourceId = null, measureStart = 0, measureEnd = null, transpose = 0, mode = null, hideEmptyStaves = false, loadToken = null) ->
   options = {
     breaks: "auto"
     adjustPageHeight: true
     pageWidth: pageWidth
     pageHeight: pageHeight
     scale: scale
+    # Taille des paroles en unités MEI (défaut Verovio 4,5 ; bornes 2 à 8).
+    # Relative à la portée : elle suit donc le zoom. Le réglage « Taille du
+    # texte » ne fait varier que cette valeur.
+    lyricSize: 4.5 * textSize / 100
     # Condensation des portées vides : « auto » masque, dans chaque système,
     # les portées qui n'ont aucune note. Verovio exempte le premier système
     # quand condenseFirstPage est faux (comportement des éditeurs) ; les
@@ -970,6 +974,7 @@ handleMessage = (e) ->
           pageWidth
           pageHeight
           scale
+          textSize
           transpose
           sourceId
           measureStart
@@ -978,7 +983,7 @@ handleMessage = (e) ->
           hideEmptyStaves
           loadToken
         } = e.data
-        loadMovement movementId, xmlString, pageWidth, pageHeight, scale, sourceId, measureStart, measureEnd, transpose, scrollMode, hideEmptyStaves, loadToken
+        loadMovement movementId, xmlString, pageWidth, pageHeight, scale, textSize, sourceId, measureStart, measureEnd, transpose, scrollMode, hideEmptyStaves, loadToken
 
       when "renderMovementPage"
         {

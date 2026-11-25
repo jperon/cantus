@@ -431,6 +431,7 @@ loadMovementAndWait = (movementId, xmlString, pageWidth, pageHeight, sourceId = 
       pageWidth: pageWidth
       pageHeight: pageHeight
       scale: currentScale
+      textSize: textSize
       transpose: visualTranspose
       sourceId: sourceId
       measureStart: measureStart
@@ -450,7 +451,7 @@ chargerGregorienMovement = (movementId, info) ->
     # plus tard comparerait deux valeurs courantes, réécrites ensemble par un
     # rechargement, et laisserait l'ancienne mise en page écraser la nouvelle.
     jeton = loadToken
-    miseEnPageGabc(info.texte, {scale: currentScale})
+    miseEnPageGabc(info.texte, {scale: currentScale, textSize: textSize})
       .then (result) ->
         return reject new Error "Chargement remplacé" unless jeton is loadToken
         mv = movements.find (m) -> m.id is movementId

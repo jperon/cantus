@@ -49,11 +49,17 @@ html(lang="en")
         button#settings-close(type="button" data-i18n-aria-label="settings.close" aria-label="Close settings") ✕
       section.settings-section(aria-labelledby="settings-display-title")
         h3#settings-display-title.settings-section-title(data-i18n="settings.sectionDisplay") Display
-        .settings-group
-          label.settings-label(for="zoom-range" data-i18n="settings.zoom") Zoom
-          .settings-row.settings-slider-row
-            input#zoom-range.settings-range(type="range" min="30" max="80" step="5" value="40" aria-label="Score zoom in percent" data-i18n-aria-label="settings.zoomAria")
-            span#zoom-value.settings-value 40 %
+        .settings-pair
+          .settings-group
+            label.settings-label(for="zoom-range" data-i18n="settings.zoom") Zoom
+            .settings-row.settings-slider-row
+              input#zoom-range.settings-range(type="range" min="30" max="80" step="5" value="40" aria-label="Score zoom in percent" data-i18n-aria-label="settings.zoomAria")
+              span#zoom-value.settings-value 40 %
+          .settings-group
+            label.settings-label(for="text-size-range" data-i18n="settings.textSize") Text size
+            .settings-row.settings-slider-row
+              input#text-size-range.settings-range(type="range" min="50" max="175" step="5" value="100" aria-label="Text size in percent" data-i18n-aria-label="settings.textSizeAria")
+              span#text-size-value.settings-value 100 %
         .settings-group
           span.settings-label(data-i18n="settings.layout") Layout
           .settings-row(role="group" aria-label="Layout" data-i18n-aria-label="settings.layout")

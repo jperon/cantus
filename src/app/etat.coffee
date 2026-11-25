@@ -24,6 +24,7 @@ resizeTimer = null
 positionTimer = null
 workerReady = false
 currentScale = 40
+textSize = 100  # Taille du texte chanté en % de la taille de base (réglage global)
 verticalScrollRatio = 0
 currentPageWidth = 0
 currentPageHeight = 0

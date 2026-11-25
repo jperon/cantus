@@ -22,6 +22,8 @@ registerLanguage 'es', 'Español',
   'settings.sectionApplication': 'Aplicación'
   'settings.zoom': 'Zoom'
   'settings.zoomAria': 'Zoom de la partitura en porcentaje'
+  'settings.textSize': 'Tamaño del texto'
+  'settings.textSizeAria': 'Tamaño del texto cantado en porcentaje'
   'settings.hideEmptyStaves': 'Ocultar pentagramas vacíos'
   'settings.hideEmptyStavesHint': 'En cada sistema excepto el primero, se ocultan los pentagramas sin notas.'
   'settings.language': 'Idioma'

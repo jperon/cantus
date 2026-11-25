@@ -24,6 +24,8 @@ registerLanguage 'en', 'English',
   'settings.sectionApplication': 'Application'
   'settings.zoom': 'Zoom'
   'settings.zoomAria': 'Score zoom in percent'
+  'settings.textSize': 'Text size'
+  'settings.textSizeAria': 'Sung text size in percent'
   'settings.hideEmptyStaves': 'Hide empty staves'
   'settings.hideEmptyStavesHint': 'In each system except the first, staves with no notes are hidden.'
   'settings.language': 'Language'

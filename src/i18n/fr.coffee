@@ -22,6 +22,8 @@ registerLanguage 'fr', 'Français',
   'settings.sectionApplication': 'Application'
   'settings.zoom': 'Zoom'
   'settings.zoomAria': 'Zoom de la partition en pourcentage'
+  'settings.textSize': 'Taille du texte'
+  'settings.textSizeAria': 'Taille du texte chanté en pourcentage'
   'settings.hideEmptyStaves': 'Masquer les portées vides'
   'settings.hideEmptyStavesHint': 'Dans chaque système sauf le premier, les portées sans note sont masquées.'
   'settings.language': 'Langue'
