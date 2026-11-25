@@ -767,6 +767,44 @@ async function runToggle(browser, url, pageName, results) {
   await ctx.close();
 }
 
+// Plus grande position de note ≤ repère dans une vue, calculée indépendamment
+// de la restauration de l'application en parcourant toutes les pages de la
+// source. Sert à vérifier que la cible n'est pas simplement « en arrière ».
+async function expectedTarget(page, view, reference, sourceIndex) {
+  return page.evaluate(async ({ view, reference, sourceIndex }) => {
+    const movements = (window.movements || []).filter((m) =>
+      m.sourceIndex === sourceIndex && m.loaded && (m.pageCount || 0) > 0);
+    let best = null;
+    let first = null;
+    for (const movement of movements) {
+      const header = movement.enteteLongueur || 0;
+      for (let page = 1; page <= movement.pageCount; page += 1) {
+        const svg = await window.requestPage(movement.id, page);
+        if (!svg) continue;
+        const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
+        const selector = view === 'square' ? '.note[source-index]' : '[id]';
+        for (const el of doc.querySelectorAll(selector)) {
+          let pos = null;
+          if (view === 'square') {
+            const index = el.getAttribute('source-index');
+            const cls = ` ${el.getAttribute('class') || ''} `;
+            if (index != null && cls.includes(' note ')) pos = header + Number(index);
+          } else {
+            const match = (el.getAttribute('id') || '').match(/-o(\d+)-e\d+$/);
+            if (match) pos = Number(match[1]);
+          }
+          if (pos == null || !isFinite(pos)) continue;
+          if (best == null || pos > best) {
+            if (pos <= reference) best = pos;
+          }
+          if (first == null || pos < first) first = pos;
+        }
+      }
+    }
+    return best == null ? first : best;
+  }, { view, reference, sourceIndex });
+}
+
 // Position non initiale conservée dans une longue fixture : repère UTF-16
 // (en-tête avec caractères hors ASCII et 𝄞), page intermédiaire, aller-retour.
 async function runLongPosition(browser, url, pageName, results) {
@@ -800,12 +838,15 @@ async function runLongPosition(browser, url, pageName, results) {
     const classic = await notationState(page);
     const classicVisible = await visibleNotePositions(page, 'classic', LONG_HEADER);
     const target = classic.probe?.target;
+    const sourceIndex = await page.evaluate(() =>
+      window.getMovementForPage(window.displayedPage())?.movement?.sourceIndex ?? 0);
+    const expectedClassic = await expectedTarget(page, 'classic', reference, sourceIndex);
     L.record(results, '14. Bascule vers classique : position conservée (dernière note ≤ repère)', pageName,
       classic.view === 'classic' && classic.staffs > 0 && target != null &&
-      reference != null && target.pos <= reference &&
-      classicVisible.some((note) => note.pos <= reference) &&
+      reference != null && expectedClassic != null && target.pos === expectedClassic &&
       classicVisible.some((note) => note.pos === target.pos) ? 'OK' : 'ÉCHEC',
-      `repère ${reference}, cible ${JSON.stringify(target)}, visibles ${JSON.stringify(classicVisible.slice(0, 4))}, bascule ${switchMs} ms`);
+      `repère ${reference}, cible ${JSON.stringify(target)}, attendu ${expectedClassic}, ` +
+      `visibles ${JSON.stringify(classicVisible.slice(0, 4))}, bascule ${switchMs} ms`);
     L.record(results, '14. Bascules : durée mesurée sur la longue fixture', pageName,
       switchMs > 0 && switchMs < 60000 ? 'OK' : 'ÉCHEC',
       `${switchMs} ms pour ${start.total} pages carrées`);
@@ -816,11 +857,13 @@ async function runLongPosition(browser, url, pageName, results) {
     const back = await notationState(page);
     const backVisible = await visibleNotePositions(page, 'square', LONG_HEADER);
     const returnTarget = back.probe?.target;
+    const expectedSquare = await expectedTarget(page, 'square', returnReference, sourceIndex);
     L.record(results, '14. Retour en carré : position conservée et source-index visible', pageName,
       back.view === 'square' && back.chantLines >= 1 && returnTarget != null &&
-      returnReference != null && returnTarget.pos <= returnReference &&
+      returnReference != null && expectedSquare != null && returnTarget.pos === expectedSquare &&
       backVisible.some((note) => note.pos === returnTarget.pos) ? 'OK' : 'ÉCHEC',
-      `repère ${returnReference}, cible ${JSON.stringify(returnTarget)}, visibles ${JSON.stringify(backVisible.slice(0, 4))}`);
+      `repère ${returnReference}, cible ${JSON.stringify(returnTarget)}, attendu ${expectedSquare}, ` +
+      `visibles ${JSON.stringify(backVisible.slice(0, 4))}`);
     const relevant = L.summarize(errors);
     L.record(results, '6. Erreurs JS (position de bascule)', pageName,
       relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
