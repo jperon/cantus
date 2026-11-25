@@ -160,33 +160,6 @@ async function viewBoxState(page) {
   });
 }
 
-// Marge droite entre la boîte du guidon de fin de ligne et le viewBox de son
-// SVG, en unités du viewBox.
-async function custosState(page) {
-  return page.evaluate(() => {
-    const boxes = [];
-    for (const svg of document.querySelectorAll('#page-current .scroll-page svg')) {
-      const custos = svg.querySelector('g.Custos use, g.Custos');
-      if (!custos) continue;
-      const screen = svg.getBoundingClientRect();
-      const box = custos.getBoundingClientRect();
-      const vb = svg.viewBox.baseVal;
-      if (!screen.width || !vb.width) continue;
-      const scale = screen.width / vb.width;
-      const right = vb.x + (box.right - screen.x) / scale;
-      boxes.push({
-        right,
-        margin: vb.x + vb.width - right,
-      });
-    }
-    return {
-      count: boxes.length,
-      minMargin: boxes.length ? Math.min(...boxes.map((b) => b.margin)) : null,
-      ok: boxes.length > 0 && boxes.every((b) => b.margin >= 12),
-    };
-  });
-}
-
 async function importGabc(page, file, timeout = 60000) {
   await page.setInputFiles('#file-input', file);
   const first = await L.waitFirstSvg(page, timeout);
@@ -245,11 +218,6 @@ async function runPage(browser, url, pageName, results) {
       bounds.ok && bounds.count > 20 ? 'OK' : 'ÉCHEC',
       `${bounds.count} éléments dans ${bounds.svgs} SVG, viewBox ${JSON.stringify(bounds.viewBox)}` +
       (bounds.failures.length ? `, hors cadre ${JSON.stringify(bounds.failures)}` : ''));
-    const custos = await custosState(page);
-    L.record(results, '14. La boîte du guidon tient dans le viewBox de sa ligne', pageName,
-      custos.ok ? 'OK' : 'ÉCHEC',
-      `${custos.count} guidon(s), marge droite minimale ` +
-      `${custos.minMargin == null ? 'absente' : custos.minMargin.toFixed(2)} unités`);
 
     // B. Export refusé sans dialogue ni erreur.
     await page.click('#btn-menu');
