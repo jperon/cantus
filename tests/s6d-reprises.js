@@ -24,6 +24,15 @@ async function runPage(browser, url, pageName, results) {
       await waitBackgroundLoaded(page);
       await page.waitForTimeout(600);
 
+      // Les données du mouvement affiché sont préchargées à l'ouverture. Le
+      // collecteur ci-dessous coupe le récepteur du worker : attendre la fin
+      // du préchargement, sinon sa réponse serait perdue et la promesse
+      // resterait en attente pour toutes les demandes suivantes.
+      await bounded('préchargement terminé', WAIT.playbackData, page.waitForFunction(() => {
+        const s = window.__musicaPlaybackState?.();
+        return !!(s && s.hasData && s.duration > 0);
+      }, null, { timeout: WAIT.playbackData, polling: 50 }));
+
       // Le fichier est découpé en mouvements : collecter les marqueurs de
       // chacun jusqu'au premier mouvement non chargé.
       const collect = async (linear) => {
