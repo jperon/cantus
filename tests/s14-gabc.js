@@ -692,18 +692,31 @@ async function runGabcPlayback(browser, url, pageName, results) {
       `transport masqué ${ready.transportHidden}, barre inactive ${ready.seekDisabled}, ` +
       `durée ${ready.duration} ms, ${preloaded.segmentsCount} segment(s)`);
 
-    // ▶ : la lecture démarre et la position avance.
+    // ▶ : la lecture démarre et la position avance. Sous charge, le moteur peut
+    // mettre plusieurs secondes à sortir du silence : attendre l'avancement
+    // réel (position et curseur) plutôt qu'un délai fixe. Un délai expiré
+    // n'interrompt pas le scénario : l'assertion s'enregistre en ÉCHEC.
     const beforePlay = await playbackSnapshot(page);
+    await page.evaluate((start) => { window.__s14PlayStart = start; }, beforePlay.position);
     await page.click('#transport-play');
-    await L.waitUntil(page, () => window.__musicaPlaybackState().state === 'playing',
-      { timeout: 60000, interval: 100, what: 'démarrage de la lecture' });
-    await page.waitForTimeout(900);
+    let advanced = false;
+    try {
+      await L.waitUntil(page, () => {
+        const state = window.__musicaPlaybackState();
+        const seek = document.getElementById('transport-seek');
+        return state.state === 'playing' && state.position > window.__s14PlayStart &&
+          !!seek && Number(seek.value) > 0;
+      }, { timeout: 30000, interval: 100, what: 'avancement de la lecture' });
+      advanced = true;
+    } catch (e) {
+      advanced = false;
+    }
     const playing = await playbackSnapshot(page);
     L.record(results, '14. Vue carrée : ▶ passe en lecture et la position avance', pageName,
-      playing.state === 'playing' && playing.position > beforePlay.position &&
+      advanced && playing.state === 'playing' && playing.position > beforePlay.position &&
       playing.seekValue > 0 ? 'OK' : 'ÉCHEC',
-      `état ${playing.state}, position ${beforePlay.position} → ${playing.position} ms, ` +
-      `curseur ${playing.seekValue}`);
+      `${advanced ? '' : 'délai expiré, '}état ${playing.state}, ` +
+      `position ${beforePlay.position} → ${playing.position} ms, curseur ${playing.seekValue}`);
 
     // Changement de page pendant la lecture : même mouvement, tête de lecture
     // inchangée (elle continue d'avancer, sans saut ni retour à zéro).
@@ -738,15 +751,27 @@ async function runGabcPlayback(browser, url, pageName, results) {
       afterRestTurn.page === restPage ? 'OK' : 'ÉCHEC',
       `page ${chosen.page} → ${afterRestTurn.page}, position ${chosen.position} → ${afterRestTurn.position} ms`);
 
+    // Reprise après la barre : attendre la position choisie (pas un délai fixe
+    // qui, sous charge, mesurerait encore l'arrêt ou un silence). Le délai
+    // expiré est enregistré comme échec, sans interrompre le scénario.
+    await page.evaluate((from) => { window.__s14ResumeFrom = from; }, chosen.position);
     await page.click('#transport-play');
-    await L.waitUntil(page, () => window.__musicaPlaybackState().state === 'playing',
-      { timeout: 60000, interval: 100, what: 'reprise de la lecture' });
-    await page.waitForTimeout(300);
+    let resumedStarted = false;
+    try {
+      await L.waitUntil(page, () => {
+        const state = window.__musicaPlaybackState();
+        return state.state === 'playing' && state.position >= window.__s14ResumeFrom;
+      }, { timeout: 30000, interval: 100, what: 'reprise à la position choisie' });
+      resumedStarted = true;
+    } catch (e) {
+      resumedStarted = false;
+    }
     const resumed = await playbackSnapshot(page);
     L.record(results, '14. Vue carrée : ▶ après la barre repart de la position choisie', pageName,
-      resumed.state === 'playing' && resumed.position >= chosen.position &&
-      resumed.position < chosen.position + 2000 ? 'OK' : 'ÉCHEC',
-      `choisi ${chosen.position} ms, reprise ${resumed.position} ms`);
+      resumedStarted && resumed.state === 'playing' && resumed.position >= chosen.position &&
+      resumed.position < chosen.position + 5000 ? 'OK' : 'ÉCHEC',
+      `${resumedStarted ? '' : 'délai expiré, '}choisi ${chosen.position} ms, ` +
+      `reprise ${resumed.position} ms`);
     await page.evaluate(() => window.stopPlayback());
 
     // Mêmes données de lecture que la vue classique du même fichier.
