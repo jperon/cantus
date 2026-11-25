@@ -9,6 +9,11 @@ getGlobalPage = (movementId, localPage) ->
 # Request SVG from worker, returns Promise
 # Checks caches first
 requestPage = (movementId, localPage) ->
+  # Mouvement grégorien : les SVG sont déjà en mémoire sur le mouvement, sans
+  # svgStore ni worker.
+  gregorien = movements.find (m) -> m.id is movementId
+  if gregorien?.gregorien
+    return Promise.resolve (gregorien.gregorienSvgs?[localPage - 1] ? "")
   globalPage = getGlobalPage(movementId, localPage)
   syncMemoryVariant()
 

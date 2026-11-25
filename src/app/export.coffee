@@ -107,6 +107,8 @@ closeExportDialog = ->
 
 openExportDialog = ->
   return unless fileLoaded and currentSources?.length
+  # scoretk ne sait pas exporter le gabc correctement : pas d'export grégorien.
+  return if estGregorienAffiche()
   confirmBtn = $("export-confirm")
   confirmBtn.disabled = true
   $("export-overlay").classList.remove "hidden"

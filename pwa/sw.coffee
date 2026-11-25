@@ -18,6 +18,7 @@ STATIC_ASSETS = [
   './icons/icon-192.png'
   './icons/icon-512.png'
   './verovio-toolkit-wasm.js'
+  './exsurge.min.js'
 ]
 
 # Import MuseScore (paquet scoretk facultatif, absent des builds sans scoretk)

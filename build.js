@@ -107,6 +107,7 @@ const APP_SOURCES = [
   'reglages-voix.coffee',          // réglages, voix, variantes de cache
   'affichage-navigation.coffee',   // affichage des pages, défilement, navigation
   'decoupage-xml.coffee',          // découpage MusicXML, masquage et tailles
+  'gregorien.coffee',              // import gabc et notation carrée (exsurge)
   'sources.coffee',                // conversion scoretk, chargement des sources
   'bibliotheque-import.coffee',    // bibliothèque, tap, import de fichiers
   'reglages-ui.coffee',            // panneau de réglages
@@ -163,6 +164,29 @@ function readFflate() {
   console.log('  Reading fflate...');
   const src = fs.readFileSync(path.join(__dirname, 'node_modules', 'fflate', 'umd', 'index.js'), 'utf-8');
   return minify(`(function(){${src}; window.__fflate = fflate;})()`);
+}
+
+// exsurge (notation carrée gabc) : MIT, bundle UMD exposant le global
+// `exsurge`. Copié dans dist/ pour la PWA, inliné dans spa.html.
+const EXSURGE_DIST = path.join(__dirname, 'node_modules', 'exsurge-ts', 'dist', 'exsurge.min.js');
+
+function copyExsurge() {
+  if (!fs.existsSync(EXSURGE_DIST)) {
+    throw new Error(`exsurge introuvable : ${EXSURGE_DIST} (lancer npm install)`);
+  }
+  console.log('  Copying exsurge...');
+  const dest = path.join(DIST, 'exsurge.min.js');
+  fs.rmSync(dest, { force: true });
+  fs.copyFileSync(EXSURGE_DIST, dest);
+  fs.chmodSync(dest, 0o644);
+  console.log('  -> dist/exsurge.min.js');
+}
+
+function readExsurge() {
+  if (!fs.existsSync(EXSURGE_DIST)) {
+    throw new Error(`exsurge introuvable : ${EXSURGE_DIST} (lancer npm install)`);
+  }
+  return fs.readFileSync(EXSURGE_DIST, 'utf-8');
 }
 
 // Copie le paquet scoretk dans dist/scoretk ; renvoie false s'il est absent
@@ -389,6 +413,7 @@ async function build() {
   console.log('  -> dist/verovio-toolkit-wasm.js (partitura)');
 
   const scoretkAvailable = copyScoretk();
+  copyExsurge();
   const sampleAssets = copySamples();
   const samplesAvailable = sampleAssets.length > 0;
 
@@ -477,6 +502,8 @@ async function buildSpa() {
   const { mxlJs, storageJs, svgCacheJs, playbackCacheJs, midiJs, formatsJs, timelineJs, i18nJs, audioJs, playbackJs, workerJs, appJs } = compileScripts();
   const scoretkInline = readScoretk();
   const scoretkAvailable = !!scoretkInline;
+  // exsurge est inliné en texte brut, évalué seulement au premier gabc.
+  const exsurgeJs = escapeScript(readExsurge());
 
   // 4. Read CSS
   const css = readCss();
@@ -545,6 +572,7 @@ ${workerJs}
     buildDate,
     scoretkAvailable,
     scoretkInline,
+    exsurgeJs,
     importAccept: importAccept(formats, scoretkAvailable),
   });
 
@@ -553,6 +581,7 @@ ${workerJs}
   const sizeMB = (fs.statSync(path.join(DIST, 'spa.html')).size / 1024 / 1024).toFixed(1);
   console.log(`  -> dist/spa.html (${sizeMB} MB)`);
 
+  copyExsurge();
   copyPwaFiles(buildDate, formats);
   copyLegalFiles();
   copyScreenshots();

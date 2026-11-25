@@ -87,7 +87,8 @@ partSourcePrograms = ->
   programs = {}
   for index in [0...(currentSources?.length or 0)]
     info = sourceCache.get index
-    continue unless info
+    # Une source grégorienne n'a ni XML ni voix.
+    continue unless info?.splitInfo?.doc
     map = partLabels info.splitInfo.doc
     for part in Array.from info.splitInfo.doc.querySelectorAll "score-part"
       label = map[part.getAttribute "id"]
@@ -104,7 +105,8 @@ partPercussionLabels = ->
   labels = new Set()
   for index in [0...(currentSources?.length or 0)]
     info = sourceCache.get index
-    continue unless info
+    # Une source grégorienne n'a ni XML ni voix.
+    continue unless info?.splitInfo?.doc
     map = partLabels info.splitInfo.doc
     for part in Array.from info.splitInfo.doc.querySelectorAll "score-part"
       label = map[part.getAttribute "id"]
@@ -147,7 +149,8 @@ renderPartsList = ->
   seen = new Set()
   for index in [0...(currentSources?.length or 0)]
     info = sourceCache.get index
-    continue unless info
+    # Une source grégorienne n'a ni XML ni voix.
+    continue unless info?.splitInfo?.doc
     map = partLabels info.splitInfo.doc
     for part in Array.from info.splitInfo.doc.querySelectorAll "score-part"
       label = map[part.getAttribute "id"]
@@ -453,6 +456,12 @@ renderTempoUi = ->
 ensureFileTempo = ->
   result = getMovementForPage displayedPage()
   return Promise.resolve(currentFileTempo()) unless result
+  # Le tempo vient des données de lecture du worker : sans lecture grégorienne,
+  # pas de requête, et le réglage affiche « indisponible ».
+  if estGregorienAffiche()
+    fileTempoError = true
+    renderTempoUi()
+    return Promise.resolve null
   known = currentFileTempo()
   return Promise.resolve(known) if known?
   fileId = currentFileId

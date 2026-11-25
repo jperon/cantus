@@ -146,6 +146,45 @@ playback =
   tempoBpm: null  # tempo effectif utilisé pour la lecture chargée
   tempoUnit: "quarter"  # unité de battue du tempo (affichage et réglage)
 
+# Installe un mouvement chargé : même traitement pour la réponse `movementLoaded`
+# du worker et pour un mouvement grégorien mis en page dans la page. Le jeton du
+# chargement est vérifié par l'appelant (réponse d'un rendu remplacé ignorée).
+applyMovementLoaded = (movementId, mvPages, pushed, detectedMode) ->
+  awaitingLoad = false
+  # Le mode est décidé par le worker sur la première page de ce chargement, ou
+  # imposé par la disposition grégorienne (verticale) ; les mouvements suivants
+  # le reçoivent en conséquence. Il n'est jamais redécidé par une page rendue,
+  # qui pourrait en contenir plusieurs systèmes alors que le mode horizontal en
+  # impose un seul.
+  scrollMode = detectedMode if scrollMode is null and detectedMode?
+  mv = movements.find (m) -> m.id is movementId
+  if mv
+    mv.pageCount = mvPages
+    mv.loaded = true
+    mv.pushed = pushed
+  # Update total page count
+  pageCount = movements.reduce (sum, m) ->
+    sum + (m.pageCount or 0)
+  , 0
+  # Update page indicator
+  showIndicator()
+  # Resolve pending movement load promise if any
+  if pendingMovementLoads?.has(movementId)
+    pendingMovementLoads.get(movementId)()
+    pendingMovementLoads.delete(movementId)
+  # Hide loading overlay and show the first page as soon as it arrives
+  if movementId is 1
+    hideLoading()
+    if mvPages > 0
+      # Page 1 is part of the pushed pages: display it on arrival
+      requestPage(1, 1).then ->
+        displayView()
+        prefetch()
+        # Now load subsequent movements after first page is displayed
+        loadRemainingMovements()
+  # Navigate to the remembered page as soon as its movement is loaded
+  tryNavigateTarget()
+
 # Worker message handler
 worker.onmessage = (e) ->
   {type} = e.data
@@ -169,40 +208,8 @@ worker.onmessage = (e) ->
     when "movementLoaded"
       # Réponse d'un chargement abandonné (suppression, rechargement) : ignorer
       return if (movementLoadTokens.get e.data.movementId) isnt loadToken
-      awaitingLoad = false
       {movementId, pageCount: mvPages, pushed, scrollMode: detectedMode} = e.data
-      # Le mode est décidé par le worker sur la première page de ce chargement ;
-      # les mouvements suivants le reçoivent en conséquence. Il n'est jamais
-      # redécidé par une page rendue, qui pourrait en contenir plusieurs
-      # systèmes alors que le mode horizontal en impose un seul.
-      scrollMode = detectedMode if scrollMode is null and detectedMode?
-      mv = movements.find (m) -> m.id is movementId
-      if mv
-        mv.pageCount = mvPages
-        mv.loaded = true
-        mv.pushed = pushed
-      # Update total page count
-      pageCount = movements.reduce (sum, m) ->
-        sum + (m.pageCount or 0)
-      , 0
-      # Update page indicator
-      showIndicator()
-      # Resolve pending movement load promise if any
-      if pendingMovementLoads?.has(movementId)
-        pendingMovementLoads.get(movementId)()
-        pendingMovementLoads.delete(movementId)
-      # Hide loading overlay and show the first page as soon as it arrives
-      if movementId is 1
-        hideLoading()
-        if mvPages > 0
-          # Page 1 is part of the pushed pages: display it on arrival
-          requestPage(1, 1).then ->
-            displayView()
-            prefetch()
-            # Now load subsequent movements after first page is displayed
-            loadRemainingMovements()
-      # Navigate to the remembered page as soon as its movement is loaded
-      tryNavigateTarget()
+      applyMovementLoaded movementId, mvPages, pushed, detectedMode
 
     when "svg"
       {movementId, page, svg} = e.data

@@ -23,6 +23,9 @@ formatTime = (ms) ->
   "#{minutes}:#{if seconds < 10 then "0#{seconds}" else seconds}"
 
 showTransport = ->
+  # Un mouvement grégorien n'a ni lecture ni données de lecture : le transport
+  # reste masqué et aucune requête n'est envoyée au worker.
+  return hideTransport() if estGregorienAffiche()
   el = $("transport")
   el?.classList.remove "hidden"
   updateCommandBarSpace()
@@ -150,7 +153,14 @@ schedulePageSeek = (page, fromScroll = false) ->
   clearTimeout pageSeekTimer if pageSeekTimer
   pageSeekTimer = setTimeout (-> seekToDisplayedPage page), pageSeekDebounceMs
 
+# Le transport suit le mouvement affiché : masqué pour la notation carrée,
+# disponible pour un mouvement MusicXML (dossier mixte, changement de page).
+syncTransportForDisplayedMovement = ->
+  return unless fileLoaded
+  if estGregorienAffiche() then hideTransport() else showTransport()
+
 noteDisplayedPage = (fromScroll = false) ->
+  syncTransportForDisplayedMovement()
   page = displayedPage()
   # Premier affichage (ou rechargement) : simple prise de référence, sinon on
   # déplacerait la lecture au chargement sans geste de l'utilisateur.
@@ -652,6 +662,8 @@ applyTempoToPlayback = ->
 # Démarre la lecture du mouvement affiché : charge ses données de lecture au
 # besoin, puis lance le moteur.
 startPlayback = ->
+  # Pas de lecture pour la notation carrée : aucune donnée de lecture à demander.
+  return if estGregorienAffiche()
   engine = audioEngine()
   unless engine
     console.warn "Moteur audio indisponible"

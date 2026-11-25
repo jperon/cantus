@@ -237,6 +237,10 @@ html(lang="en")
     if scoretkInline
       script#scoretk-wasm-src(type="text/plain") !{scoretkInline.glue}
       script#scoretk-wasm-b64(type="text/plain") !{scoretkInline.wasm}
+    if exsurgeJs
+      //- exsurge (notation carrée gabc) : source inlinée mais non évaluée au
+      //- chargement ; gregorien.coffee l'évalue au premier fichier gabc.
+      script#exsurge-src(type="text/plain") !{exsurgeJs}
     if samplesManifest
       //- Échantillons inlinés (file:// interdit fetch) : manifeste puis un
       //- Ogg base64 par programme, décodés paresseusement.

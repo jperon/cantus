@@ -38,6 +38,12 @@ ensureSource = (index) ->
   return Promise.resolve cached if cached
   source = currentSources?[index]
   return Promise.reject new Error "source inconnue" unless source
+  if estGabc source
+    # Le gabc n'est pas converti : il est décodé puis mis en page par exsurge.
+    return Promise.resolve().then ->
+      info = preparerSourceGabc source
+      sourceCache.set index, info
+      info
   convertSource(source).then (xml) ->
     info = {xml, splitInfo: detectSplitPoints xml}
     sourceCache.set index, info
@@ -45,6 +51,18 @@ ensureSource = (index) ->
 
 # Ajoute les mouvements d'une source à la fin de la liste globale
 appendSourceMovements = (index, info) ->
+  if info.gregorien
+    # Une source gabc est un seul mouvement, sans découpage en mouvements.
+    movements.push
+      id: movements.length + 1
+      pageCount: 0
+      pushed: 0
+      loaded: false
+      sourceIndex: index
+      localIndex: 0
+      gregorien: true
+    console.log "Source #{index + 1}/#{currentSources.length} : 1 mouvement(s), #{movements.length} au total"
+    return
   splitPoints = info.splitInfo.splitPoints ? []
   totalMeasures = info.splitInfo.totalMeasures ? 0
   bounds = [0, ...splitPoints, totalMeasures]
@@ -175,6 +193,26 @@ loadFirstSource = (token) ->
     .then (info) ->
       return unless token is loadToken
       appendSourceMovements index, info
+      if info.gregorien
+        # Mise en page dans la page, sans worker : le mouvement n'est déclaré
+        # chargé qu'une fois ses SVG produits. Un gabc invalide est retiré et
+        # signalé, sans empêcher les sources suivantes.
+        firstMovement = movements[movements.length - 1]
+        chargerGregorienMovement(firstMovement.id, info)
+          .then (result) ->
+            return unless token is loadToken
+            fileLoaded = true
+            hideImport()
+            showLibraryBtn()
+            hideTransport()
+            applyMovementLoaded firstMovement.id, result.svgs.length,
+              result.svgs.length, result.mode
+          .catch (err) ->
+            return unless token is loadToken
+            retirerMouvementGregorien firstMovement
+            reportSourceError index, err
+            loadFirstSource token
+        return
       mvXml = extractMovement info.splitInfo, 0
       unless mvXml
         return loadFirstSource token
@@ -216,6 +254,19 @@ stepLoad = (token) ->
   if pending
     info = sourceCache.get pending.sourceIndex
     return finishLoad token unless info
+    if pending.gregorien
+      chargerGregorienMovement(pending.id, info)
+        .then (result) ->
+          return unless token is loadToken
+          applyMovementLoaded pending.id, result.svgs.length,
+            result.svgs.length, result.mode
+          stepLoad token
+        .catch (err) ->
+          return unless token is loadToken
+          retirerMouvementGregorien pending
+          reportSourceError pending.sourceIndex, err
+          stepLoad token
+      return
     mvXml = extractMovement info.splitInfo, pending.localIndex
     unless mvXml
       pending.loaded = true
@@ -308,6 +359,40 @@ loadMovementAndWait = (movementId, xmlString, pageWidth, pageHeight, sourceId = 
       # Jeton du chargement : les pages d'un rendu remplacé (mise en page
       # différente) seront ignorées même si elles arrivent après le nouveau.
       loadToken: loadToken
+
+# Met en page un mouvement grégorien et garde ses SVG sur le mouvement. La
+# promesse résout avec {svgs, mode} ; elle échoue si un chargement plus récent a
+# remplacé celui-ci (mêmes jetons que le worker : pendingMovementLoads et
+# movementLoadTokens).
+chargerGregorienMovement = (movementId, info) ->
+  new Promise (resolve, reject) ->
+    pendingMovementLoads.set movementId, resolve
+    movementLoadTokens.set movementId, loadToken
+    miseEnPageGabc(info.texte, {scale: currentScale})
+      .then (result) ->
+        unless movementLoadTokens.get(movementId) is loadToken
+          pendingMovementLoads.delete movementId if pendingMovementLoads.get(movementId) is resolve
+          return reject new Error "Chargement remplacé"
+        mv = movements.find (m) -> m.id is movementId
+        return reject new Error "mouvement inconnu" unless mv
+        mv.gregorienSvgs = result.svgs
+        resolve result
+      .catch (err) ->
+        if pendingMovementLoads.get(movementId) is resolve
+          pendingMovementLoads.delete movementId
+        if movementLoadTokens.get(movementId) is loadToken
+          movementLoadTokens.delete movementId
+        reject err
+
+# Retire un mouvement grégorien qui n'a pas pu être mis en page : il est le
+# dernier ajouté (les sources sont chargées dans l'ordre), donc retirer la fin
+# de liste laisse les identifiants des mouvements chargés cohérents.
+retirerMouvementGregorien = (movement) ->
+  index = movements.indexOf movement
+  return unless index >= 0
+  movements.splice index, 1
+  pendingMovementLoads.delete movement.id
+  movementLoadTokens.delete movement.id
 
 # Loading indicator for background movement loading
 showLoadingIndicator = ->
