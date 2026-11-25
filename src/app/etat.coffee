@@ -79,6 +79,14 @@ PREFETCH_BEHIND = 1
 # première page du premier mouvement, ou imposé par le réglage « Disposition »,
 # puis transmis à tous les mouvements de ce chargement.
 scrollMode = null
+# Vrai quand scrollMode vient du mode vertical imposé par la mise en page d'un
+# gabc (et non d'une détection du worker ni du réglage « Disposition »). Un
+# MusicXML suivant doit alors pouvoir le remplacer par son propre mode.
+scrollModeVientDeGregorien = false
+# Nature du dernier mouvement dont le transport a été synchronisé ("gregorien"
+# ou "xml") : le transport ne réagit qu'à un changement de nature, jamais à un
+# simple changement de page d'un même MusicXML.
+natureTransportAffichee = null
 # Réglage « Disposition » : "auto" (décision sur la page naturelle),
 # "horizontal" ou "vertical" (imposé). Réglage global, appliqué au chargement.
 layoutPreference = "auto"
@@ -156,8 +164,14 @@ applyMovementLoaded = (movementId, mvPages, pushed, detectedMode) ->
   # le reçoivent en conséquence. Il n'est jamais redécidé par une page rendue,
   # qui pourrait en contenir plusieurs systèmes alors que le mode horizontal en
   # impose un seul.
-  scrollMode = detectedMode if scrollMode is null and detectedMode?
   mv = movements.find (m) -> m.id is movementId
+  if detectedMode? and (scrollMode is null or (scrollModeVientDeGregorien and not mv?.gregorien))
+    # Un gabc en tête d'un dossier mixte ne doit pas imposer son mode vertical
+    # au MusicXML suivant : quand le worker détecte enfin le mode du MusicXML,
+    # il remplace celui du gabc. Un mode explicite ou déjà détecté pour un
+    # MusicXML reste prioritaire.
+    scrollMode = detectedMode
+    scrollModeVientDeGregorien = !!mv?.gregorien
   if mv
     mv.pageCount = mvPages
     mv.loaded = true

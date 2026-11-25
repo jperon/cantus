@@ -153,11 +153,19 @@ schedulePageSeek = (page, fromScroll = false) ->
   clearTimeout pageSeekTimer if pageSeekTimer
   pageSeekTimer = setTimeout (-> seekToDisplayedPage page), pageSeekDebounceMs
 
-# Le transport suit le mouvement affiché : masqué pour la notation carrée,
-# disponible pour un mouvement MusicXML (dossier mixte, changement de page).
+# Le transport ne réagit qu'au changement de nature du mouvement affiché
+# (grégorien ↔ MusicXML), pour un dossier mixte. Un changement de page dans un
+# même MusicXML ne doit pas réafficher un transport masqué (données absentes ou
+# erreur de lecture). La nature du premier mouvement est posée par
+# loadFirstSource, en même temps que la visibilité initiale du transport.
 syncTransportForDisplayedMovement = ->
   return unless fileLoaded
-  if estGregorienAffiche() then hideTransport() else showTransport()
+  mouvement = mouvementAffiche()
+  return unless mouvement
+  nature = if mouvement.gregorien then "gregorien" else "xml"
+  return if nature is natureTransportAffichee
+  natureTransportAffichee = nature
+  if nature is "gregorien" then hideTransport() else showTransport()
 
 noteDisplayedPage = (fromScroll = false) ->
   syncTransportForDisplayedMovement()

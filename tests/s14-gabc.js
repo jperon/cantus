@@ -15,6 +15,14 @@ const INVALIDE = path.join(GABC_DIR, 'invalide.gabc');
 const MALVEILLANT = path.join(GABC_DIR, 'malveillant.gabc');
 const XML = path.join(__dirname, 'fixtures', 'enchainement.xml');
 
+function filePayload(name, file) {
+  return {
+    name,
+    mimeType: name.endsWith('.gabc') ? 'text/plain' : 'application/xml',
+    buffer: fs.readFileSync(file),
+  };
+}
+
 // Instrumente le worker et le cache SVG avant le premier import : le gabc ne
 // doit envoyer ni loadMovement, ni registerSource, ni requête de lecture, et
 // ne doit rien écrire dans svgStore.
@@ -290,6 +298,18 @@ async function runPage(browser, url, pageName, results) {
       xmlFirst.svgCount > 0 && !afterXml.transportHidden && afterXml.staffs > 0 ? 'OK' : 'ÉCHEC',
       `${afterXml.staffs} portées, pages ${afterXml.pageNumber}, transport masqué ${afterXml.transportHidden}`);
 
+    // Un transport masqué volontairement (données absentes ou erreur de
+    // lecture) doit le rester au changement de page d'un même MusicXML.
+    await L.gotoPage(page, 2);
+    await page.waitForTimeout(300);
+    await page.evaluate(() => window.hideTransport());
+    await L.gotoPage(page, 3);
+    await page.waitForTimeout(500);
+    const transportAfterPage = await page.evaluate(() =>
+      document.getElementById('transport').classList.contains('hidden'));
+    L.record(results, '14. MusicXML : un transport masqué reste masqué au changement de page', pageName,
+      transportAfterPage ? 'OK' : 'ÉCHEC', `transport masqué ${transportAfterPage}`);
+
     const relevant = L.summarize(errors);
     L.record(results, '6. Erreurs JS (gabc)', pageName, relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
   } catch (e) {
@@ -358,6 +378,160 @@ async function runLarge(browser, url, pageName, results) {
   await ctx.close();
 }
 
+// Course entre une mise en page grégorienne remplacée (zoom) et la nouvelle :
+// la vieille mise en page ne doit jamais écraser gregorienSvgs du mouvement
+// courant. On retarde la première mise en page, on zoome, puis on attend que
+// l'ancienne se termine.
+async function runRace(browser, url, pageName, results) {
+  const { page, ctx, errors } = await L.newPage(browser, url, {
+    pageName, viewport: { width: 360, height: 720 },
+  });
+  try {
+    await L.waitReady(page);
+    await page.evaluate(() => {
+      const original = window.miseEnPageGabc;
+      let calls = 0;
+      window.__s14LayoutCalls = () => calls;
+      window.miseEnPageGabc = function (...args) {
+        calls += 1;
+        const layout = original.apply(this, args);
+        if (calls === 1) {
+          return new Promise((resolve, reject) => {
+            setTimeout(() => layout.then(resolve, reject), 2500);
+          });
+        }
+        return layout;
+      };
+    });
+    await page.setInputFiles('#file-input', KYRIE);
+    await page.waitForFunction(() => window.__s14LayoutCalls() >= 1, null, { timeout: 30000 });
+    await page.waitForTimeout(200);
+    // Rechargement (zoom 80) pendant que la première mise en page est en vol.
+    // Le gabc n'est pas encore « chargé » : le réglage de zoom seul ne relance
+    // pas, on force reloadScore comme le fait un vrai rechargement.
+    await setZoom(page, 80);
+    await page.evaluate(() => window.reloadScore(1));
+    await page.waitForFunction(() => {
+      const mv = window.movements && window.movements[0];
+      if (!mv || !mv.gregorienSvgs || !mv.gregorienSvgs.length) return false;
+      const match = mv.gregorienSvgs[0].match(/viewBox="[^"]*\s([\d.]+)"/);
+      return match && Number(match[1]) > 300;
+    }, null, { timeout: 30000, polling: 100 });
+    const measure = () => page.evaluate(() => {
+      const mv = window.movements && window.movements[0];
+      const svgs = (mv && mv.gregorienSvgs) || [];
+      return svgs.map((svg) => {
+        const match = svg.match(/viewBox="[^"]*\s([\d.]+)"/);
+        return match ? Number(match[1]) : 0;
+      });
+    });
+    const beforeOld = await measure();
+    await page.waitForTimeout(3200);
+    const afterOld = await measure();
+    const unchanged = beforeOld.length > 0 && afterOld.length === beforeOld.length &&
+      afterOld.every((h, i) => Math.abs(h - beforeOld[i]) < 1);
+    L.record(results, '14. Une mise en page grégorienne remplacée n’écrase pas le nouveau mouvement', pageName,
+      unchanged && beforeOld[0] > 300 ? 'OK' : 'ÉCHEC',
+      `${beforeOld.length} → ${afterOld.length} ligne(s), hauteurs avant ${JSON.stringify(beforeOld.slice(0, 4))}, ` +
+      `après ${JSON.stringify(afterOld.slice(0, 4))}`);
+    const relevant = L.summarize(errors);
+    L.record(results, '6. Erreurs JS (course de chargement)', pageName,
+      relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
+  } catch (e) {
+    L.record(results, '14. Une mise en page grégorienne remplacée n’écrase pas le nouveau mouvement', pageName,
+      'ÉCHEC', 'exception du test : ' + e.message);
+  }
+  await ctx.close();
+}
+
+async function mixedState(page, start) {
+  await L.gotoPage(page, start);
+  await page.waitForTimeout(600);
+  return page.evaluate(() => {
+    const wrapper = document.querySelector('#page-current .scroll-wrapper');
+    return {
+      page: document.getElementById('page-number').textContent,
+      vertical: !!wrapper && wrapper.classList.contains('vertical'),
+      gabcStaff: document.querySelectorAll('#page-current .scroll-page svg line.staffLine').length,
+      verovioStaff: document.querySelectorAll('#page-current .scroll-page svg g.staff').length,
+      transportHidden: document.getElementById('transport').classList.contains('hidden'),
+    };
+  });
+}
+
+async function movementStart(page, predicate) {
+  return page.evaluate((source) => {
+    const test = new Function('m', `return (${source})(m);`);
+    let start = 1;
+    for (const m of (window.movements || [])) {
+      if (test(m)) return start;
+      start += m.pageCount || 0;
+    }
+    return null;
+  }, predicate.toString());
+}
+
+// Dossier mixte : le mode décidé pour un gabc ne doit pas s'appliquer au
+// MusicXML suivant ; inversement, le mode d'un MusicXML déjà décidé reste.
+async function runMixed(browser, url, pageName, results) {
+  // A. gabc puis MusicXML : le MusicXML doit être détecté horizontal.
+  {
+    const { page, ctx, errors } = await L.newPage(browser, url, {
+      pageName, viewport: { width: 500, height: 900 },
+    });
+    try {
+      await L.waitReady(page);
+      await page.setInputFiles('#file-input', [
+        filePayload('a-kyrie.gabc', KYRIE),
+        filePayload('z-enchainement.xml', XML),
+      ]);
+      await L.waitFirstSvg(page, 60000);
+      await L.waitBackgroundLoaded(page, 120000);
+      const start = await movementStart(page, (m) => !m.gregorien && m.loaded);
+      const state = start ? await mixedState(page, start) : null;
+      L.record(results, '14. Dossier gabc puis MusicXML : le gabc ne force pas le mode du MusicXML', pageName,
+        state && !state.vertical && state.verovioStaff > 0 ? 'OK' : 'ÉCHEC',
+        JSON.stringify({ start, state }));
+      const relevant = L.summarize(errors);
+      L.record(results, '6. Erreurs JS (dossier gabc puis MusicXML)', pageName,
+        relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
+    } catch (e) {
+      L.record(results, '14. Dossier gabc puis MusicXML', pageName, 'ÉCHEC',
+        'exception du test : ' + e.message);
+    }
+    await ctx.close();
+  }
+
+  // B. MusicXML puis gabc : le mode horizontal du MusicXML est conservé, et le
+  // transport reste masqué sur la page grégorienne.
+  {
+    const { page, ctx, errors } = await L.newPage(browser, url, {
+      pageName, viewport: { width: 500, height: 900 },
+    });
+    try {
+      await L.waitReady(page);
+      await page.setInputFiles('#file-input', [
+        filePayload('a-enchainement.xml', XML),
+        filePayload('z-kyrie.gabc', KYRIE),
+      ]);
+      await L.waitFirstSvg(page, 60000);
+      await L.waitBackgroundLoaded(page, 120000);
+      const start = await movementStart(page, (m) => m.gregorien && m.loaded);
+      const state = start ? await mixedState(page, start) : null;
+      L.record(results, '14. Dossier MusicXML puis gabc : le mode du MusicXML reste, transport masqué', pageName,
+        state && !state.vertical && state.gabcStaff > 0 && state.transportHidden ? 'OK' : 'ÉCHEC',
+        JSON.stringify({ start, state }));
+      const relevant = L.summarize(errors);
+      L.record(results, '6. Erreurs JS (dossier MusicXML puis gabc)', pageName,
+        relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
+    } catch (e) {
+      L.record(results, '14. Dossier MusicXML puis gabc', pageName, 'ÉCHEC',
+        'exception du test : ' + e.message);
+    }
+    await ctx.close();
+  }
+}
+
 (async () => {
   const { server, url } = await L.startServer();
   const browser = await L.launch();
@@ -366,6 +540,8 @@ async function runLarge(browser, url, pageName, results) {
     for (const pageName of PAGES) {
       await runPage(browser, url, pageName, results);
       await runLarge(browser, url, pageName, results);
+      await runRace(browser, url, pageName, results);
+      await runMixed(browser, url, pageName, results);
     }
     await runOffline(browser, url, results);
   } catch (e) {

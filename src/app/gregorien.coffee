@@ -213,8 +213,8 @@ miseEnPageGabc = (texte, {scale, largeur} = {}) ->
         throw new Error "#{t 'errors.gabcInvalid'} (#{err?.message or err})"
 
 # --- Requêtes de l'application ---------------------------------------------
-mouvementGregorienAffiche = ->
+mouvementAffiche = ->
   return null unless typeof getMovementForPage is 'function' and typeof displayedPage is 'function'
   getMovementForPage(displayedPage())?.movement or null
 
-estGregorienAffiche = -> !!mouvementGregorienAffiche()?.gregorien
+estGregorienAffiche = -> !!mouvementAffiche()?.gregorien

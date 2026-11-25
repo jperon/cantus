@@ -163,6 +163,8 @@ startLoad = (startPage = 1, keepSources = false) ->
   # « Disposition » peut l'imposer d'avance. Il est ensuite transmis aux
   # mouvements suivants de ce chargement.
   scrollMode = if layoutPreference is "auto" then null else layoutPreference
+  scrollModeVientDeGregorien = false
+  natureTransportAffichee = null
   verticalPos = 0
 
   currentPageWidth = Math.round(window.innerWidth * 100 / currentScale)
@@ -205,6 +207,7 @@ loadFirstSource = (token) ->
             hideImport()
             showLibraryBtn()
             hideTransport()
+            natureTransportAffichee = "gregorien"
             applyMovementLoaded firstMovement.id, result.svgs.length,
               result.svgs.length, result.mode
           .catch (err) ->
@@ -219,13 +222,14 @@ loadFirstSource = (token) ->
       ensureWorkerSource index, info
       firstMovement = movements[0]
       loadMovementAndWait(1, mvXml, currentPageWidth, currentPageHeight, index,
-        firstMovement?.measureStart, firstMovement?.measureEnd, scrollMode)
+        firstMovement?.measureStart, firstMovement?.measureEnd, modePourWorker())
       # Subsequent movements and sources are loaded once this one is displayed
       # (see movementLoaded handler)
       fileLoaded = true
       hideImport()
       showLibraryBtn()
       showTransport()
+      natureTransportAffichee = "xml"
     .catch (err) ->
       return unless token is loadToken
       reportSourceError index, err
@@ -275,7 +279,7 @@ stepLoad = (token) ->
     pageWidth = Math.round(window.innerWidth * 100 / currentScale)
     pageHeight = Math.round(window.innerHeight * 100 / currentScale)
     loadMovementAndWait(pending.id, mvXml, pageWidth, pageHeight, pending.sourceIndex,
-      pending.measureStart, pending.measureEnd, scrollMode).then ->
+      pending.measureStart, pending.measureEnd, modePourWorker()).then ->
       stepLoad token
     return
 
@@ -328,6 +332,11 @@ tryNavigateTarget = ->
   targetPage = null
   goToPage page
 
+# Mode transmis au worker : un mode vertical venu d'un gabc ne doit pas lui être
+# imposé pour un MusicXML suivant, qui doit détecter le sien (null = détection).
+modePourWorker = ->
+  if scrollModeVientDeGregorien then null else scrollMode
+
 # Load a movement in worker and return Promise that resolves when loaded.
 # `mode` est le mode de mise en page effectif (null pour le premier mouvement
 # d'un chargement en disposition automatique : le worker le détecte alors sur
@@ -362,26 +371,21 @@ loadMovementAndWait = (movementId, xmlString, pageWidth, pageHeight, sourceId = 
 
 # Met en page un mouvement grégorien et garde ses SVG sur le mouvement. La
 # promesse résout avec {svgs, mode} ; elle échoue si un chargement plus récent a
-# remplacé celui-ci (mêmes jetons que le worker : pendingMovementLoads et
-# movementLoadTokens).
+# remplacé celui-ci.
 chargerGregorienMovement = (movementId, info) ->
   new Promise (resolve, reject) ->
-    pendingMovementLoads.set movementId, resolve
-    movementLoadTokens.set movementId, loadToken
+    # Jeton figé au départ : comparer movementLoadTokens.get(id) à loadToken
+    # plus tard comparerait deux valeurs courantes, réécrites ensemble par un
+    # rechargement, et laisserait l'ancienne mise en page écraser la nouvelle.
+    jeton = loadToken
     miseEnPageGabc(info.texte, {scale: currentScale})
       .then (result) ->
-        unless movementLoadTokens.get(movementId) is loadToken
-          pendingMovementLoads.delete movementId if pendingMovementLoads.get(movementId) is resolve
-          return reject new Error "Chargement remplacé"
+        return reject new Error "Chargement remplacé" unless jeton is loadToken
         mv = movements.find (m) -> m.id is movementId
         return reject new Error "mouvement inconnu" unless mv
         mv.gregorienSvgs = result.svgs
         resolve result
       .catch (err) ->
-        if pendingMovementLoads.get(movementId) is resolve
-          pendingMovementLoads.delete movementId
-        if movementLoadTokens.get(movementId) is loadToken
-          movementLoadTokens.delete movementId
         reject err
 
 # Retire un mouvement grégorien qui n'a pas pu être mis en page : il est le
@@ -391,8 +395,6 @@ retirerMouvementGregorien = (movement) ->
   index = movements.indexOf movement
   return unless index >= 0
   movements.splice index, 1
-  pendingMovementLoads.delete movement.id
-  movementLoadTokens.delete movement.id
 
 # Loading indicator for background movement loading
 showLoadingIndicator = ->
