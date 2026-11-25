@@ -867,6 +867,9 @@ handleMessage = (e) ->
             if from is 'gabc'
               options.to = 'musicxml'
               options.expandRepeats = false
+              # Vue classique : clef de sol sur cinq lignes (sol 8vb si la
+              # tessiture l'exige), plutôt que la clef de do grégorienne.
+              options.gabcModernClef = true
               # convertWithTimeline est synchrone : l'envelopper pour garder
               # une chaîne de promesses unique avec les autres formats.
               Promise.resolve().then ->

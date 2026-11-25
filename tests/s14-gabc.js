@@ -14,6 +14,7 @@ const PAGES = ['index.html', 'spa.html'];
 const GABC_DIR = path.join(__dirname, 'fixtures', 'gabc');
 const KYRIE = path.join(GABC_DIR, 'kyrie.gabc');
 const LONG = path.join(GABC_DIR, 'long.gabc');
+const ACCORD = path.join(GABC_DIR, 'accord.gabc');
 const INVALIDE = path.join(GABC_DIR, 'invalide.gabc');
 const MALVEILLANT = path.join(GABC_DIR, 'malveillant.gabc');
 const XML = path.join(__dirname, 'fixtures', 'enchainement.xml');
@@ -568,6 +569,11 @@ async function notationState(page) {
         height: Math.round(rect.height),
       } : null,
       staffs: slot.querySelectorAll('.scroll-page svg g.staff').length,
+      staffLines: (() => {
+        const staff = slot.querySelector('.scroll-page svg g.staff');
+        return staff ? [...staff.children].filter((el) => el.tagName === 'path').length : 0;
+      })(),
+      text: [...slot.querySelectorAll('.scroll-page svg text')].map((el) => el.textContent).join(' '),
       chantLines: slot.querySelectorAll('.scroll-page svg g.chantLine').length,
       squareNotes: slot.querySelectorAll('.scroll-page svg .note[source-index]').length,
       classicNotes: ids.length,
@@ -910,6 +916,34 @@ async function runScoretkFallback(browser, url, pageName, results) {
   await ctx.close();
 }
 
+// Vue classique moderne : clef de sol sur cinq lignes et texte alternatif
+// ([alt:...]) rendu par Verovio quand scoretk émet des <words>.
+async function runModernClef(browser, url, pageName, results) {
+  const { page, ctx, errors } = await L.newPage(browser, url, {
+    pageName, viewport: { width: 500, height: 900 },
+  });
+  try {
+    await L.waitReady(page);
+    await importGabc(page, ACCORD, 120000);
+    await clickToggle(page);
+    await waitNotationReady(page);
+    const state = await notationState(page);
+    L.record(results, '14. Vue classique : clef moderne sur cinq lignes', pageName,
+      state.view === 'classic' && state.staffs > 0 && state.staffLines === 5 ? 'OK' : 'ÉCHEC',
+      `${state.staffs} portée(s), ${state.staffLines} ligne(s) de portée`);
+    L.record(results, '14. Vue classique : accord gabc [alt:Gm] rendu en <words>', pageName,
+      /Gm/.test(state.text) ? 'OK' : 'ÉCHEC',
+      `texte « ${state.text.trim().slice(0, 80)} »`);
+    const relevant = L.summarize(errors);
+    L.record(results, '6. Erreurs JS (clef moderne)', pageName,
+      relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
+  } catch (e) {
+    L.record(results, '14. Clef moderne et accord gabc', pageName, 'ÉCHEC',
+      'exception du test : ' + e.message);
+  }
+  await ctx.close();
+}
+
 // Deux GABC dans le même dossier, le second inconvertible : le repli doit
 // repartir en vue carrée pour tout le dossier, sans laisser le premier en
 // classique alors que notationView vaut square.
@@ -1029,6 +1063,7 @@ async function runRapid(browser, url, pageName, results) {
       await runMixedChoice(browser, url, pageName, results);
       await runButtonAbsent(browser, url, pageName, results);
       await runScoretkFallback(browser, url, pageName, results);
+      await runModernClef(browser, url, pageName, results);
       await runMixedFallback(browser, url, pageName, results);
       await runRapid(browser, url, pageName, results);
     }
