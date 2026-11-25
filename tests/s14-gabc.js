@@ -83,6 +83,61 @@ async function gabcState(page) {
   });
 }
 
+// Chaque élément dessiné est ramené dans le repère du viewBox de son SVG
+// (getScreenCTM), puis comparé au viewBox : rien ne doit dépasser, y compris le
+// titre au-dessus de la première ligne, la clef à gauche et le custos à droite.
+async function viewBoxState(page) {
+  return page.evaluate(() => {
+    const svgs = [...document.querySelectorAll('#page-current .scroll-page svg')];
+    const failures = [];
+    let count = 0;
+    for (const svg of svgs) {
+      const vb = svg.viewBox.baseVal;
+      const inverse = svg.getScreenCTM()?.inverse();
+      if (!inverse) continue;
+      for (const el of svg.querySelectorAll('g, path, line, text, use, rect, polygon, tspan')) {
+        if (el.closest('defs')) continue;
+        const ctm = el.getScreenCTM();
+        if (!ctm) continue;
+        let b;
+        try { b = el.getBBox(); } catch (e) { continue; }
+        if (!b) continue;
+        const m = inverse.multiply(ctm);
+        const points = [
+          [b.x, b.y], [b.x + b.width, b.y],
+          [b.x, b.y + b.height], [b.x + b.width, b.y + b.height],
+        ].map(([x, y]) => [m.a * x + m.c * y + m.e, m.b * x + m.d * y + m.f]);
+        const xs = points.map(([x]) => x);
+        const ys = points.map(([, y]) => y);
+        const minX = Math.min(...xs);
+        const maxX = Math.max(...xs);
+        const minY = Math.min(...ys);
+        const maxY = Math.max(...ys);
+        const tol = 0.6;
+        count += 1;
+        if (minX < vb.x - tol || minY < vb.y - tol ||
+            maxX > vb.x + vb.width + tol || maxY > vb.y + vb.height + tol) {
+          failures.push({
+            tag: el.tagName,
+            cls: el.getAttribute('class') || '',
+            box: [minX, minY, maxX, maxY].map((v) => Math.round(v * 100) / 100),
+            viewBox: [vb.x, vb.y, vb.width, vb.height].map((v) => Math.round(v * 100) / 100),
+          });
+        }
+      }
+    }
+    return {
+      ok: failures.length === 0,
+      count,
+      svgs: svgs.length,
+      failures: failures.slice(0, 5),
+      viewBox: svgs[0] ? [svgs[0].viewBox.baseVal.x, svgs[0].viewBox.baseVal.y,
+        svgs[0].viewBox.baseVal.width, svgs[0].viewBox.baseVal.height]
+        .map((v) => Math.round(v * 100) / 100) : null,
+    };
+  });
+}
+
 async function importGabc(page, file, timeout = 60000) {
   await page.setInputFiles('#file-input', file);
   const first = await L.waitFirstSvg(page, timeout);
@@ -136,6 +191,11 @@ async function runPage(browser, url, pageName, results) {
     L.record(results, '14. Transport masqué et exsurge chargé seulement au premier gabc', pageName,
       !exsurgeBefore && state.exsurge && state.transportHidden ? 'OK' : 'ÉCHEC',
       `exsurge avant ${exsurgeBefore}, après ${state.exsurge}, transport masqué ${state.transportHidden}`);
+    const bounds = await viewBoxState(page);
+    L.record(results, '14. Le getBBox de tout élément dessiné tient dans le viewBox', pageName,
+      bounds.ok && bounds.count > 20 ? 'OK' : 'ÉCHEC',
+      `${bounds.count} éléments dans ${bounds.svgs} SVG, viewBox ${JSON.stringify(bounds.viewBox)}` +
+      (bounds.failures.length ? `, hors cadre ${JSON.stringify(bounds.failures)}` : ''));
 
     // B. Export refusé sans dialogue ni erreur.
     await page.click('#btn-menu');
@@ -200,10 +260,11 @@ async function runPage(browser, url, pageName, results) {
     await page.evaluate(() => { window.__gabcPwned = undefined; });
     await importGabc(page, MALVEILLANT);
     const evil = await gabcState(page);
-    L.record(results, '14. Script et onload du gabc neutralisés dans le SVG injecté', pageName,
+    L.record(results, '14. Scripts imbriqués et onload neutralisés, paroles « on x=1 » intactes', pageName,
       evil.svgs >= 1 && evil.pwned === undefined && evil.scripts === 0 &&
-      evil.onAttributes === 0 ? 'OK' : 'ÉCHEC',
-      `pwned ${evil.pwned}, scripts ${evil.scripts}, attributs on* ${evil.onAttributes}`);
+      evil.onAttributes === 0 && evil.text.includes('on x=1') ? 'OK' : 'ÉCHEC',
+      `pwned ${evil.pwned}, scripts ${evil.scripts}, attributs on* ${evil.onAttributes}, ` +
+      `« on x=1 » conservé ${evil.text.includes('on x=1')}`);
 
     // G. gabc invalide : message, retour à l'accueil, aucun blocage.
     await page.setInputFiles('#file-input', INVALIDE);
@@ -271,12 +332,41 @@ async function runOffline(browser, url, results) {
   await ctx.close();
 }
 
+// Grand écran : la fixture longue doit tenir sur plusieurs lignes et rester
+// entièrement dans le viewBox, sans débordement horizontal.
+async function runLarge(browser, url, pageName, results) {
+  const { page, ctx, errors } = await L.newPage(browser, url, {
+    pageName, viewport: { width: 1200, height: 900 },
+  });
+  try {
+    await L.waitReady(page);
+    await importGabc(page, KYRIE);
+    const state = await gabcState(page);
+    const total = parseInt((state.total.split('/')[1] || '0'), 10);
+    const bounds = await viewBoxState(page);
+    L.record(results, '14. Fixture longue : au moins trois lignes à 1200 px', pageName,
+      total >= 3 && state.overflow <= 0 && state.svgRights.every((right) => right <= 1201) ? 'OK' : 'ÉCHEC',
+      `${total} ligne(s), débordement ${state.overflow} px, bords ${JSON.stringify(state.svgRights)}`);
+    L.record(results, '14. viewBox à 1200 px : aucun élément rogné', pageName,
+      bounds.ok && bounds.count > 20 ? 'OK' : 'ÉCHEC',
+      `${bounds.count} éléments, viewBox ${JSON.stringify(bounds.viewBox)}` +
+      (bounds.failures.length ? `, hors cadre ${JSON.stringify(bounds.failures)}` : ''));
+  } catch (e) {
+    L.record(results, '14. Grand écran 1200 px', pageName, 'ÉCHEC',
+      'exception du test : ' + e.message);
+  }
+  await ctx.close();
+}
+
 (async () => {
   const { server, url } = await L.startServer();
   const browser = await L.launch();
   const results = [];
   try {
-    for (const pageName of PAGES) await runPage(browser, url, pageName, results);
+    for (const pageName of PAGES) {
+      await runPage(browser, url, pageName, results);
+      await runLarge(browser, url, pageName, results);
+    }
     await runOffline(browser, url, results);
   } catch (e) {
     console.log('ERREUR GÉNÉRALE', e.stack);
