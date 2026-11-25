@@ -3,7 +3,9 @@
 // titre/initiale, source-index et paroles, zoom, disposition horizontale,
 // réouverture depuis la bibliothèque, transport masqué, export refusé, gabc
 // invalide signalé, contenu malveillant neutralisé, hors ligne (PWA), puis
-// retour à un MusicXML normal (worker et transport).
+// retour à un MusicXML normal (worker et transport). Vérifie aussi la bascule
+// « carré / classique » : choix par fichier, position conservée, course des
+// bascules rapides, absence de scoretk et bouton propre aux sources gabc.
 const fs = require('fs');
 const path = require('path');
 const L = require('./lib');
@@ -11,9 +13,20 @@ const L = require('./lib');
 const PAGES = ['index.html', 'spa.html'];
 const GABC_DIR = path.join(__dirname, 'fixtures', 'gabc');
 const KYRIE = path.join(GABC_DIR, 'kyrie.gabc');
+const LONG = path.join(GABC_DIR, 'long.gabc');
 const INVALIDE = path.join(GABC_DIR, 'invalide.gabc');
 const MALVEILLANT = path.join(GABC_DIR, 'malveillant.gabc');
 const XML = path.join(__dirname, 'fixtures', 'enchainement.xml');
+
+// Longueur de l'en-tête en unités UTF-16, comme exsurge et scoretk : tout ce
+// qui précède le corps, ligne %% et son saut de ligne compris. La fixture
+// contient « 𝄞 » (paire de substitution) : une longueur en octets ou en points
+// de code décalerait le repère.
+const LONG_HEADER = (() => {
+  const text = fs.readFileSync(LONG, 'utf8');
+  const match = text.match(/^[ \t]*%%+[ \t\r]*\r?\n/m);
+  return match ? match.index + match[0].length : 0;
+})();
 
 function filePayload(name, file) {
   return {
@@ -532,6 +545,402 @@ async function runMixed(browser, url, pageName, results) {
   }
 }
 
+// --- Bascule carré / classique ---------------------------------------------
+
+async function notationState(page) {
+  return page.evaluate(() => {
+    const btn = document.getElementById('notation-toggle');
+    const slot = document.getElementById('page-current');
+    const rect = btn ? btn.getBoundingClientRect() : null;
+    const ids = [...slot.querySelectorAll('.scroll-page svg [id]')]
+      .map((el) => el.getAttribute('id') || '')
+      .filter((id) => /-o\d+-e\d+$/.test(id));
+    const number = document.getElementById('page-number')?.textContent || '';
+    const match = number.match(/\d+\s*\/\s*(\d+)/);
+    return {
+      view: window.notationView,
+      pressed: btn?.getAttribute('aria-pressed'),
+      hidden: !btn || btn.classList.contains('hidden'),
+      label: btn?.textContent?.trim() || '',
+      buttonRect: rect ? {
+        left: Math.round(rect.left), right: Math.round(rect.right),
+        top: Math.round(rect.top), width: Math.round(rect.width),
+        height: Math.round(rect.height),
+      } : null,
+      staffs: slot.querySelectorAll('.scroll-page svg g.staff').length,
+      chantLines: slot.querySelectorAll('.scroll-page svg g.chantLine').length,
+      squareNotes: slot.querySelectorAll('.scroll-page svg .note[source-index]').length,
+      classicNotes: ids.length,
+      total: match ? parseInt(match[1], 10) : 0,
+      transportHidden: document.getElementById('transport').classList.contains('hidden'),
+      exportHidden: document.getElementById('export-overlay').classList.contains('hidden'),
+      errorText: document.getElementById('protocol-error')?.textContent || '',
+      errorVisible: document.getElementById('protocol-error')?.style.display === 'block',
+      importHidden: document.getElementById('import-section').classList.contains('hidden'),
+      loadingHidden: document.getElementById('overlay-loading').classList.contains('hidden'),
+      movements: (window.movements || []).length,
+      restoring: !!window.positionBascule,
+      headerLen: window.movements?.[0]?.enteteLongueur ?? null,
+      probe: window.__musicaNotationProbe?.() ?? null,
+    };
+  });
+}
+
+// Attend la fin d'une bascule : plus aucune restauration en cours et un SVG du
+// type attendu. Le prédicat reste synchrone ; L.waitUntil l'interroge à
+// intervalles (aucun waitForFunction async).
+async function waitNotationReady(page, timeout = 120000) {
+  await L.waitUntil(page, () => {
+    if (window.positionBascule) return false;
+    const svg = document.querySelector('#page-current .scroll-page svg');
+    if (!svg) return false;
+    if (window.notationView === 'square') return !!svg.querySelector('.note[source-index]');
+    return !!svg.querySelector('g.staff');
+  }, { timeout, interval: 200, what: 'mise à jour de la vue de notation' });
+}
+
+async function clickToggle(page) {
+  await page.evaluate(() => {
+    document.getElementById('notation-toggle')?.scrollIntoView({ block: 'nearest' });
+  });
+  await page.click('#notation-toggle');
+}
+
+// Positions source des notes visibles, en unités UTF-16 depuis le début du
+// fichier : source-index + en-tête en carré, -o du MusicXML en classique.
+async function visibleNotePositions(page, view, headerLen) {
+  return page.evaluate(({ view, headerLen }) => {
+    const slot = document.getElementById('page-current');
+    const slotRect = slot.getBoundingClientRect();
+    const result = [];
+    for (const el of slot.querySelectorAll('.scroll-page svg .note, .scroll-page svg [id]')) {
+      let pos = null;
+      if (view === 'square') {
+        const index = el.getAttribute('source-index');
+        if (index != null && el.classList.contains('note')) pos = headerLen + Number(index);
+      } else {
+        const match = (el.getAttribute('id') || '').match(/-o(\d+)-e\d+$/);
+        if (match) pos = Number(match[1]);
+      }
+      if (pos == null || !isFinite(pos)) continue;
+      const box = el.getBoundingClientRect();
+      if (box.bottom > slotRect.top && box.top < slotRect.bottom &&
+          box.right > slotRect.left && box.left < slotRect.right) {
+        result.push({ pos, id: el.getAttribute('id') || '', cls: el.getAttribute('class') || '' });
+      }
+    }
+    result.sort((a, b) => a.pos - b.pos);
+    return result;
+  }, { view, headerLen });
+}
+
+// Bouton présent, accessible, utilisable à 360 px, aller-retour clavier,
+// export et transport propres à chaque vue.
+async function runToggle(browser, url, pageName, results) {
+  const { page, ctx, errors } = await L.newPage(browser, url, {
+    pageName, viewport: { width: 360, height: 720 },
+  });
+  try {
+    await L.waitReady(page);
+    await importGabc(page, KYRIE);
+    const initial = await notationState(page);
+    L.record(results, '14. Bascule : vue carrée par défaut, bouton visible et pressé', pageName,
+      initial.view === 'square' && !initial.hidden && initial.pressed === 'true' &&
+      initial.chantLines >= 2 && initial.transportHidden ? 'OK' : 'ÉCHEC',
+      JSON.stringify(initial));
+    L.record(results, '14. Bascule : bouton utilisable à 360 px, sans débordement', pageName,
+      initial.buttonRect && initial.buttonRect.left >= 0 && initial.buttonRect.right <= 360 &&
+      initial.buttonRect.width >= 44 && initial.buttonRect.height >= 44 &&
+      (await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
+        ? 'OK' : 'ÉCHEC',
+      JSON.stringify(initial.buttonRect));
+
+    // Clavier : focus + Entrée, puis Espace pour revenir.
+    await page.focus('#notation-toggle');
+    await page.keyboard.press('Enter');
+    await waitNotationReady(page);
+    const classic = await notationState(page);
+    L.record(results, '14. Bascule : Entrée ouvre la vue classique (Verovio, transport)', pageName,
+      classic.view === 'classic' && classic.pressed === 'false' && classic.staffs > 0 &&
+      !classic.transportHidden ? 'OK' : 'ÉCHEC',
+      `vue ${classic.view}, ${classic.staffs} portées, transport masqué ${classic.transportHidden}`);
+
+    // La vue classique suit le chemin MusicXML ordinaire : données de lecture.
+    const playback = await page.evaluate(() => window.__musicaPlaybackProbe());
+    L.record(results, '14. Bascule : lecture disponible dans la vue classique', pageName,
+      playback.hasData && playback.syncMarksCount > 0 && playback.midiBytes > 0 ? 'OK' : 'ÉCHEC',
+      `données ${playback.hasData}, ${playback.syncMarksCount} marqueurs, ${playback.midiBytes} octets MIDI${playback.error ? `, erreur ${playback.error}` : ''}`);
+
+    // Export disponible en classique, refusé en carré.
+    await page.click('#btn-menu');
+    await page.click('#menu-export');
+    await L.waitUntil(page, () => document.querySelectorAll('#export-format option').length > 0,
+      { timeout: 30000, what: 'formats d’export scoretk' });
+    const exported = await notationState(page);
+    const exportFormats = await page.$$eval('#export-format option', (options) => options.length);
+    L.record(results, '14. Bascule : export refusé en carré, proposé en classique', pageName,
+      !exported.exportHidden && exportFormats > 0 ? 'OK' : 'ÉCHEC',
+      `dialogue export masqué ${exported.exportHidden}, ${exportFormats} format(s)`);
+    if (!exported.exportHidden) {
+      await page.click('#export-cancel');
+      await page.waitForTimeout(200);
+    }
+
+    await page.focus('#notation-toggle');
+    await page.keyboard.press('Space');
+    await waitNotationReady(page);
+    const square = await notationState(page);
+    L.record(results, '14. Bascule : Espace revient à la vue carrée, transport masqué', pageName,
+      square.view === 'square' && square.pressed === 'true' && square.chantLines >= 2 &&
+      square.transportHidden ? 'OK' : 'ÉCHEC',
+      `vue ${square.view}, ${square.chantLines} lignes, transport masqué ${square.transportHidden}`);
+
+    await page.click('#btn-menu');
+    await page.click('#menu-export');
+    await page.waitForTimeout(300);
+    const noExport = await notationState(page);
+    L.record(results, '14. Bascule : export de nouveau refusé en carré', pageName,
+      noExport.exportHidden ? 'OK' : 'ÉCHEC', `dialogue masqué ${noExport.exportHidden}`);
+    if (!noExport.exportHidden) await page.click('#export-cancel');
+
+    // Mémoire par fichier après rechargement de la page.
+    await clickToggle(page);
+    await waitNotationReady(page);
+    const chosen = await notationState(page);
+    await page.reload({ waitUntil: 'domcontentloaded', timeout: 60000 });
+    await L.waitReady(page);
+    await openLibraryForTest(page);
+    await page.click('#library-list .library-item:nth-child(1) .library-item-info');
+    await L.waitFirstSvg(page, 120000);
+    await waitNotationReady(page);
+    const remembered = await notationState(page);
+    L.record(results, '14. Bascule : choix classique mémorisé après rechargement', pageName,
+      chosen.view === 'classic' && remembered.view === 'classic' &&
+      remembered.pressed === 'false' && remembered.staffs > 0 ? 'OK' : 'ÉCHEC',
+      `avant ${chosen.view}, après ${remembered.view}, ${remembered.staffs} portées`);
+    const relevant = L.summarize(errors);
+    L.record(results, '6. Erreurs JS (bascule)', pageName, relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
+  } catch (e) {
+    L.record(results, '14. Bascule carré / classique', pageName, 'ÉCHEC',
+      'exception du test : ' + e.message);
+  }
+  await ctx.close();
+}
+
+// Position non initiale conservée dans une longue fixture : repère UTF-16
+// (en-tête avec caractères hors ASCII et 𝄞), page intermédiaire, aller-retour.
+async function runLongPosition(browser, url, pageName, results) {
+  const { page, ctx, errors } = await L.newPage(browser, url, {
+    pageName, viewport: { width: 360, height: 720 },
+  });
+  try {
+    await L.waitReady(page);
+    await importGabc(page, LONG, 120000);
+    const start = await notationState(page);
+    const targetPage = Math.max(2, Math.floor(start.total / 2));
+    await L.gotoPage(page, targetPage);
+    await L.waitUntil(page, () => {
+      const pages = [...document.querySelectorAll('#page-current .scroll-page')];
+      return pages.some((div) => div.querySelector('svg .note[source-index]'));
+    }, { timeout: 60000, what: 'notes carrées rendues après saut' });
+
+    const before = await notationState(page);
+    const squareVisible = await visibleNotePositions(page, 'square', LONG_HEADER);
+    const reference = squareVisible[0]?.pos;
+    L.record(results, '14. Longue fixture : en-tête mesuré en UTF-16 (𝄞 compris)', pageName,
+      before.headerLen === LONG_HEADER && reference != null && reference > LONG_HEADER + 50 ? 'OK' : 'ÉCHEC',
+      `en-tête ${before.headerLen} (attendu ${LONG_HEADER}), repère ${reference}, page ${targetPage}/${start.total}`);
+
+    await clickToggle(page);
+    await waitNotationReady(page);
+    const classic = await notationState(page);
+    const classicVisible = await visibleNotePositions(page, 'classic', LONG_HEADER);
+    const target = classic.probe?.target;
+    L.record(results, '14. Bascule vers classique : position conservée (dernière note ≤ repère)', pageName,
+      classic.view === 'classic' && classic.staffs > 0 && target != null &&
+      reference != null && target.pos <= reference &&
+      classicVisible.some((note) => note.pos <= reference) &&
+      classicVisible.some((note) => note.pos === target.pos) ? 'OK' : 'ÉCHEC',
+      `repère ${reference}, cible ${JSON.stringify(target)}, visibles ${JSON.stringify(classicVisible.slice(0, 4))}`);
+
+    const returnReference = classicVisible[0]?.pos;
+    await clickToggle(page);
+    await waitNotationReady(page);
+    const back = await notationState(page);
+    const backVisible = await visibleNotePositions(page, 'square', LONG_HEADER);
+    const returnTarget = back.probe?.target;
+    L.record(results, '14. Retour en carré : position conservée et source-index visible', pageName,
+      back.view === 'square' && back.chantLines >= 1 && returnTarget != null &&
+      returnReference != null && returnTarget.pos <= returnReference &&
+      backVisible.some((note) => note.pos === returnTarget.pos) ? 'OK' : 'ÉCHEC',
+      `repère ${returnReference}, cible ${JSON.stringify(returnTarget)}, visibles ${JSON.stringify(backVisible.slice(0, 4))}`);
+    const relevant = L.summarize(errors);
+    L.record(results, '6. Erreurs JS (position de bascule)', pageName,
+      relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
+  } catch (e) {
+    L.record(results, '14. Position conservée à la bascule', pageName, 'ÉCHEC',
+      'exception du test : ' + e.message);
+  }
+  await ctx.close();
+}
+
+// Le choix vaut pour toutes les sources gabc d'un dossier mixte ; un MusicXML
+// n'affiche jamais le bouton et reste rendu par le worker.
+async function runMixedChoice(browser, url, pageName, results) {
+  const { page, ctx, errors } = await L.newPage(browser, url, {
+    pageName, viewport: { width: 500, height: 900 },
+  });
+  try {
+    await L.waitReady(page);
+    await page.setInputFiles('#file-input', [
+      { name: 'a-long.gabc', mimeType: 'text/plain', buffer: fs.readFileSync(LONG) },
+      { name: 'b-kyrie.gabc', mimeType: 'text/plain', buffer: fs.readFileSync(KYRIE) },
+      filePayload('c-enchainement.xml', XML),
+    ]);
+    await L.waitFirstSvg(page, 120000);
+    await L.waitBackgroundLoaded(page, 180000);
+    await clickToggle(page);
+    await waitNotationReady(page);
+    const first = await notationState(page);
+    const secondStart = await movementStart(page, (m) => m.gabc && m.sourceIndex === 1 && m.loaded);
+    const xmlStart = await movementStart(page, (m) => !m.gabc && m.loaded);
+    let second = null;
+    let xml = null;
+    if (secondStart) {
+      await L.gotoPage(page, secondStart);
+      await L.waitUntil(page, () => !!document.querySelector('#page-current .scroll-page svg g.staff'),
+        { timeout: 60000, what: 'second gabc classique rendu' });
+      second = await notationState(page);
+    }
+    if (xmlStart) {
+      await L.gotoPage(page, xmlStart);
+      await L.waitUntil(page, () => !!document.querySelector('#page-current .scroll-page svg g.staff'),
+        { timeout: 60000, what: 'MusicXML rendu' });
+      xml = await notationState(page);
+    }
+    L.record(results, '14. Dossier mixte : le choix vaut pour toutes les sources gabc', pageName,
+      first.view === 'classic' && first.staffs > 0 && second != null &&
+      second.view === 'classic' && second.staffs > 0 && second.pressed === 'false' ? 'OK' : 'ÉCHEC',
+      `premier ${first.view}/${first.staffs}, second ${second?.view}/${second?.staffs}, début ${secondStart}`);
+    L.record(results, '14. Dossier mixte : bouton absent pour un MusicXML', pageName,
+      xml != null && xml.hidden ? 'OK' : 'ÉCHEC',
+      `début XML ${xmlStart}, bouton masqué ${xml?.hidden}`);
+    const relevant = L.summarize(errors);
+    L.record(results, '6. Erreurs JS (dossier mixte bascule)', pageName,
+      relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
+  } catch (e) {
+    L.record(results, '14. Dossier mixte et bascule', pageName, 'ÉCHEC',
+      'exception du test : ' + e.message);
+  }
+  await ctx.close();
+}
+
+async function runButtonAbsent(browser, url, pageName, results) {
+  const { page, ctx, errors } = await L.newPage(browser, url, { pageName });
+  try {
+    await L.waitReady(page);
+    await L.importFile(page, XML);
+    await L.waitFirstSvg(page, 120000);
+    await L.waitBackgroundLoaded(page, 120000);
+    const state = await notationState(page);
+    L.record(results, '14. Bouton de bascule absent pour un MusicXML', pageName,
+      state.hidden && state.staffs > 0 ? 'OK' : 'ÉCHEC',
+      `masqué ${state.hidden}, ${state.staffs} portées`);
+    const relevant = L.summarize(errors);
+    L.record(results, '6. Erreurs JS (bouton absent)', pageName,
+      relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
+  } catch (e) {
+    L.record(results, '14. Bouton absent pour MusicXML', pageName, 'ÉCHEC',
+      'exception du test : ' + e.message);
+  }
+  await ctx.close();
+}
+
+// scoretk absent ou conversion en échec : message et retour à la vue carrée,
+// jamais d'écran vide.
+async function runScoretkFallback(browser, url, pageName, results) {
+  const { page, ctx, errors } = await L.newPage(browser, url, {
+    pageName, viewport: { width: 360, height: 720 },
+  });
+  try {
+    await L.waitReady(page);
+    await importGabc(page, KYRIE);
+    await page.evaluate(() => { window.__musicaScoretkAvailable = false; });
+    await clickToggle(page);
+    await page.waitForTimeout(500);
+    const absent = await notationState(page);
+    L.record(results, '14. scoretk absent : message, vue carrée conservée', pageName,
+      absent.view === 'square' && absent.pressed === 'true' && absent.chantLines >= 2 &&
+      absent.errorVisible && /scoretk/i.test(absent.errorText) ? 'OK' : 'ÉCHEC',
+      `vue ${absent.view}, bouton ${absent.pressed}, erreur « ${absent.errorText} »`);
+
+    await page.evaluate(() => {
+      window.__musicaScoretkAvailable = true;
+      window.convertScoretkToXml = () => Promise.reject(new Error('échec simulé de conversion'));
+    });
+    await page.click('#protocol-error').catch(() => {});
+    await page.evaluate(() => {
+      const el = document.getElementById('protocol-error');
+      if (el) el.style.display = 'none';
+    });
+    await clickToggle(page);
+    await L.waitUntil(page, () => {
+      const el = document.getElementById('protocol-error');
+      return el && el.style.display === 'block' && /échec simulé/.test(el.textContent || '');
+    }, { timeout: 60000, what: 'message de repli de conversion gabc' });
+    await waitNotationReady(page);
+    const failed = await notationState(page);
+    L.record(results, '14. Conversion classique en échec : retour en carré, pas d’écran vide', pageName,
+      failed.view === 'square' && failed.pressed === 'true' && failed.chantLines >= 2 &&
+      failed.importHidden && failed.loadingHidden && /échec simulé/.test(failed.errorText) ? 'OK' : 'ÉCHEC',
+      `vue ${failed.view}, ${failed.chantLines} lignes, erreur « ${failed.errorText} »`);
+    const relevant = L.summarize(errors);
+    L.record(results, '6. Erreurs JS (repli scoretk)', pageName,
+      relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
+  } catch (e) {
+    L.record(results, '14. Repli sans scoretk', pageName, 'ÉCHEC',
+      'exception du test : ' + e.message);
+  }
+  await ctx.close();
+}
+
+// Bascules rapides : seule la dernière doit rester, sans état intermédiaire ni
+// écran vide.
+async function runRapid(browser, url, pageName, results) {
+  const { page, ctx, errors } = await L.newPage(browser, url, {
+    pageName, viewport: { width: 360, height: 720 },
+  });
+  try {
+    await L.waitReady(page);
+    await importGabc(page, KYRIE);
+    // 7 bascules depuis la vue carrée : la dernière laisse la vue classique.
+    await page.evaluate(() => {
+      const button = document.getElementById('notation-toggle');
+      for (let i = 0; i < 7; i += 1) button.click();
+    });
+    await waitNotationReady(page);
+    const classic = await notationState(page);
+    L.record(results, '14. Bascules rapides : seule la dernière vue reste (classique)', pageName,
+      classic.view === 'classic' && classic.pressed === 'false' && classic.staffs > 0 &&
+      !classic.restoring ? 'OK' : 'ÉCHEC',
+      `vue ${classic.view}, ${classic.staffs} portées, restauration ${classic.restoring}`);
+    await clickToggle(page);
+    await waitNotationReady(page);
+    const square = await notationState(page);
+    L.record(results, '14. Bascules rapides : retour final en carré propre', pageName,
+      square.view === 'square' && square.pressed === 'true' && square.chantLines >= 2 &&
+      square.movements === 1 && square.loadingHidden ? 'OK' : 'ÉCHEC',
+      `vue ${square.view}, ${square.chantLines} lignes, ${square.movements} mouvement(s)`);
+    const relevant = L.summarize(errors);
+    L.record(results, '6. Erreurs JS (bascules rapides)', pageName,
+      relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
+  } catch (e) {
+    L.record(results, '14. Bascules rapides', pageName, 'ÉCHEC',
+      'exception du test : ' + e.message);
+  }
+  await ctx.close();
+}
+
 (async () => {
   const { server, url } = await L.startServer();
   const browser = await L.launch();
@@ -542,6 +951,12 @@ async function runMixed(browser, url, pageName, results) {
       await runLarge(browser, url, pageName, results);
       await runRace(browser, url, pageName, results);
       await runMixed(browser, url, pageName, results);
+      await runToggle(browser, url, pageName, results);
+      await runLongPosition(browser, url, pageName, results);
+      await runMixedChoice(browser, url, pageName, results);
+      await runButtonAbsent(browser, url, pageName, results);
+      await runScoretkFallback(browser, url, pageName, results);
+      await runRapid(browser, url, pageName, results);
     }
     await runOffline(browser, url, results);
   } catch (e) {
