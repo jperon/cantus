@@ -41,7 +41,7 @@ A **Gregorian** toggle button switches a GABC score to classical notation and ba
 - Turn pages by tapping the left or right side of the score, with the left/right arrow keys or Space, or with the page-number button.
 - Choose **Layout**: **Auto**, **Horizontal** or **Vertical**.
 - Scroll **Per page** or **Per system**, with an adjustable **Overlap**.
-- Set **Zoom** from 30 % to 80 %, **Hide empty staves**, and a **Theme**: **White**, **Sepia** or **Dark**.
+- Set **Zoom** from 30 % to 80 %, the **Text size** of the sung text from 50 % to 175 %, **Hide empty staves**, and a **Theme**: **White**, **Sepia** or **Dark**.
 - Set the **Tap zone** to **Small**, **Normal** or **Large**.
 - Scores with several movements are split at their movement boundaries; use the previous/next movement buttons.
 
