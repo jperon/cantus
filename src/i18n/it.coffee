@@ -107,8 +107,8 @@ registerLanguage 'it', 'Italiano',
   'nav.menuLabel': 'Azioni della partitura'
   'nav.export': 'Esporta'
   'nav.settings': 'Impostazioni'
-  'notation.square': 'Quadrata'
-  'notation.toggleTitle': 'Passa tra notazione quadrata e classica'
+  'notation.gregorian': 'Gregoriano'
+  'notation.toggleTitle': 'Passa tra notazione gregoriana e classica'
 
   'export.title': 'Esporta la partitura'
   'export.close': 'Chiudi l’esportazione'

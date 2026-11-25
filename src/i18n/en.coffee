@@ -109,8 +109,8 @@ registerLanguage 'en', 'English',
   'nav.menuLabel': 'Score actions'
   'nav.export': 'Export'
   'nav.settings': 'Settings'
-  'notation.square': 'Square'
-  'notation.toggleTitle': 'Switch between square and classical notation'
+  'notation.gregorian': 'Gregorian'
+  'notation.toggleTitle': 'Switch between Gregorian and classical notation'
 
   'export.title': 'Export the score'
   'export.close': 'Close export'

@@ -107,8 +107,8 @@ registerLanguage 'fr', 'Français',
   'nav.menuLabel': 'Actions de la partition'
   'nav.export': 'Exporter'
   'nav.settings': 'Réglages'
-  'notation.square': 'Carré'
-  'notation.toggleTitle': 'Basculer entre notation carrée et classique'
+  'notation.gregorian': 'Grégorien'
+  'notation.toggleTitle': 'Basculer entre notation grégorienne et classique'
 
   'export.title': 'Exporter la partition'
   'export.close': 'Fermer l’export'

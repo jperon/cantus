@@ -107,8 +107,8 @@ registerLanguage 'de', 'Deutsch',
   'nav.menuLabel': 'Partituraktionen'
   'nav.export': 'Exportieren'
   'nav.settings': 'Einstellungen'
-  'notation.square': 'Quadrat'
-  'notation.toggleTitle': 'Zwischen Quadrat- und klassischer Notation wechseln'
+  'notation.gregorian': 'Gregorianisch'
+  'notation.toggleTitle': 'Zwischen gregorianischer und klassischer Notation wechseln'
 
   'export.title': 'Partitur exportieren'
   'export.close': 'Export schließen'

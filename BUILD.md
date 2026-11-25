@@ -72,7 +72,7 @@ instructions exécutées au chargement sont conservées.
 | `reglages-voix.coffee` | Réglages persistants, voix masquées (rendu) ou coupées (lecture), tailles, variantes de cache. |
 | `affichage-navigation.coffee` | Affichage des pages, préchargement, défilement, navigation. |
 | `decoupage-xml.coffee` | Découpage MusicXML en mouvements, masquage et tailles des voix. |
-| `gregorien.coffee` | Import GABC : notation carrée (exsurge, une ligne de chant par page, sans worker), bascule carré / classique, restauration de position. |
+| `gregorien.coffee` | Import GABC : notation carrée (exsurge, une ligne de chant par page, sans worker), bascule grégorien / classique, restauration de position. |
 | `sources.coffee` | Conversion scoretk et chargement séquentiel des sources/mouvements, y compris le GABC converti pour la vue classique. |
 | `bibliotheque-import.coffee` | Bibliothèque, navigation tactile, import de fichiers/dossiers. |
 | `reglages-ui.coffee` | Panneau de réglages (liste des voix, contrôles). |
@@ -135,7 +135,9 @@ accepté en `text/plain`, tout en ayant un `from` scoretk.
 
 La source gabc est convertie par scoretk (`from: 'gabc'`) dans le worker puis
 suit le chemin MusicXML ordinaire : découpage, worker, transport, voix,
-transposition, tempo et export, sans code dupliqué. Le worker utilise
+transposition, tempo et export, sans code dupliqué. Le bouton est libellé
+« Grégorien » (Gregorian, Gregoriano, Gregoriano, Gregorianisch) et son état
+pressé indique la vue active. Le worker utilise
 `convertWithTimeline` pour cette conversion : son MusicXML porte les
 identifiants de note `-oDEBUT-eFIN` (positions en unités UTF-16 depuis le
 début du fichier), nécessaires pour retrouver la position à la bascule.
@@ -145,9 +147,11 @@ La bascule recharge avec `startLoad(..., keepSources = true)` et le jeton
 `loadToken` existants ; elle ne réimporte rien. Le choix est propre au fichier
 (`musica-notation-<fileId>`), commun aux sources gabc d'un dossier mixte. La
 position est mémorisée par la première note visible (source-index d'exsurge +
-longueur de l'en-tête UTF-16 en carré, `-o` en classique) puis restaurée sur la
-dernière note de position ≤ ce repère. Sans scoretk, ou si la conversion
-échoue, un message est affiché et la vue carrée reste affichée.
+longueur de l'en-tête donnée par `GabcHeader.getLength` en carré, `-o` absolu
+en classique) puis restaurée sur la dernière note de position ≤ ce repère, par
+un parcours linéaire des pages. Sans scoretk, ou si la conversion échoue, un
+message est affiché et un `startLoad` repart en vue carrée pour tout le
+dossier.
 
 ## Internationalisation (`src/i18n.coffee` et `src/i18n/`)
 

@@ -107,8 +107,8 @@ registerLanguage 'es', 'Español',
   'nav.menuLabel': 'Acciones de la partitura'
   'nav.export': 'Exportar'
   'nav.settings': 'Ajustes'
-  'notation.square': 'Cuadrada'
-  'notation.toggleTitle': 'Cambiar entre notación cuadrada y clásica'
+  'notation.gregorian': 'Gregoriano'
+  'notation.toggleTitle': 'Cambiar entre notación gregoriana y clásica'
 
   'export.title': 'Exportar la partitura'
   'export.close': 'Cerrar la exportación'

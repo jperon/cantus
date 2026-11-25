@@ -648,6 +648,8 @@ async function runToggle(browser, url, pageName, results) {
       initial.view === 'square' && !initial.hidden && initial.pressed === 'true' &&
       initial.chantLines >= 2 && initial.transportHidden ? 'OK' : 'ÉCHEC',
       JSON.stringify(initial));
+    L.record(results, '14. Bascule : bouton libellé « Grégorien »', pageName,
+      initial.label === 'Grégorien' ? 'OK' : 'ÉCHEC', `libellé « ${initial.label} »`);
     L.record(results, '14. Bascule : bouton utilisable à 360 px, sans débordement', pageName,
       initial.buttonRect && initial.buttonRect.left >= 0 && initial.buttonRect.right <= 360 &&
       initial.buttonRect.width >= 44 && initial.buttonRect.height >= 44 &&
