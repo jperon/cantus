@@ -208,6 +208,12 @@ resetLoadedScore = ->
   sourceCache.clear()
   reinitialiserBascule()
   loadToken++  # stop background conversions of the deleted score
+  # Les demandes de lecture en cours appartiennent au chargement supprimé :
+  # les rejeter, sinon elles resteraient en attente (aucune réponse ne peut
+  # plus satisfaire leur jeton) et une nouvelle demande de même clé serait
+  # dédupliquée sur une promesse morte.
+  pendingPlayback.forEach (pending) -> pending.reject new Error "Chargement remplacé"
+  pendingPlayback.clear()
   movementLoadTokens.clear()
   fileLoaded = false
   # Rien ne reste à charger : retirer l'indicateur et les compteurs

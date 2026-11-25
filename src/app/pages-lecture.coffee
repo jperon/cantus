@@ -100,6 +100,12 @@ requestPlaybackData = (movementId, linear = not expandRepeats) ->
     else
       Promise.resolve null
     cached.then (data) ->
+      # Contrôle du jeton en premier : un chargement a pu remplacer la demande
+      # pendant la lecture du cache persistant. Ne pas toucher à
+      # pendingPlayback ni à playbackCache : le nouveau chargement a pu y
+      # inscrire une demande sous la même clé, qu'il ne faut pas écraser.
+      # Seule cette promesse est rejetée.
+      return reject new Error "Chargement remplacé" if loadToken isnt requestToken
       if data and playbackCache.has(key)
         # Une autre demande a déjà rempli le cache mémoire entre-temps
         pendingPlayback.delete key
@@ -108,9 +114,6 @@ requestPlaybackData = (movementId, linear = not expandRepeats) ->
         pendingPlayback.delete key
         playbackCache.set key, data
         resolve data
-      else if loadToken isnt requestToken
-        pendingPlayback.delete key
-        reject new Error "Chargement remplacé"
       else
         worker.postMessage
           type: "getPlaybackData"
