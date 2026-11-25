@@ -62,64 +62,104 @@ async function runPage(browser, url, pageName, results) {
     await ctx5.close();
   }
 
-  // Chemins d'erreur : message playbackError et données de lecture vides.
-  // On intercepte getPlaybackData pour injecter la réponse sans dépendre du
-  // worker réel ; l'application doit masquer le transport sans erreur JS.
-  {
-    const { page, ctx: ctx6, errors: errors6 } = await L.newPage(browser, url, { pageName });
+  // Chemins d'erreur : le préchargement de l'ouverture est piégé
+  // (interception de getPlaybackData AVANT l'import). Une erreur ou des
+  // données vides au préchargement laissent le transport visible et la barre
+  // inactive ; un ▶ sur le même chemin masque ensuite le transport, comme
+  // avant. Deux contextes indépendants : erreur, puis données vides.
+  const runPreloadFailure = async (kind) => {
+    const empty = kind === 'vide';
+    const { page, ctx, errors } = await L.newPage(browser, url, { pageName });
     try {
       await waitReady(page);
-      await L.importFile(page, L.FILES.telemannXml);
-      await waitFirstSvg(page);
-      await waitBackgroundLoaded(page);
-      await page.waitForTimeout(600);
+      // Le préchargement est posté après le chargement du mouvement : piéger
+      // getPlaybackData dès maintenant évite qu'il aboutisse avant le test.
       await page.evaluate(() => {
         const w = window.__musicaWorker;
+        window.__pbDropped = 0;
         w.__testPostMessage = w.postMessage.bind(w);
         w.postMessage = function (msg) {
-          if (msg && msg.type === 'getPlaybackData') return;
+          if (msg && msg.type === 'getPlaybackData') {
+            window.__pbDropped += 1;
+            return;
+          }
           return w.__testPostMessage(msg);
         };
       });
+      const snapshot = () => page.evaluate(() => ({
+        hidden: document.getElementById('transport').classList.contains('hidden'),
+        disabled: document.getElementById('transport-seek').disabled,
+        state: window.__musicaPlaybackState(),
+        dropped: window.__pbDropped,
+      }));
+      // Même réponse que le worker pour une erreur (playbackError) ou un MIDI
+      // vide (playbackData à durée nulle et sans marqueur).
+      const inject = () => page.evaluate((isEmpty) => {
+        window.__musicaWorker.onmessage({
+          data: isEmpty
+            ? {
+                type: 'playbackData', movementId: 1, midi: '', syncMarks: [],
+                staffLabels: [], trackMap: {}, duration: 0,
+              }
+            : { type: 'playbackError', movementId: 1, message: 'MIDI vide (test)' },
+        });
+      }, empty);
 
+      await L.importFile(page, L.FILES.telemannXml);
+      await waitFirstSvg(page);
+      await waitBackgroundLoaded(page);
+      await bounded('préchargement intercepté', WAIT.playbackData, page.waitForFunction(
+        () => window.__pbDropped >= 1, null, { timeout: WAIT.playbackData, polling: 50 }));
+      await page.waitForTimeout(200);
+      const before = await snapshot();
+      await inject();
+      await page.waitForTimeout(300);
+      const preload = await snapshot();
+      L.record(results, `6. ${empty ? 'Données vides' : 'Erreur'} au préchargement : transport visible, barre désactivée, état arrêté`, pageName,
+        preload.hidden === false && preload.disabled === true &&
+          preload.state.state === 'stopped' && preload.state.hasData === false &&
+          preload.state.duration === 0 && preload.state.position === 0 &&
+          before.disabled === true ? 'OK' : 'ÉCHEC',
+        `demandes interceptées ${before.dropped}, transport visible ${!preload.hidden}, ` +
+        `barre désactivée ${preload.disabled}, état ${preload.state.state}, ` +
+        `données ${preload.state.hasData}, durée ${preload.state.duration} ms, ` +
+        `position ${preload.state.position} ms`);
+
+      // ▶ sur le même chemin : erreur injectée pendant le chargement, ou
+      // données vides déjà en cache mémoire. Le transport est masqué et la
+      // lecture ne démarre pas.
+      const beforePlay = await snapshot();
       await page.click('#transport-play');
-      await page.evaluate(() => {
-        window.__musicaWorker.onmessage({
-          data: { type: 'playbackError', movementId: 1, message: 'MIDI vide (test)' },
-        });
-      });
+      if (!empty) {
+        await bounded('état loading avant injection', WAIT.transportState,
+          page.waitForFunction(() => window.__musicaPlaybackState?.().state === 'loading',
+            null, { timeout: WAIT.transportState, polling: 20 }));
+        await inject();
+      }
       await waitState(page, 'stopped');
-      const afterError = await state(page);
-      const hiddenAfterError = await transportHidden(page);
-      L.record(results, '6. Erreur de données de lecture : transport masqué, état arrêté', pageName,
-        afterError.state === 'stopped' && hiddenAfterError ? 'OK' : 'ÉCHEC',
-        `état ${afterError.state}, transport masqué ${hiddenAfterError}`);
-
-      // Le transport est masqué après l'erreur : le raccourci clavier reste
-      // le moyen de relancer une demande de lecture.
-      await page.keyboard.press('p');
-      await page.evaluate(() => {
-        window.__musicaWorker.onmessage({
-          data: {
-            type: 'playbackData', movementId: 1, midi: '', syncMarks: [],
-            staffLabels: [], trackMap: {}, duration: 0,
-          },
-        });
-      });
-      await waitState(page, 'stopped');
-      const afterEmpty = await state(page);
-      const hiddenAfterEmpty = await transportHidden(page);
-      L.record(results, '6. MIDI vide (durée nulle) : transport masqué, pas de lecture', pageName,
-        afterEmpty.state === 'stopped' && hiddenAfterEmpty && afterEmpty.position === 0 ? 'OK' : 'ÉCHEC',
-        `état ${afterEmpty.state}, position ${afterEmpty.position} ms, transport masqué ${hiddenAfterEmpty}`);
+      await page.waitForTimeout(150);
+      const played = await snapshot();
+      L.record(results,
+        empty
+          ? '6. MIDI vide (durée nulle) : transport masqué, pas de lecture'
+          : '6. Erreur de données de lecture : transport masqué, état arrêté',
+        pageName,
+        played.state.state === 'stopped' && played.hidden === true &&
+          (empty ? played.state.position === 0 : true) ? 'OK' : 'ÉCHEC',
+        `état ${played.state.state}, position ${played.state.position} ms, ` +
+        `transport masqué ${played.hidden}, demandes interceptées ` +
+        `${beforePlay.dropped} → ${played.dropped}`);
     } catch (e) {
-      L.record(results, '6. Chemins d\'erreur de lecture', pageName, 'ÉCHEC', 'exception du test : ' + e.message);
+      L.record(results, `6. Chemins d'erreur de lecture (${kind})`, pageName, 'ÉCHEC',
+        'exception du test : ' + e.message);
     }
-    const relevant = L.summarize(errors6);
-    L.record(results, '6. Erreurs JS (chemins d\'erreur)', pageName,
+    const relevant = L.summarize(errors);
+    L.record(results, `6. Erreurs JS (chemin d'erreur ${kind})`, pageName,
       relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
-    await ctx6.close();
-  }
+    await ctx.close();
+  };
+  await runPreloadFailure('erreur');
+  await runPreloadFailure('vide');
 }
 
 // Durées observées le 18/11/2026 (index.html + spa.html) : 14 à 28 s selon la
