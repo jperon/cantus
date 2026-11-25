@@ -737,7 +737,9 @@ async function runLongPosition(browser, url, pageName, results) {
     await L.waitReady(page);
     await importGabc(page, LONG, 120000);
     const start = await notationState(page);
-    const targetPage = Math.max(2, Math.floor(start.total / 2));
+    // Fin de la fixture : la vue classique se découpe en plusieurs mouvements,
+    // la cible peut donc changer de mouvement.
+    const targetPage = Math.max(2, start.total - 2);
     await L.gotoPage(page, targetPage);
     await L.waitUntil(page, () => {
       const pages = [...document.querySelectorAll('#page-current .scroll-page')];
@@ -877,9 +879,6 @@ async function runScoretkFallback(browser, url, pageName, results) {
     await page.evaluate(() => {
       window.__musicaScoretkAvailable = true;
       window.convertScoretkToXml = () => Promise.reject(new Error('échec simulé de conversion'));
-    });
-    await page.click('#protocol-error').catch(() => {});
-    await page.evaluate(() => {
       const el = document.getElementById('protocol-error');
       if (el) el.style.display = 'none';
     });

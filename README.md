@@ -34,7 +34,7 @@ MuseScore, LilyPond, ABC and MIDI files are converted by the optional scoretk co
 
 GABC files open by default in square-note notation, typeset by exsurge without scoretk or Verovio. Their title, mode and initial are shown, and each line of chant is one page. In that view playback and export are not available.
 
-A **Square / Classic** button switches a GABC score to classical notation. The classic view converts the file to MusicXML with scoretk, so it uses the same pagination, playback, transposition, tempo and export as any other MusicXML score. It requires the optional scoretk package. The choice is remembered per library item, for every GABC file in a mixed folder, and the reading position is kept across the switch.
+A **Square** toggle button switches a GABC score to classical notation and back; its pressed state shows which notation is active. The classic view converts the file to MusicXML with scoretk, so it uses the same pagination, playback, transposition, tempo and export as any other MusicXML score. It requires the optional scoretk package. The choice is remembered per library item, for every GABC file in a mixed folder, and the reading position is kept across the switch.
 
 ### Read
 
