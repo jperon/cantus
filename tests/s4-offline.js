@@ -53,22 +53,6 @@ async function offlinePlayback(page) {
   return { before, after, grew: after.position > before.position + 100 };
 }
 
-// Playwright n'attend pas la promesse renvoyée par le prédicat d'un
-// waitForFunction async : cette promesse est toujours vraie et l'attente rend
-// la main immédiatement, même quand la condition est fausse. Ces attentes
-// interrogent donc la page par page.evaluate (qui attend la promesse), avec
-// une échéance et un intervalle explicites.
-async function waitUntil(page, predicate, { timeout, interval = 500, what }) {
-  const deadline = Date.now() + timeout;
-  for (;;) {
-    if (await page.evaluate(predicate)) return;
-    if (Date.now() >= deadline) {
-      throw new Error(`${what} : délai de ${timeout} ms dépassé`);
-    }
-    await page.waitForTimeout(interval);
-  }
-}
-
 (async () => {
   const { server, url, requests } = await L.startServer(L.DIST, { log: true });
   const browser = await L.launch();
@@ -82,7 +66,7 @@ async function waitUntil(page, predicate, { timeout, interval = 500, what }) {
       await L.waitReady(page, 60000);
       let regs = [];
       try {
-        await waitUntil(page, async () => (await navigator.serviceWorker.getRegistrations()).length > 0,
+        await L.waitUntil(page, async () => (await navigator.serviceWorker.getRegistrations()).length > 0,
           { timeout: 10000, what: 'enregistrement du service worker' });
       } catch (e) { /* on relève l'état réel */ }
       regs = await registrations(page);
@@ -103,7 +87,7 @@ async function waitUntil(page, predicate, { timeout, interval = 500, what }) {
         // Diagnostic : enregistrer manuellement pour vérifier le reste de la chaîne
         diag.manual = await manualRegister(page).catch((e) => ({ error: e.message }));
         try {
-          await waitUntil(page, async () => {
+          await L.waitUntil(page, async () => {
             const want = ['scoretk.js', 'scoretk_wasm.js', 'scoretk_wasm_bg.wasm'];
             for (const key of await caches.keys()) {
               const cache = await caches.open(key);
@@ -145,7 +129,7 @@ async function waitUntil(page, predicate, { timeout, interval = 500, what }) {
         // Enregistrement normal : tester directement la mise en cache et le hors ligne
         let cached = { found: {}, keys: [] };
         try {
-          await waitUntil(page, async () => {
+          await L.waitUntil(page, async () => {
             for (const key of await caches.keys()) {
               const cache = await caches.open(key);
               if (await cache.match('./scoretk/scoretk_wasm_bg.wasm')) return true;

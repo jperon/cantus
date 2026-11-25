@@ -330,13 +330,13 @@ async function runOffline(browser, url, results) {
     await page.evaluate(async () => {
       await navigator.serviceWorker.ready;
     });
-    await page.waitForFunction(async () => {
+    await L.waitUntil(page, async () => {
       for (const key of await caches.keys()) {
         const cache = await caches.open(key);
         if (await cache.match('./exsurge.min.js')) return true;
       }
       return false;
-    }, null, { timeout: 60000, polling: 500 });
+    }, { timeout: 60000, what: "mise en cache d'exsurge" });
     await ctx.setOffline(true);
     await page.reload({ waitUntil: 'domcontentloaded', timeout: 60000 });
     await L.waitReady(page, 60000);

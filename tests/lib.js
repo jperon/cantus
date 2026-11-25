@@ -127,6 +127,22 @@ async function waitReady(page, timeout = 60000) {
   }, null, { timeout });
 }
 
+// Playwright n'attend pas la promesse renvoyée par le prédicat d'un
+// waitForFunction async : cette promesse est toujours vraie et l'attente rend
+// la main immédiatement, même quand la condition est fausse. Cette attente
+// interroge donc la page par page.evaluate (qui attend la promesse), avec une
+// échéance et un intervalle explicites.
+async function waitUntil(page, predicate, { timeout, interval = 500, what }) {
+  const deadline = Date.now() + timeout;
+  for (;;) {
+    if (await page.evaluate(predicate)) return;
+    if (Date.now() >= deadline) {
+      throw new Error(`${what} : délai de ${timeout} ms dépassé`);
+    }
+    await page.waitForTimeout(interval);
+  }
+}
+
 // Attend le premier SVG affiché. Renvoie aussi l'état du chargement de fond
 // au moment où le SVG apparaît.
 async function waitFirstSvg(page, timeout = 120000) {
@@ -397,7 +413,7 @@ process.on('exit', (code) => {
 
 module.exports = {
   ROOT, DIST, DATA, FILES, TEST_LANGUAGE, startServer, launch, newPage, forceLanguage,
-  waitReady, waitFirstSvg, pageInfo, waitPage, waitTotalAtLeast,
+  waitReady, waitUntil, waitFirstSvg, pageInfo, waitPage, waitTotalAtLeast,
   waitBackgroundLoaded, importFile, importFiles, importFolder,
   openLibrary, libraryEntries, openLibraryEntry, deleteLibraryEntry,
   openSettings, closeSettings, staffHeights, partRows,

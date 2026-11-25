@@ -11,10 +11,10 @@ const FIXTURE = path.join(__dirname, 'fixtures', 'movements.xml');
 const MSCZ = L.FILES.byrdMscz;
 
 async function waitWorker(page) {
-  await page.waitForFunction(async () => {
+  await L.waitUntil(page, async () => {
     const r = await navigator.serviceWorker.getRegistration();
     return !!(r && r.active);
-  }, null, { timeout: 30000, polling: 200 });
+  }, { timeout: 30000, what: 'service worker actif' });
   await page.waitForFunction(() => !!navigator.serviceWorker.controller, null, { timeout: 30000, polling: 200 });
 }
 
