@@ -54,21 +54,21 @@
       "sizes": "390x844",
       "type": "image/png",
       "form_factor": "narrow",
-      "label": "Main reader view with a MusicXML score"
+      "label": "De âlde Friezen (CC0) open in the reader"
     },
     {
       "src": "screenshots/mobile-2.png",
       "sizes": "390x844",
       "type": "image/png",
       "form_factor": "narrow",
-      "label": "Navigation menu and file selection"
+      "label": "Settings panel open over the score"
     },
     {
       "src": "screenshots/desktop-1.png",
       "sizes": "1280x720",
       "type": "image/png",
       "form_factor": "wide",
-      "label": "Desktop interface with multi-page display"
+      "label": "Desktop view during playback with the current measure highlighted"
     }
   ]
 }
