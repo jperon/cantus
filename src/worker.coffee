@@ -672,6 +672,39 @@ loadSourcePlayback = (sourceId, linearRepeats) ->
   sourcePlaybackPending[key] = promise
   promise
 
+# Données communes à un intervalle de la source : MIDI global, durée, segments,
+# pauses, libellés de voix, correspondance des pistes et tempo. La pagination
+# (marqueurs de synchronisation) reste à la charge de l'appelant.
+playbackDataForSlice = (source, linearRepeats, start, stop) ->
+  slice = timelineApi.movementSlice source.timeline, start, stop
+  # Durée totale du fichier : la position affichée peut ainsi être cumulée sur
+  # toute la partition, pas seulement sur le mouvement courant.
+  fileSlice = timelineApi.movementSlice source.timeline, 0, null
+  {
+    data: {
+      midi: source.midi
+      staffLabels: source.staffLabels
+      trackMap: source.trackMap
+      duration: slice.durationMs
+      # Position absolue du mouvement dans la source et durée de la source : le
+      # transport affiche et cumule sur toute la partition.
+      offsetMs: slice.offsetMs
+      sourceDurationMs: fileSlice.durationMs
+      # Le MIDI scoretk est global à la source : les segments visent ses notes
+      # aux temps absolus du flux (`baseUs`), tout en gardant `offsetMs` cumulé
+      # depuis le début du mouvement pour la sortie audio.
+      segments: timelineApi.buildSegments slice, null, slice.offsetUs
+      pauses: slice.pauses
+      linearRepeats: !!linearRepeats
+      # Tempo initial du fichier, dans son unité de battue : le réglage
+      # « Tempo » en dérive son défaut et son symbole.
+      fileTempoBpm: source.fileTempo?.bpm ? 120
+      fileTempoExplicit: source.fileTempo?.explicit is true
+      fileTempoUnit: source.fileTempo?.unit ? 'quarter'
+    }
+    slice
+  }
+
 # Données de lecture d'un mouvement déjà chargé. La timeline scoretk est
 # globale au fichier : on en découpe les mesures du mouvement, puis on en
 # dérive segments et marqueurs avec le module timeline.
@@ -692,14 +725,7 @@ buildPlaybackData = (movementId, linearRepeats = false, measureStart, measureEnd
     current = movements[movementId]
     throw new Error "Mouvement #{movementId} déchargé pendant sa conversion" unless current?.loaded
     return buildPlaybackData movementId, linearRepeats, measureStart, measureEnd unless current is mv
-    slice = timelineApi.movementSlice source.timeline, start, stop
-    # Le MIDI scoretk est global à la source : les segments visent ses notes
-    # aux temps absolus du flux (`baseUs`), tout en gardant `offsetMs` cumulé
-    # depuis le début du mouvement pour la sortie audio.
-    segments = timelineApi.buildSegments slice, null, slice.offsetUs
-    # Durée totale du fichier : la position affichée peut ainsi être cumulée
-    # sur toute la partition, pas seulement sur le mouvement courant.
-    fileSlice = timelineApi.movementSlice source.timeline, 0, null
+    {data, slice} = playbackDataForSlice source, linearRepeats, start, stop
     # Pont mesure écrite -> page par xmlId (et non par position) : Verovio
     # n'émet pas de measureOn pour les mesures repliées d'un multi-repos, donc
     # l'index Verovio et l'ordinal scoretk divergent dès la première mesure
@@ -770,27 +796,48 @@ buildPlaybackData = (movementId, linearRepeats = false, measureStart, measureEnd
       for mark in marks
         bridged = verovioByXmlId.get String(mark.id)
         mark.id = bridged if bridged?
-    data = {
-      midi: source.midi
-      syncMarks: marks
-      staffLabels: source.staffLabels
-      trackMap: source.trackMap
-      duration: slice.durationMs
-      # Position absolue du mouvement dans la source et durée de la source :
-      # le transport affiche et cumule sur toute la partition.
-      offsetMs: slice.offsetMs
-      sourceDurationMs: fileSlice.durationMs
-      segments
-      pauses: slice.pauses
-      linearRepeats: !!linearRepeats
-      # Tempo initial du fichier, dans son unité de battue : le réglage
-      # « Tempo » en dérive son défaut et son symbole.
-      fileTempoBpm: source.fileTempo?.bpm ? 120
-      fileTempoExplicit: source.fileTempo?.explicit is true
-      fileTempoUnit: source.fileTempo?.unit ? 'quarter'
-    }
+    data.syncMarks = marks
     playbackCache[cacheKey] = data
     data
+
+# Données de lecture d'une source entière, sans pagination : notation carrée
+# d'un gabc. Mêmes MIDI, durées, segments, pauses, libellés, correspondance des
+# pistes et tempo que la vue classique, avec les bornes de la source (0/null)
+# et sans marqueurs de synchronisation : il n'y a ni pagination Verovio ni
+# suivi de partition.
+buildSourcePlaybackData = (sourceId, linearRepeats = false) ->
+  unless timelineApi?.movementSlice?
+    throw new Error "Module timeline absent du worker"
+  cacheKey = "source:#{sourceId}:#{if linearRepeats then 'linear' else 'expanded'}"
+  cached = playbackCache[cacheKey]
+  return Promise.resolve cached if cached
+  loadSourcePlayback(sourceId, linearRepeats).then (source) ->
+    {data} = playbackDataForSlice source, linearRepeats, 0, null
+    data.syncMarks = []
+    playbackCache[cacheKey] = data
+    data
+
+# Réponse commune des deux chemins de données de lecture (mouvement paginé ou
+# source entière) : mêmes champs, la page les met en cache sous sa propre clé.
+postPlaybackData = (movementId, loadToken, data) ->
+  self.postMessage {
+    type: "playbackData"
+    movementId
+    loadToken
+    midi: data.midi
+    syncMarks: data.syncMarks
+    staffLabels: data.staffLabels
+    trackMap: data.trackMap
+    duration: data.duration
+    offsetMs: data.offsetMs
+    sourceDurationMs: data.sourceDurationMs
+    segments: data.segments ? []
+    pauses: data.pauses ? []
+    linearRepeats: !!data.linearRepeats
+    fileTempoBpm: data.fileTempoBpm
+    fileTempoExplicit: data.fileTempoExplicit
+    fileTempoUnit: data.fileTempoUnit
+  }
 
 renderMovementPage = (movementId, pageNumber) ->
   # Switch to the requested movement
@@ -941,28 +988,22 @@ handleMessage = (e) ->
         renderMovementPage movementId, page
 
       when "getPlaybackData"
-        {movementId, linearRepeats, measureStart, measureEnd, loadToken} = e.data
-        # Une erreur de lecture ne doit jamais bloquer le rendu des pages
-        buildPlaybackData movementId, !!linearRepeats, measureStart, measureEnd
+        {movementId, linearRepeats, measureStart, measureEnd, loadToken, sourceId} = e.data
+        # Une source entière (notation carrée d'un gabc) n'a pas de pagination
+        # Verovio : ses données sont calculées depuis le MusicXML enregistré,
+        # avec les bornes de la source et sans marqueurs.
+        build = if sourceId?
+          -> buildSourcePlaybackData sourceId, !!linearRepeats
+        else
+          -> buildPlaybackData movementId, !!linearRepeats, measureStart, measureEnd
+        # Une erreur de lecture ne doit jamais bloquer le rendu des pages. Le
+        # calcul peut aussi échouer de façon synchrone (module absent, source
+        # inconnue) : il passe donc par une promesse, pour que la page reçoive
+        # toujours une réponse et ne reste pas en attente.
+        Promise.resolve()
+          .then build
           .then (data) ->
-            self.postMessage {
-              type: "playbackData"
-              movementId
-              loadToken
-              midi: data.midi
-              syncMarks: data.syncMarks
-              staffLabels: data.staffLabels
-              trackMap: data.trackMap
-              duration: data.duration
-              offsetMs: data.offsetMs
-              sourceDurationMs: data.sourceDurationMs
-              segments: data.segments ? []
-              pauses: data.pauses ? []
-              linearRepeats: !!data.linearRepeats
-              fileTempoBpm: data.fileTempoBpm
-              fileTempoExplicit: data.fileTempoExplicit
-              fileTempoUnit: data.fileTempoUnit
-            }
+            postPlaybackData movementId, loadToken, data
           .catch (playbackErr) ->
             self.postMessage {
               type: "playbackError"

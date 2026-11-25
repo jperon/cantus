@@ -456,12 +456,6 @@ renderTempoUi = ->
 ensureFileTempo = ->
   result = getMovementForPage displayedPage()
   return Promise.resolve(currentFileTempo()) unless result
-  # Le tempo vient des données de lecture du worker : sans lecture grégorienne,
-  # pas de requête, et le réglage affiche « indisponible ».
-  if estGregorienAffiche()
-    fileTempoError = true
-    renderTempoUi()
-    return Promise.resolve null
   known = currentFileTempo()
   return Promise.resolve(known) if known?
   fileId = currentFileId

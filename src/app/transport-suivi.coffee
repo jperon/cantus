@@ -23,9 +23,6 @@ formatTime = (ms) ->
   "#{minutes}:#{if seconds < 10 then "0#{seconds}" else seconds}"
 
 showTransport = ->
-  # Un mouvement grégorien n'a ni lecture ni données de lecture : le transport
-  # reste masqué et aucune requête n'est envoyée au worker.
-  return hideTransport() if estGregorienAffiche()
   el = $("transport")
   el?.classList.remove "hidden"
   updateCommandBarSpace()
@@ -158,6 +155,8 @@ schedulePageSeek = (page, fromScroll = false) ->
 # même MusicXML ne doit pas réafficher un transport masqué (données absentes ou
 # erreur de lecture). La nature du premier mouvement est posée par
 # loadFirstSource, en même temps que la visibilité initiale du transport.
+# La notation carrée a elle aussi des données de lecture (gabc converti) : le
+# transport y reste disponible.
 syncTransportForDisplayedMovement = ->
   return unless fileLoaded
   mouvement = mouvementAffiche()
@@ -165,7 +164,7 @@ syncTransportForDisplayedMovement = ->
   nature = if mouvement.gregorien then "gregorien" else "xml"
   return if nature is natureTransportAffichee
   natureTransportAffichee = nature
-  if nature is "gregorien" then hideTransport() else showTransport()
+  showTransport()
 
 noteDisplayedPage = (fromScroll = false) ->
   syncTransportForDisplayedMovement()
@@ -690,8 +689,6 @@ applyPlaybackReply = (engine, movementId, token, data) ->
 # Démarre la lecture du mouvement affiché : charge ses données de lecture au
 # besoin, puis lance le moteur.
 startPlayback = ->
-  # Pas de lecture pour la notation carrée : aucune donnée de lecture à demander.
-  return if estGregorienAffiche()
   engine = audioEngine()
   unless engine
     console.warn "Moteur audio indisponible"
@@ -742,12 +739,12 @@ preloadRequest = null
 
 # Précharge les données de lecture du mouvement affiché, sans lancer la
 # lecture : la barre de position et le temps total deviennent utilisables dès
-# l'ouverture. Idempotent : sans effet pour un mouvement grégorien ou non
-# chargé, quand les données du mouvement sont déjà là, pendant une lecture ou
-# quand la même demande est déjà en vol. Un échec laisse la barre inactive et
-# le transport visible.
+# l'ouverture. Idempotent : sans effet pour un mouvement non chargé, quand les
+# données du mouvement sont déjà là, pendant une lecture ou quand la même
+# demande est déjà en vol. Un échec laisse la barre inactive et le transport
+# visible, sauf en notation carrée où il n'y a alors aucune lecture possible :
+# le transport y est masqué.
 preloadPlayback = ->
-  return if estGregorienAffiche()
   return if playback.state is "playing" or playback.state is "loading" or playback.loading
   page = displayedPage()
   result = getMovementForPage page
@@ -783,15 +780,20 @@ preloadPlayback = ->
           lastDisplayedPage = displayedPage() if lastDisplayedPage is null
           seekPlayback startPositionForPage outcome.current.localPage
         when "empty"
+          hideTransport() if estGregorienAffiche()
           console.warn "Données de lecture vides ou incomplètes pour le mouvement #{movementId} (préchargement)"
         when "error"
           # Aucune donnée partielle ne doit rester dans l'état : la barre
           # redevient inactive, le transport reste visible.
           resetPlayback()
+          # Notation carrée : sans données il n'y a aucune lecture possible, on
+          # masque le transport (la notation reste affichée).
+          hideTransport() if estGregorienAffiche()
           console.warn "Préchargement audio impossible : #{outcome.error?.message or outcome.error}"
     .catch (err) ->
       preloadRequest = null if preloadRequest is request
       return unless playback.loadToken is token
+      hideTransport() if estGregorienAffiche()
       console.warn "Préchargement des données de lecture indisponible : #{err?.message or err}"
 
 togglePlayPause = ->

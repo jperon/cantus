@@ -187,6 +187,7 @@ startLoad = (startPage = 1, keepSources = false) ->
   pendingPlayback.clear()
   playbackCache.clear()
   workerSources.clear() unless keepSources
+  gabcPlaybackXml.clear() unless keepSources
   pushedPages = {}
   movements = []
   awaitingLoad = true
@@ -246,7 +247,7 @@ loadFirstSource = (token) ->
             fileLoaded = true
             hideImport()
             showLibraryBtn()
-            hideTransport()
+            showTransport()
             natureTransportAffichee = "gregorien"
             applyMovementLoaded firstMovement.id, result.svgs.length,
               result.svgs.length, result.mode
