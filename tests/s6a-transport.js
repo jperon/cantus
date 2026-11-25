@@ -752,12 +752,9 @@ async function runPage(browser, url, pageName, results) {
       await page.waitForTimeout(800);
 
       const noteheadY = () => page.evaluate(() => {
+        // Verovio place chaque tête par des attributs x/y sur <use>.
         const use = document.querySelector('#page-current .scroll-page svg g.notehead use');
         if (!use) return null;
-        // Verovio 4.4 : position en attributs x/y ; versions antérieures :
-        // transform="translate(...)".
-        const translate = use.getAttribute('transform')?.match(/translate\(\s*[-0-9.]+[ ,]+([-0-9.]+)/);
-        if (translate) return Number(translate[1]);
         const y = use.getAttribute('y');
         return y == null || y === '' ? null : Number(y);
       });

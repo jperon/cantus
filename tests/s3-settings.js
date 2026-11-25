@@ -738,16 +738,12 @@ async function runInstruments(browser, url, pageName, results) {
 // Transpositions visuelle et auditive : deux réglages propres au fichier,
 // persistants, sélectionnables au doigt. La visuelle transpose le rendu et sa
 // variante de cache ; l'auditive reste purement audio (aucun re-rendu).
-// Ordonnée Verovio de la première tête de note affichée. Verovio 4.4 place
-// chaque tête par des attributs x/y sur <use> ; les versions antérieures
-// utilisaient transform="translate(...)". Sans ce repli, la mesure vaut null
-// avant comme après la transposition.
+// Ordonnée Verovio de la première tête de note affichée : Verovio place
+// chaque tête par des attributs x/y sur <use>.
 function firstNoteheadY(page) {
   return page.evaluate(() => {
     const use = document.querySelector('#page-current .scroll-page svg g.notehead use');
     if (!use) return null;
-    const translate = use.getAttribute('transform')?.match(/translate\(\s*[-0-9.]+[ ,]+([-0-9.]+)/);
-    if (translate) return Number(translate[1]);
     const y = use.getAttribute('y');
     return y == null || y === '' ? null : Number(y);
   });
