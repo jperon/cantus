@@ -901,7 +901,7 @@ async function runLanguage(browser, url, pageName, results) {
     }));
     L.record(results, '3. Langue : anglais par défaut sans préférence (navigateur anglais)', pageName,
       en.lang === 'en' && en.title === 'MusicXML Reader' && en.heading === 'Cantus' &&
-        /MusicXML, MuseScore, LilyPond, ABC,? and MIDI/.test(en.tagline || '') &&
+        en.tagline === 'Open scores in MusicXML, MuseScore, LilyPond, ABC, MIDI, and GABC.' &&
         en.menuSettings === 'Settings' &&
         en.stored === null && /offline MusicXML reader/.test(en.description) ? 'OK' : 'ÉCHEC',
       `navigator ${en.navigatorLanguage}, <html lang> « ${en.lang} », titre « ${en.title} », ` +
@@ -940,7 +940,7 @@ async function runLanguage(browser, url, pageName, results) {
     }));
     L.record(results, '3. Langue : passage au français à chaud (statique, dynamique, <html lang>)', pageName,
       fr.lang === 'fr' && fr.title === 'Liseuse MusicXML' &&
-        fr.heading === 'Cantus' && fr.tagline === 'Ouvrez des partitions MusicXML, MuseScore, LilyPond, ABC et MIDI.' &&
+        fr.heading === 'Cantus' && fr.tagline === 'Ouvrez des partitions MusicXML, MuseScore, LilyPond, ABC, MIDI et GABC.' &&
         fr.settingsTitle === 'Réglages' && /^Version du /.test(fr.buildDate) &&
         fr.playAria === 'Lecture' && fr.language === 'fr' && fr.stored === 'fr' ? 'OK' : 'ÉCHEC',
       `<html lang> « ${fr.lang} », titre « ${fr.title} », accroche « ${fr.tagline} », réglages « ${fr.settingsTitle} », ` +
