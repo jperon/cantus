@@ -37,8 +37,9 @@ Les images sont écrites dans `pwa/screenshots/` puis recopiées dans
 
 Le flake positionne `SCORETK_PKG` par défaut à `$PWD/../musescore/result`.
 Le build reste utilisable si le paquet scoretk est absent (avertissement,
-imports MuseScore, LilyPond, ABC et MIDI désactivés) ; en revanche le toolkit
-Verovio est obligatoire.
+imports MuseScore, LilyPond, ABC et MIDI désactivés, vue classique des GABC
+indisponible) ; en revanche le toolkit Verovio est obligatoire. La notation
+carrée des GABC ne dépend pas de scoretk.
 Le paquet est copié dans `dist/scoretk/` (wrapper, glue et `.wasm`) ; le SPA
 inline le glue et le `.wasm` en base64 dans `spa.html`.
 
@@ -71,8 +72,8 @@ instructions exécutées au chargement sont conservées.
 | `reglages-voix.coffee` | Réglages persistants, voix masquées (rendu) ou coupées (lecture), tailles, variantes de cache. |
 | `affichage-navigation.coffee` | Affichage des pages, préchargement, défilement, navigation. |
 | `decoupage-xml.coffee` | Découpage MusicXML en mouvements, masquage et tailles des voix. |
-| `gregorien.coffee` | Import GABC : chargement paresseux d'exsurge, mise en page d'une ligne de chant par page, sans worker. |
-| `sources.coffee` | Conversion scoretk et chargement séquentiel des sources/mouvements. |
+| `gregorien.coffee` | Import GABC : notation carrée (exsurge, une ligne de chant par page, sans worker), bascule carré / classique, restauration de position. |
+| `sources.coffee` | Conversion scoretk et chargement séquentiel des sources/mouvements, y compris le GABC converti pour la vue classique. |
 | `bibliotheque-import.coffee` | Bibliothèque, navigation tactile, import de fichiers/dossiers. |
 | `reglages-ui.coffee` | Panneau de réglages (liste des voix, contrôles). |
 | `export.coffee` | Dialogue et téléchargement de l'export. |
@@ -98,10 +99,14 @@ Il suit le patron de `src/timeline.coffee` : api exposée sur
 avant `timeline.js` et avant le worker, et avant l'application dans les deux
 pages.
 
-- `FORMATS` : une entrée par format (`extensions`, `scoretk`, `from`, `share`).
-  **Ajouter un format importable se fait ici**, plus ses types MIME dans
-  `MIME_TYPES` s'il en a : `SCORETK_EXTENSIONS`, `SCORETK_EXT_RE`,
-  `IMPORT_EXTENSIONS` (application) et `scoretkFrom` (worker) en sont dérivés.
+- `FORMATS` : une entrée par format (`extensions`, `scoretk`, `direct`,
+  `from`, `share`). `direct` (par défaut l'inverse de `scoretk`) marque un
+  format lisible sans scoretk ; un format peut être les deux, comme GABC
+  (`direct: true, scoretk: true`) : notation carrée sans scoretk, conversion
+  MusicXML pour la vue classique. **Ajouter un format importable se fait ici**,
+  plus ses types MIME dans `MIME_TYPES` s'il en a : `SCORETK_EXTENSIONS`,
+  `SCORETK_EXT_RE`, `IMPORT_EXTENSIONS` (application) et `scoretkFrom`
+  (worker) en sont dérivés.
 - `MIME_TYPES` : type MIME → extensions acceptées, extension de repli quand le
   nom d'un fichier partagé est perdu, et présence dans `file_handlers`. L'ordre
   de la table fixe celui de `file_handlers` ; `share_target` reprend tous ces
@@ -123,8 +128,26 @@ pages.
 Les tests unitaires (`tests/unit/scoretk-from.test.js`) vérifient `scoretkFrom`
 et la cohérence des tables (chaque extension scoretk a un `from`, chaque type
 MIME pointe vers une extension connue). `tests/unit/gabc-formats.test.js`
-vérifie en plus que GABC est importé directement, proposé au partage et
-accepté en `text/plain`.
+vérifie en plus que GABC reste importable directement, proposé au partage et
+accepté en `text/plain`, tout en ayant un `from` scoretk.
+
+### Vue classique des GABC
+
+La source gabc est convertie par scoretk (`from: 'gabc'`) dans le worker puis
+suit le chemin MusicXML ordinaire : découpage, worker, transport, voix,
+transposition, tempo et export, sans code dupliqué. Le worker utilise
+`convertWithTimeline` pour cette conversion : son MusicXML porte les
+identifiants de note `-oDEBUT-eFIN` (positions en unités UTF-16 depuis le
+début du fichier), nécessaires pour retrouver la position à la bascule.
+Verovio conserve ces `id` dans le SVG.
+
+La bascule recharge avec `startLoad(..., keepSources = true)` et le jeton
+`loadToken` existants ; elle ne réimporte rien. Le choix est propre au fichier
+(`musica-notation-<fileId>`), commun aux sources gabc d'un dossier mixte. La
+position est mémorisée par la première note visible (source-index d'exsurge +
+longueur de l'en-tête UTF-16 en carré, `-o` en classique) puis restaurée sur la
+dernière note de position ≤ ce repère. Sans scoretk, ou si la conversion
+échoue, un message est affiché et la vue carrée reste affichée.
 
 ## Internationalisation (`src/i18n.coffee` et `src/i18n/`)
 

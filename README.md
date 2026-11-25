@@ -32,7 +32,9 @@ When Cantus is installed on Android, you can share one or more scores to it from
 
 MuseScore, LilyPond, ABC and MIDI files are converted by the optional scoretk converter. MIDI carries no notation, so Cantus shows an automatic transcription and tells you so.
 
-GABC files are typeset directly in square-note notation by exsurge, without scoretk or Verovio. Their title, mode and initial are shown, and each line of chant is one page. Playback and export are not available for GABC.
+GABC files open by default in square-note notation, typeset by exsurge without scoretk or Verovio. Their title, mode and initial are shown, and each line of chant is one page. In that view playback and export are not available.
+
+A **Square / Classic** button switches a GABC score to classical notation. The classic view converts the file to MusicXML with scoretk, so it uses the same pagination, playback, transposition, tempo and export as any other MusicXML score. It requires the optional scoretk package. The choice is remembered per library item, for every GABC file in a mixed folder, and the reading position is kept across the switch.
 
 ### Read
 
@@ -89,7 +91,7 @@ The app makes network requests for its own files: the page, scripts, sound sampl
 
 ## Known limitations
 
-- **Optional converter.** Builds made without the scoretk package can open MusicXML, MXL and GABC only, and cannot export. MuseScore, LilyPond, ABC and MIDI import require it.
+- **Optional converter.** Builds made without the scoretk package can open MusicXML, MXL and GABC in square-note notation only, and cannot export. MuseScore, LilyPond, ABC and MIDI import, and the classic view of GABC, require it.
 - **MIDI is a transcription.** A MIDI file contains no notation, so the score you see is generated from the notes.
 - **Playback details.** Fermata and breath marks are ignored, and a two-chord tremolo sounds from its first chord only.
 - **Remote `?file=` links.** A remote `?file=` address is read as plain text, so only uncompressed MusicXML works, and the remote server must allow access from other sites.
@@ -106,7 +108,7 @@ nix run .#build-spa   # single file in dist/spa.html
 nix run .#test        # unit and Playwright tests
 ```
 
-The build needs the Verovio toolkit at `../partitura/verovio-toolkit-wasm.js`. The scoretk package at `../musescore/result/classic` (or `SCORETK_PKG`) is optional but enables the extra import and export formats. `BUILD.md` has the full instructions; it is written in French.
+The build needs the Verovio toolkit at `../partitura/verovio-toolkit-wasm.js`. The scoretk package at `../musescore/result/classic` (or `SCORETK_PKG`) is optional but enables the extra import and export formats and the classic view of GABC. `BUILD.md` has the full instructions; it is written in French.
 
 ## Contributing and reporting
 
@@ -121,6 +123,6 @@ Cantus is free software under the GNU GPL v3 or later; see [LICENSE](LICENSE). I
 - fflate for compressed MusicXML (MIT);
 - MuseScore_General sound samples (MIT);
 - Cantus Serif, based on Liberation Serif (SIL Open Font License 1.1);
-- scoretk, when included, for MuseScore, LilyPond, ABC and MIDI conversion (GPL-3.0-only).
+- scoretk, when included, for MuseScore, LilyPond, ABC, MIDI and GABC conversion (GPL-3.0-only).
 
 See [THIRD-PARTY.md](THIRD-PARTY.md) for the full notices.
