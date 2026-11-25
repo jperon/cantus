@@ -753,8 +753,13 @@ async function runPage(browser, url, pageName, results) {
 
       const noteheadY = () => page.evaluate(() => {
         const use = document.querySelector('#page-current .scroll-page svg g.notehead use');
-        const match = use?.getAttribute('transform')?.match(/translate\(\s*[-0-9.]+[ ,]+([-0-9.]+)/);
-        return match ? Number(match[1]) : null;
+        if (!use) return null;
+        // Verovio 4.4 : position en attributs x/y ; versions antérieures :
+        // transform="translate(...)".
+        const translate = use.getAttribute('transform')?.match(/translate\(\s*[-0-9.]+[ ,]+([-0-9.]+)/);
+        if (translate) return Number(translate[1]);
+        const y = use.getAttribute('y');
+        return y == null || y === '' ? null : Number(y);
       });
 
       await page.click('#transport-play');
