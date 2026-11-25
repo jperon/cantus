@@ -350,6 +350,10 @@ displayView = ->
   # Le bouton de bascule ne concerne que les mouvements issus d'un gabc ; il
   # est réévalué à chaque changement de page ou de mouvement.
   rafraichirBasculeNotation?()
+  # Le mouvement affiché reste ou devient jouable (changement de page,
+  # rechargement) : précharger ses données active la barre de position. Sans
+  # effet si elles sont déjà là ; ne déplace pas la vue.
+  preloadPlayback()
 
 prefetch = ->
   page = displayedPage()

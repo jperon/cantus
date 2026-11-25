@@ -198,6 +198,10 @@ applyMovementLoaded = (movementId, mvPages, pushed, detectedMode) ->
         loadRemainingMovements()
   # Navigate to the remembered page as soon as its movement is loaded
   tryNavigateTarget()
+  # Le mouvement affiché est chargé : précharger ses données de lecture pour
+  # activer la barre de position avant la première lecture. La demande est
+  # asynchrone, le premier affichage n'est pas retardé.
+  preloadPlayback()
 
 # Worker message handler
 worker.onmessage = (e) ->

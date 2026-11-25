@@ -701,6 +701,9 @@ setupSettings = ->
       settings.expandRepeats = enabled
       saveSettings settings
       resetPlayback()
+      # Le mode de reprise change les données : les recharger pour laisser la
+      # barre de position active, sans lancer la lecture.
+      preloadPlayback()
 
   # Piano seulement : réglage global, appliqué à chaud sans effacer les choix
   # d'instrument par voix (les sélecteurs restent visibles mais désactivés).

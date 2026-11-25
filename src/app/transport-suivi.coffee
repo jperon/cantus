@@ -667,6 +667,26 @@ applyTempoToPlayback = ->
   playback.state = if state is "paused" then "paused" else "stopped"
   renderTransport()
 
+# Applique au moteur la réponse d'une demande de données de lecture, si elle
+# concerne encore le mouvement affiché. Commun à la lecture et au
+# préchargement. `status` vaut "ok" (données appliquées), "stale" (réponse
+# périmée : chargement remplacé ou autre mouvement affiché), "empty" (aucune
+# donnée exploitable) ou "error" (application au moteur impossible).
+applyPlaybackReply = (engine, movementId, token, data) ->
+  return {status: "stale"} unless playback.loadToken is token
+  current = getMovementForPage displayedPage()
+  return {status: "stale"} unless current?.movement.id is movementId
+  unless data?.midi and (Number(data.duration) or 0) > 0
+    return {status: "empty"}
+  # Le facteur de tempo s'applique aux données avant le moteur et le suivi ;
+  # les données brutes restent en cache pour un changement de tempo.
+  try
+    applyPlaybackData engine, movementId, data
+  catch err
+    playback.hasData = false
+    return {status: "error", error: err}
+  {status: "ok", current}
+
 # Démarre la lecture du mouvement affiché : charge ses données de lecture au
 # besoin, puis lance le moteur.
 startPlayback = ->
@@ -692,34 +712,22 @@ startPlayback = ->
   requestPlaybackData movementId
     .then (data) ->
       return unless playback.loadToken is token
-      unless data?.midi and (Number(data.duration) or 0) > 0
-        playback.loading = false
-        playback.state = "stopped"
-        hideTransport()
-        renderTransport()
-        console.warn "Données de lecture vides ou incomplètes pour le mouvement #{movementId}"
-        return
-      current = getMovementForPage displayedPage()
-      unless current?.movement.id is movementId
+      outcome = applyPlaybackReply engine, movementId, token, data
+      unless outcome.status is "ok"
         playback.loading = false
         playback.state = "stopped"
         renderTransport()
+        if outcome.status is "empty"
+          hideTransport()
+          console.warn "Données de lecture vides ou incomplètes pour le mouvement #{movementId}"
+        else if outcome.status is "error"
+          hideTransport()
+          console.warn "Chargement audio impossible : #{outcome.error?.message or outcome.error}"
         return
       playback.loading = false
-      # Le facteur de tempo s'applique aux données avant le moteur et le suivi ;
-      # les données brutes restent en cache pour un changement de tempo.
-      try
-        applyPlaybackData engine, movementId, data
-      catch err
-        playback.hasData = false
-        playback.state = "stopped"
-        hideTransport()
-        renderTransport()
-        console.warn "Chargement audio impossible : #{err?.message or err}"
-        return
       # Une lecture lancée après un saut dans un mouvement repart du premier
       # marqueur de la page affichée, pas du début du mouvement.
-      beginPlayback engine, startPositionForPage(current.localPage)
+      beginPlayback engine, startPositionForPage(outcome.current.localPage)
     .catch (err) ->
       return unless playback.loadToken is token
       playback.loading = false
@@ -727,6 +735,64 @@ startPlayback = ->
       hideTransport()
       renderTransport()
       console.warn "Données de lecture indisponibles : #{err?.message or err}"
+
+# Demande de préchargement en cours : évite d'appliquer deux fois des données
+# concurrentes pour le même mouvement.
+preloadRequest = null
+
+# Précharge les données de lecture du mouvement affiché, sans lancer la
+# lecture : la barre de position et le temps total deviennent utilisables dès
+# l'ouverture. Idempotent : sans effet pour un mouvement grégorien ou non
+# chargé, quand les données du mouvement sont déjà là, pendant une lecture ou
+# quand la même demande est déjà en vol. Un échec laisse la barre inactive et
+# le transport visible.
+preloadPlayback = ->
+  return if estGregorienAffiche()
+  return if playback.state is "playing" or playback.state is "loading" or playback.loading
+  page = displayedPage()
+  result = getMovementForPage page
+  return unless result
+  # getMovementForPage replie sur le premier mouvement chargé : ne pas
+  # précharger un mouvement qui n'est pas celui de la page affichée (page d'un
+  # mouvement encore en cours de chargement).
+  return unless getGlobalPage(result.movement.id, result.localPage) is page
+  movementId = result.movement.id
+  return if playback.hasData and playback.movementId is movementId
+  return if preloadRequest?.movementId is movementId and preloadRequest.token is playback.loadToken
+  engine = audioEngine()
+  return unless engine
+  token = playback.loadToken
+  request = {movementId, token}
+  preloadRequest = request
+  requestPlaybackData movementId
+    .then (data) ->
+      return unless preloadRequest is request
+      preloadRequest = null
+      # Un ▶ pendant la demande a pris la main (jeton changé) : il applique
+      # lui-même les données, déjà dédupliquées par le cache de lecture.
+      return unless playback.loadToken is token
+      return unless playback.state is "stopped" and not playback.loading
+      outcome = applyPlaybackReply engine, movementId, token, data
+      switch outcome.status
+        when "ok"
+          # Une lecture avec données part de playback.position : se caler sur
+          # la page affichée au moment de la réponse, comme startPlayback.
+          # Le premier affichage a désormais sa référence de page : une
+          # navigation ultérieure calera la lecture au lieu d'être prise pour
+          # l'affichage initial.
+          lastDisplayedPage = displayedPage() if lastDisplayedPage is null
+          seekPlayback startPositionForPage outcome.current.localPage
+        when "empty"
+          console.warn "Données de lecture vides ou incomplètes pour le mouvement #{movementId} (préchargement)"
+        when "error"
+          # Aucune donnée partielle ne doit rester dans l'état : la barre
+          # redevient inactive, le transport reste visible.
+          resetPlayback()
+          console.warn "Préchargement audio impossible : #{outcome.error?.message or outcome.error}"
+    .catch (err) ->
+      preloadRequest = null if preloadRequest is request
+      return unless playback.loadToken is token
+      console.warn "Préchargement des données de lecture indisponible : #{err?.message or err}"
 
 togglePlayPause = ->
   return if playback.loading

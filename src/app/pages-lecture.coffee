@@ -75,6 +75,11 @@ requestPlaybackData = (movementId, linear = not expandRepeats) ->
   key = playbackKey movementId, linear
   return Promise.resolve(playbackCache.get key) if playbackCache.has key
   return pendingPlayback.get(key).promise if pendingPlayback.has key
+  # Jeton du chargement au moment de la demande : si un rechargement survient
+  # pendant la lecture du cache persistant, le mouvement peut ne plus exister
+  # côté worker. Ne pas lui envoyer la demande (il répondrait par une erreur
+  # visible alors que le nouveau chargement est en cours).
+  requestToken = loadToken
   fileId = currentFileId
   width = currentPageWidth
   height = currentPageHeight
@@ -103,6 +108,9 @@ requestPlaybackData = (movementId, linear = not expandRepeats) ->
         pendingPlayback.delete key
         playbackCache.set key, data
         resolve data
+      else if loadToken isnt requestToken
+        pendingPlayback.delete key
+        reject new Error "Chargement remplacé"
       else
         worker.postMessage
           type: "getPlaybackData"
@@ -113,7 +121,7 @@ requestPlaybackData = (movementId, linear = not expandRepeats) ->
           # Jeton du chargement : une réponse calculée avant un rechargement
           # (pagination différente) est ignorée par la page, même si elle
           # arrive après que le nouveau mouvement a été installé.
-          loadToken: loadToken
+          loadToken: requestToken
   # Écrire le résultat dans le cache persistant, sans retarder la lecture
   promise.then (data) ->
     if data and playbackStore?.set? and fileId
