@@ -32,9 +32,10 @@ function loadFormats() {
 }
 
 function importAccept(formats, scoretkAvailable) {
-  const extensions = formats.baseExtensions.concat(
+  // Sans doublon : gabc est à la fois direct et scoretk.
+  const extensions = [...new Set(formats.baseExtensions.concat(
     scoretkAvailable ? formats.scoretkExtensions : []
-  );
+  ))];
   return extensions.map((ext) => `.${ext}`).join(',');
 }
 

@@ -2,8 +2,9 @@
 'use strict';
 
 // Tests unitaires du format GABC dans src/formats.coffee : il est importable
-// directement (jamais confié à scoretk), déclaré au partage et aux
-// gestionnaires de fichiers, et son type MIME texte reste accepté.
+// directement en notation carrée et convertible par scoretk en MusicXML pour
+// la vue classique ; il est déclaré au partage et aux gestionnaires de
+// fichiers, et son type MIME texte reste accepté.
 //
 // Usage : node tests/unit/gabc-formats.test.js
 
@@ -24,13 +25,13 @@ function loadFormats() {
 const tests = [];
 const test = (name, fn) => tests.push({ name, fn });
 
-test('gabc est une extension lue directement, jamais par scoretk', () => {
+test('gabc est lisible directement et convertible par scoretk', () => {
   const formats = loadFormats();
   assert.ok(formats.baseExtensions.includes('gabc'), 'gabc absent de baseExtensions');
+  assert.ok(formats.scoretkExtensions.includes('gabc'), 'gabc absent de scoretkExtensions');
   assert.ok(formats.extensions.includes('gabc'), 'gabc absent de extensions');
-  assert.ok(!formats.scoretkExtensions.includes('gabc'), 'gabc ne doit pas passer par scoretk');
-  assert.strictEqual(formats.scoretkFrom('kyrie.gabc'), undefined);
-  assert.strictEqual(formats.scoretkFrom('Kyrie.GABC'), undefined);
+  assert.strictEqual(formats.scoretkFrom('kyrie.gabc'), 'gabc');
+  assert.strictEqual(formats.scoretkFrom('Kyrie.GABC'), 'gabc');
 });
 
 test('gabc est proposé à l’ouverture, au partage et dans les listes accept', () => {

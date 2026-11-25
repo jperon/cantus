@@ -29,7 +29,7 @@ function loadFormats() {
 const tests = [];
 const test = (name, fn) => tests.push({ name, fn });
 
-test('extensions MuseScore, LilyPond, ABC et MIDI mappées explicitement', () => {
+test('extensions MuseScore, LilyPond, ABC, MIDI et GABC mappées explicitement', () => {
   const { scoretkFrom } = loadFormats();
   assert.strictEqual(scoretkFrom('partition.mscz'), 'mscz');
   assert.strictEqual(scoretkFrom('partition.mscx'), 'mscx');
@@ -38,6 +38,7 @@ test('extensions MuseScore, LilyPond, ABC et MIDI mappées explicitement', () =>
   assert.strictEqual(scoretkFrom('chanson.abc'), 'abc');
   assert.strictEqual(scoretkFrom('transcription.mid'), 'midi');
   assert.strictEqual(scoretkFrom('transcription.midi'), 'midi');
+  assert.strictEqual(scoretkFrom('kyrie.gabc'), 'gabc');
 });
 
 test('extension insensible à la casse et nom sans extension', () => {
@@ -54,8 +55,10 @@ test('cohérence : chaque extension scoretk a un `from`, chaque MIME une extensi
   const formats = loadFormats();
   const known = new Set(formats.extensions);
 
-  assert.deepStrictEqual(formats.extensions,
-    formats.baseExtensions.concat(formats.scoretkExtensions));
+  // Un format peut être direct et scoretk (gabc) : `extensions` est l'union
+  // sans doublon des deux listes.
+  assert.deepStrictEqual([...formats.extensions].sort(),
+    [...new Set(formats.baseExtensions.concat(formats.scoretkExtensions))].sort());
 
   for (const ext of formats.scoretkExtensions) {
     assert.ok(known.has(ext), `extension scoretk inconnue : ${ext}`);
@@ -63,6 +66,7 @@ test('cohérence : chaque extension scoretk a un `from`, chaque MIME une extensi
       `aucun \`from\` scoretk pour .${ext}`);
   }
   for (const ext of formats.baseExtensions) {
+    if (formats.scoretkExtensions.includes(ext)) continue; // lisible et convertible
     assert.strictEqual(formats.scoretkFrom(`fichier.${ext}`), undefined,
       `.${ext} ne doit pas passer par scoretk`);
   }

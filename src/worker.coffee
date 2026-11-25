@@ -857,7 +857,24 @@ handleMessage = (e) ->
             entries[path] = new Uint8Array data
           options.includes = entries
         loadScoretk()
-          .then (api) -> api.convert new Uint8Array(bytes), options
+          .then (api) ->
+            # Le MusicXML simple de scoretk n'identifie pas les notes. La vue
+            # classique d'un gabc a besoin de leurs positions source
+            # (`-oDEBUT-eFIN`) pour conserver la position à la bascule :
+            # convertWithTimeline les ajoute, sans changer le chemin
+            # MusicXML ensuite. Les reprises restent écrites, comme pour tout
+            # MusicXML : le worker les déroule à la lecture.
+            if from is 'gabc'
+              options.to = 'musicxml'
+              options.expandRepeats = false
+              # convertWithTimeline est synchrone : l'envelopper pour garder
+              # une chaîne de promesses unique avec les autres formats.
+              Promise.resolve().then ->
+                result = api.convertWithTimeline new Uint8Array(bytes), options
+                throw new Error "scoretk n'a produit aucun MusicXML pour le gabc" unless result?.musicxml?
+                result.musicxml
+            else
+              api.convert new Uint8Array(bytes), options
           .then (result) ->
             xml = new TextDecoder().decode result
             self.postMessage { type: "scoretkConverted", id, xml }

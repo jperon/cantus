@@ -34,9 +34,11 @@ FORMATS = [
   {label: 'ABC', extensions: ['abc'], scoretk: true, from: {abc: 'abc'}}
   # MIDI : transcriptions, sans notation d'origine ; scoretk attend `midi`
   {label: 'MIDI', extensions: ['mid', 'midi'], scoretk: true, from: {mid: 'midi', midi: 'midi'}}
-  # GABC : notation carrée lue directement par exsurge, sans scoretk ni
-  # conversion MusicXML (voir src/app/gregorien.coffee).
-  {label: 'GABC', extensions: ['gabc'], scoretk: false}
+  # GABC : lisible directement en notation carrée par exsurge, et convertible
+  # par scoretk en MusicXML pour la vue classique (voir
+  # src/app/gregorien.coffee et src/app/sources.coffee). `direct: true` le
+  # garde importable même dans une version sans scoretk.
+  {label: 'GABC', extensions: ['gabc'], direct: true, scoretk: true, from: {gabc: 'gabc'}}
 ]
 
 # Types MIME des formats. `extensions` : ce qu'un fichier de ce type peut être
@@ -65,11 +67,16 @@ baseExtensions = []
 scoretkExtensions = []
 shareExtensions = []
 for format in FORMATS
+  # Un format peut être les deux (gabc) : lisible sans scoretk et convertible
+  # par scoretk pour une autre vue.
+  direct = format.direct ? not format.scoretk
   for ext in format.extensions
-    if format.scoretk then scoretkExtensions.push ext else baseExtensions.push ext
+    baseExtensions.push ext if direct
+    scoretkExtensions.push ext if format.scoretk
     shareExtensions.push ext unless format.share is false
 
-extensions = baseExtensions.concat scoretkExtensions
+# Sans doublon : gabc figure dans les deux listes.
+extensions = Array.from new Set baseExtensions.concat(scoretkExtensions)
 
 # Libellés des formats, sans doublon, dans l'ordre d'import : une seule liste
 # pour l'accroche de l'accueil (aucun nom de format écrit ailleurs).
