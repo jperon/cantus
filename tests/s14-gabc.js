@@ -1,7 +1,7 @@
 // Scénario 14 — ouverture d'un fichier gabc en notation carrée (exsurge),
-// sans scoretk ni Verovio : import direct, une ligne de chant par page,
+// sans Verovio : import direct, une ligne de chant par page,
 // titre/initiale, source-index et paroles, zoom, disposition horizontale,
-// réouverture depuis la bibliothèque, transport masqué, export refusé, gabc
+// réouverture depuis la bibliothèque, transport et lecture, export refusé, gabc
 // invalide signalé, contenu malveillant neutralisé, hors ligne (PWA), puis
 // retour à un MusicXML normal (worker et transport). Vérifie aussi la bascule
 // « carré / classique » : choix par fichier, position conservée, course des
@@ -37,9 +37,10 @@ function filePayload(name, file) {
   };
 }
 
-// Instrumente le worker et le cache SVG avant le premier import : le gabc ne
-// doit envoyer ni loadMovement, ni registerSource, ni requête de lecture, et
-// ne doit rien écrire dans svgStore.
+// Instrumente le worker et le cache SVG avant le premier import : le rendu
+// carré du gabc ne doit envoyer ni loadMovement ni écrire dans svgStore. Ses
+// données de lecture passent par registerSource puis getPlaybackData (sourceId),
+// sans rendu Verovio.
 async function instrument(page) {
   await page.evaluate(() => {
     window.__s14msgs = [];
@@ -168,6 +169,16 @@ async function importGabc(page, file, timeout = 60000) {
   return first;
 }
 
+// Attend que le préchargement ait fourni les données de lecture du mouvement
+// affiché, puis renvoie la sonde de lecture.
+async function waitPlaybackData(page, timeout = 120000) {
+  await L.waitUntil(page, async () => {
+    const probe = await window.__musicaPlaybackProbe();
+    return probe.hasData && probe.midiBytes > 0;
+  }, { timeout, interval: 200, what: 'données de lecture du mouvement affiché' });
+  return page.evaluate(() => window.__musicaPlaybackProbe());
+}
+
 async function setZoom(page, value) {
   await page.evaluate((v) => {
     const range = document.getElementById('zoom-range');
@@ -205,13 +216,12 @@ async function runPage(browser, url, pageName, results) {
       state.svgs >= 2 && state.hasVerticalWrapper && state.overflow <= 0 &&
       state.slotOverflow <= 0 && state.svgRights.every((right) => right <= 361) ? 'OK' : 'ÉCHEC',
       `pages ${state.total}, débordement doc ${state.overflow} px, slot ${state.slotOverflow} px, bords ${JSON.stringify(state.svgRights)}`);
-    const forbidden = state.msgs.filter((type) =>
-      ['loadMovement', 'registerSource', 'getPlaybackData'].includes(type));
-    L.record(results, '14. Aucun chargement worker ni écriture svgStore pour le gabc', pageName,
+    const forbidden = state.msgs.filter((type) => type === 'loadMovement');
+    L.record(results, '14. Aucun chargement Verovio ni écriture svgStore pour le gabc', pageName,
       forbidden.length === 0 && state.sets === 0 ? 'OK' : 'ÉCHEC',
       `messages ${JSON.stringify(state.msgs)}, svgStore.set ${state.sets}`);
-    L.record(results, '14. Transport masqué et exsurge chargé seulement au premier gabc', pageName,
-      !exsurgeBefore && state.exsurge && state.transportHidden ? 'OK' : 'ÉCHEC',
+    L.record(results, '14. Transport visible et exsurge chargé seulement au premier gabc', pageName,
+      !exsurgeBefore && state.exsurge && !state.transportHidden ? 'OK' : 'ÉCHEC',
       `exsurge avant ${exsurgeBefore}, après ${state.exsurge}, transport masqué ${state.transportHidden}`);
     const bounds = await viewBoxState(page);
     L.record(results, '14. Le getBBox de tout élément dessiné tient dans le viewBox', pageName,
@@ -239,7 +249,7 @@ async function runPage(browser, url, pageName, results) {
     const zoomed = await gabcState(page);
     L.record(results, '14. Zoom : neumes agrandis et lignes remises en page', pageName,
       zoomed.firstHeight > beforeZoom.firstHeight * 1.3 && zoomed.overflow <= 0 &&
-      zoomed.transportHidden && zoomed.sourceIndex > 0 ? 'OK' : 'ÉCHEC',
+      !zoomed.transportHidden && zoomed.sourceIndex > 0 ? 'OK' : 'ÉCHEC',
       `hauteur ${Math.round(beforeZoom.firstHeight)} → ${Math.round(zoomed.firstHeight)} px, pages ${beforeZoom.total} → ${zoomed.total}, débordement ${zoomed.overflow} px`);
 
     // D. Disposition horizontale imposée par l'utilisateur.
@@ -259,11 +269,14 @@ async function runPage(browser, url, pageName, results) {
     await page.waitForTimeout(1000);
     await L.waitBackgroundLoaded(page, 60000);
     const afterSettings = await gabcState(page);
+    const preloaded = await waitPlaybackData(page);
     const playbackRequests = afterSettings.msgs.filter((type) =>
-      ['loadMovement', 'registerSource', 'getPlaybackData'].includes(type));
-    L.record(results, '14. Réglages ouverts sans requête de lecture pour le gabc', pageName,
-      playbackRequests.length === 0 && afterSettings.transportHidden ? 'OK' : 'ÉCHEC',
-      `messages ${JSON.stringify(afterSettings.msgs)}`);
+      ['registerSource', 'getPlaybackData'].includes(type));
+    L.record(results, '14. Réglages ouverts : lecture et transport disponibles pour le gabc', pageName,
+      playbackRequests.length > 0 && preloaded.hasData && preloaded.midiBytes > 0 &&
+        !afterSettings.transportHidden ? 'OK' : 'ÉCHEC',
+      `messages ${JSON.stringify(afterSettings.msgs)}, données ${preloaded.hasData}, ` +
+      `${preloaded.midiBytes} octets MIDI, transport masqué ${afterSettings.transportHidden}`);
 
     // E. Réouverture depuis la bibliothèque après rechargement.
     await page.reload({ waitUntil: 'domcontentloaded', timeout: 60000 });
@@ -272,9 +285,10 @@ async function runPage(browser, url, pageName, results) {
     await page.click('#library-list .library-item:nth-child(1) .library-item-info');
     await L.waitFirstSvg(page, 60000);
     await L.waitBackgroundLoaded(page, 60000);
+    await waitPlaybackData(page);
     const reopened = await gabcState(page);
     L.record(results, '14. Réouverture depuis la bibliothèque en notation carrée', pageName,
-      reopened.svgs >= 2 && reopened.sourceIndex > 0 && reopened.transportHidden &&
+      reopened.svgs >= 2 && reopened.sourceIndex > 0 && !reopened.transportHidden &&
       reopened.hasVerticalWrapper ? 'OK' : 'ÉCHEC',
       `SVG ${reopened.svgs}, pages ${reopened.total}, transport masqué ${reopened.transportHidden}`);
 
@@ -517,7 +531,7 @@ async function runMixed(browser, url, pageName, results) {
   }
 
   // B. MusicXML puis gabc : le mode horizontal du MusicXML est conservé, et le
-  // transport reste masqué sur la page grégorienne.
+  // transport reste disponible sur la page grégorienne.
   {
     const { page, ctx, errors } = await L.newPage(browser, url, {
       pageName, viewport: { width: 500, height: 900 },
@@ -532,8 +546,9 @@ async function runMixed(browser, url, pageName, results) {
       await L.waitBackgroundLoaded(page, 120000);
       const start = await movementStart(page, (m) => m.gregorien && m.loaded);
       const state = start ? await mixedState(page, start) : null;
-      L.record(results, '14. Dossier MusicXML puis gabc : le mode du MusicXML reste, transport masqué', pageName,
-        state && !state.vertical && state.gabcStaff > 0 && state.transportHidden ? 'OK' : 'ÉCHEC',
+      if (state) await waitPlaybackData(page);
+      L.record(results, '14. Dossier MusicXML puis gabc : le mode du MusicXML reste, transport disponible', pageName,
+        state && !state.vertical && state.gabcStaff > 0 && !state.transportHidden ? 'OK' : 'ÉCHEC',
         JSON.stringify({ start, state }));
       const relevant = L.summarize(errors);
       L.record(results, '6. Erreurs JS (dossier MusicXML puis gabc)', pageName,
@@ -640,6 +655,152 @@ async function visibleNotePositions(page, view, headerLen) {
   }, { view, headerLen });
 }
 
+// État complet du transport et de la lecture, pour les vérifications de la
+// lecture en notation carrée.
+async function playbackSnapshot(page) {
+  return page.evaluate(() => {
+    const state = window.__musicaPlaybackState();
+    const seek = document.getElementById('transport-seek');
+    const number = document.getElementById('page-number')?.textContent || '';
+    const match = number.match(/\d+\s*\/\s*(\d+)/);
+    return {
+      ...state,
+      transportHidden: document.getElementById('transport').classList.contains('hidden'),
+      seekDisabled: !!seek?.disabled,
+      seekValue: seek ? Number(seek.value) : 0,
+      page: window.displayedPage ? window.displayedPage() : null,
+      total: match ? parseInt(match[1], 10) : 0,
+    };
+  });
+}
+
+// Vue carrée : transport visible, ▶, avancement, changement de page sans effet,
+// reprise après la barre, et MIDI/durée identiques à la vue classique.
+async function runGabcPlayback(browser, url, pageName, results) {
+  const { page, ctx, errors } = await L.newPage(browser, url, {
+    pageName, viewport: { width: 360, height: 720 },
+  });
+  try {
+    await L.waitReady(page);
+    await importGabc(page, KYRIE);
+
+    const preloaded = await waitPlaybackData(page);
+    const ready = await playbackSnapshot(page);
+    L.record(results, '14. Vue carrée : transport visible et barre de position active', pageName,
+      !ready.transportHidden && !ready.seekDisabled && ready.duration > 0 &&
+      preloaded.segmentsCount > 0 ? 'OK' : 'ÉCHEC',
+      `transport masqué ${ready.transportHidden}, barre inactive ${ready.seekDisabled}, ` +
+      `durée ${ready.duration} ms, ${preloaded.segmentsCount} segment(s)`);
+
+    // ▶ : la lecture démarre et la position avance.
+    const beforePlay = await playbackSnapshot(page);
+    await page.click('#transport-play');
+    await L.waitUntil(page, () => window.__musicaPlaybackState().state === 'playing',
+      { timeout: 60000, interval: 100, what: 'démarrage de la lecture' });
+    await page.waitForTimeout(900);
+    const playing = await playbackSnapshot(page);
+    L.record(results, '14. Vue carrée : ▶ passe en lecture et la position avance', pageName,
+      playing.state === 'playing' && playing.position > beforePlay.position &&
+      playing.seekValue > 0 ? 'OK' : 'ÉCHEC',
+      `état ${playing.state}, position ${beforePlay.position} → ${playing.position} ms, ` +
+      `curseur ${playing.seekValue}`);
+
+    // Changement de page pendant la lecture : même mouvement, tête de lecture
+    // inchangée (elle continue d'avancer, sans saut ni retour à zéro).
+    const turnPage = playing.total >= 2 ? playing.total : 1;
+    const beforeTurn = await playbackSnapshot(page);
+    await L.gotoPage(page, turnPage);
+    await page.waitForTimeout(700);
+    const afterTurn = await playbackSnapshot(page);
+    L.record(results, '14. Vue carrée : changer de page pendant la lecture ne déplace pas la tête', pageName,
+      afterTurn.state === 'playing' && afterTurn.movementId === beforeTurn.movementId &&
+      afterTurn.position >= beforeTurn.position - 100 && afterTurn.position > 0 &&
+      afterTurn.page === turnPage ? 'OK' : 'ÉCHEC',
+      `page ${beforeTurn.page} → ${afterTurn.page}, position ${beforeTurn.position} → ${afterTurn.position} ms`);
+
+    // À l'arrêt : la barre choisit une position, un changement de page ne la
+    // change pas, et ▶ repart de cette position.
+    await page.evaluate(() => window.stopPlayback());
+    await L.waitUntil(page, () => window.__musicaPlaybackState().state === 'stopped',
+      { timeout: 30000, interval: 100, what: 'arrêt de la lecture' });
+    await page.evaluate(() => {
+      const seek = document.getElementById('transport-seek');
+      seek.value = '400';
+      seek.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    const chosen = await playbackSnapshot(page);
+    const restPage = chosen.page === 1 ? turnPage : 1;
+    await L.gotoPage(page, restPage);
+    await page.waitForTimeout(600);
+    const afterRestTurn = await playbackSnapshot(page);
+    L.record(results, '14. Vue carrée : changer de page à l’arrêt ne change pas la position choisie', pageName,
+      afterRestTurn.state === 'stopped' && Math.abs(afterRestTurn.position - chosen.position) <= 1 &&
+      afterRestTurn.page === restPage ? 'OK' : 'ÉCHEC',
+      `page ${chosen.page} → ${afterRestTurn.page}, position ${chosen.position} → ${afterRestTurn.position} ms`);
+
+    await page.click('#transport-play');
+    await L.waitUntil(page, () => window.__musicaPlaybackState().state === 'playing',
+      { timeout: 60000, interval: 100, what: 'reprise de la lecture' });
+    await page.waitForTimeout(300);
+    const resumed = await playbackSnapshot(page);
+    L.record(results, '14. Vue carrée : ▶ après la barre repart de la position choisie', pageName,
+      resumed.state === 'playing' && resumed.position >= chosen.position &&
+      resumed.position < chosen.position + 2000 ? 'OK' : 'ÉCHEC',
+      `choisi ${chosen.position} ms, reprise ${resumed.position} ms`);
+    await page.evaluate(() => window.stopPlayback());
+
+    // Mêmes données de lecture que la vue classique du même fichier.
+    const squareProbe = await page.evaluate(() => window.__musicaPlaybackProbe());
+    await clickToggle(page);
+    await waitNotationReady(page);
+    const classicProbe = await waitPlaybackData(page);
+    L.record(results, '14. Vue carrée : MIDI et durée identiques à la vue classique', pageName,
+      squareProbe.hasData && classicProbe.hasData && squareProbe.midiBytes > 0 &&
+      squareProbe.midiBytes === classicProbe.midiBytes &&
+      squareProbe.duration === classicProbe.duration ? 'OK' : 'ÉCHEC',
+      `carré ${squareProbe.midiBytes} octets / ${squareProbe.duration} ms, ` +
+      `classique ${classicProbe.midiBytes} octets / ${classicProbe.duration} ms`);
+
+    const relevant = L.summarize(errors);
+    L.record(results, '6. Erreurs JS (lecture carrée)', pageName,
+      relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
+  } catch (e) {
+    L.record(results, '14. Lecture en notation carrée', pageName, 'ÉCHEC',
+      'exception du test : ' + e.message);
+  }
+  await ctx.close();
+}
+
+// scoretk absent : la notation carrée reste affichée, le transport est masqué
+// (aucune lecture possible) et aucune erreur n'est montrée à l'écran.
+async function runScoretkAbsent(browser, url, pageName, results) {
+  const { page, ctx, errors } = await L.newPage(browser, url, {
+    pageName, viewport: { width: 360, height: 720 },
+  });
+  try {
+    await L.waitReady(page);
+    await page.evaluate(() => { window.__musicaScoretkAvailable = false; });
+    await page.setInputFiles('#file-input', KYRIE);
+    await L.waitFirstSvg(page, 60000);
+    await L.waitUntil(page, () => document.getElementById('transport').classList.contains('hidden'),
+      { timeout: 30000, interval: 200, what: 'transport masqué sans scoretk' });
+    const state = await gabcState(page);
+    const probe = await page.evaluate(() => window.__musicaPlaybackProbe());
+    L.record(results, '14. scoretk absent : notation affichée, transport masqué, aucune erreur', pageName,
+      state.svgs >= 2 && state.chantLines >= 2 && state.transportHidden &&
+      !state.errorVisible && !probe.hasData ? 'OK' : 'ÉCHEC',
+      `SVG ${state.svgs}, lignes ${state.chantLines}, transport masqué ${state.transportHidden}, ` +
+      `erreur visible ${state.errorVisible}, données ${probe.hasData}`);
+    const relevant = L.summarize(errors);
+    L.record(results, '6. Erreurs JS (scoretk absent)', pageName,
+      relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
+  } catch (e) {
+    L.record(results, '14. scoretk absent sans lecture', pageName, 'ÉCHEC',
+      'exception du test : ' + e.message);
+  }
+  await ctx.close();
+}
+
 // Bouton présent, accessible, utilisable à 360 px, aller-retour clavier,
 // export et transport propres à chaque vue.
 async function runToggle(browser, url, pageName, results) {
@@ -652,7 +813,7 @@ async function runToggle(browser, url, pageName, results) {
     const initial = await notationState(page);
     L.record(results, '14. Bascule : vue carrée par défaut, bouton visible et pressé', pageName,
       initial.view === 'square' && !initial.hidden && initial.pressed === 'true' &&
-      initial.chantLines >= 2 && initial.transportHidden ? 'OK' : 'ÉCHEC',
+      initial.chantLines >= 2 && !initial.transportHidden ? 'OK' : 'ÉCHEC',
       JSON.stringify(initial));
     L.record(results, '14. Bascule : bouton libellé « Grégorien »', pageName,
       initial.label === 'Grégorien' ? 'OK' : 'ÉCHEC', `libellé « ${initial.label} »`);
@@ -698,9 +859,9 @@ async function runToggle(browser, url, pageName, results) {
     await page.keyboard.press('Space');
     await waitNotationReady(page);
     const square = await notationState(page);
-    L.record(results, '14. Bascule : Espace revient à la vue carrée, transport masqué', pageName,
+    L.record(results, '14. Bascule : Espace revient à la vue carrée, transport disponible', pageName,
       square.view === 'square' && square.pressed === 'true' && square.chantLines >= 2 &&
-      square.transportHidden ? 'OK' : 'ÉCHEC',
+      !square.transportHidden ? 'OK' : 'ÉCHEC',
       `vue ${square.view}, ${square.chantLines} lignes, transport masqué ${square.transportHidden}`);
 
     await page.click('#btn-menu');
@@ -1102,10 +1263,12 @@ async function runRapid(browser, url, pageName, results) {
       await runRace(browser, url, pageName, results);
       await runMixed(browser, url, pageName, results);
       await runToggle(browser, url, pageName, results);
+      await runGabcPlayback(browser, url, pageName, results);
       await runLongPosition(browser, url, pageName, results);
       await runMixedChoice(browser, url, pageName, results);
       await runButtonAbsent(browser, url, pageName, results);
       await runScoretkFallback(browser, url, pageName, results);
+      await runScoretkAbsent(browser, url, pageName, results);
       await runModernClef(browser, url, pageName, results);
       await runMixedFallback(browser, url, pageName, results);
       await runRapid(browser, url, pageName, results);

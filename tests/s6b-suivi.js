@@ -849,8 +849,9 @@ async function runPage(browser, url, pageName, results) {
       await stopPlayback(page);
       await waitState(page, 'stopped');
 
-      // (d) gabc en notation carrée : transport masqué et aucune donnée de
-      // lecture demandée, même avec le préchargement.
+      // (d) gabc en notation carrée : le transport reste disponible et les
+      // données de lecture sont demandées (même source, MIDI converti), sans
+      // rendu Verovio.
       await page.evaluate(() => {
         const w = window.__musicaWorker;
         window.__pbAfterGabc = 0;
@@ -862,17 +863,20 @@ async function runPage(browser, url, pageName, results) {
       });
       await L.importFile(page, KYRIE);
       await page.waitForSelector('#page-current .scroll-page svg .note[source-index]', { timeout: WAIT.firstSvg });
-      await page.waitForTimeout(800);
+      await L.waitUntil(page, async () => {
+        const probe = await window.__musicaPlaybackProbe();
+        return probe.hasData && probe.midiBytes > 0;
+      }, { timeout: 120000, interval: 200, what: 'données de lecture du gabc' });
       const gabc = await page.evaluate(() => ({
         hidden: document.getElementById('transport').classList.contains('hidden'),
         requests: window.__pbAfterGabc,
         state: window.__musicaPlaybackState(),
       }));
-      L.record(results, '6. gabc carré : transport masqué, aucune donnée de lecture demandée', pageName,
-        gabc.hidden && gabc.requests === 0 && gabc.state.state === 'stopped' &&
-          gabc.state.hasData === false ? 'OK' : 'ÉCHEC',
+      L.record(results, '6. gabc carré : transport visible, données de lecture préchargées', pageName,
+        !gabc.hidden && gabc.requests >= 1 && gabc.state.hasData &&
+          gabc.state.duration > 0 && gabc.state.state === 'stopped' ? 'OK' : 'ÉCHEC',
         `transport masqué ${gabc.hidden}, demandes getPlaybackData ${gabc.requests}, ` +
-        `état ${gabc.state.state}, données ${gabc.state.hasData}`);
+        `état ${gabc.state.state}, données ${gabc.state.hasData}, durée ${gabc.state.duration} ms`);
     } catch (e) {
       L.record(results, '6. Barre de position avant lecture', pageName, 'ÉCHEC',
         'exception du test : ' + e.message);
