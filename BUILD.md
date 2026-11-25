@@ -42,6 +42,11 @@ Verovio est obligatoire.
 Le paquet est copié dans `dist/scoretk/` (wrapper, glue et `.wasm`) ; le SPA
 inline le glue et le `.wasm` en base64 dans `spa.html`.
 
+exsurge vient de `node_modules/exsurge-ts/dist/exsurge.min.js` : le build le
+copie dans `dist/exsurge.min.js` (précaché par le service worker) et l'inline
+en `<script type="text/plain">` dans `spa.html`, évalué seulement au premier
+fichier GABC.
+
 Ces chemins ne sont pas des entrées Nix : `packages.default` est donc un
 script de construction (`cantus-site-build`) qui opère dans le dépôt courant,
 et **non** une dérivation hermétique du site. C'est volontaire : un build
@@ -66,6 +71,7 @@ instructions exécutées au chargement sont conservées.
 | `reglages-voix.coffee` | Réglages persistants, voix masquées (rendu) ou coupées (lecture), tailles, variantes de cache. |
 | `affichage-navigation.coffee` | Affichage des pages, préchargement, défilement, navigation. |
 | `decoupage-xml.coffee` | Découpage MusicXML en mouvements, masquage et tailles des voix. |
+| `gregorien.coffee` | Import GABC : chargement paresseux d'exsurge, mise en page d'une ligne de chant par page, sans worker. |
 | `sources.coffee` | Conversion scoretk et chargement séquentiel des sources/mouvements. |
 | `bibliotheque-import.coffee` | Bibliothèque, navigation tactile, import de fichiers/dossiers. |
 | `reglages-ui.coffee` | Panneau de réglages (liste des voix, contrôles). |
@@ -116,7 +122,9 @@ pages.
 
 Les tests unitaires (`tests/unit/scoretk-from.test.js`) vérifient `scoretkFrom`
 et la cohérence des tables (chaque extension scoretk a un `from`, chaque type
-MIME pointe vers une extension connue).
+MIME pointe vers une extension connue). `tests/unit/gabc-formats.test.js`
+vérifie en plus que GABC est importé directement, proposé au partage et
+accepté en `text/plain`.
 
 ## Internationalisation (`src/i18n.coffee` et `src/i18n/`)
 

@@ -35,6 +35,41 @@ peut pas être réutilisé pour une version modifiée). Elle est embarquée dans
 Times ; cette police métriquement compatible évite que la police de repli
 d'Android (Noto Serif, plus large) ne fasse chevaucher les syllabes.
 
+## exsurge
+
+- Licence : MIT (le paquet déclare aussi OFL-1.1 pour ses glyphes NABC, que
+  Cantus n'utilise pas)
+- Copyright © 2019 Benjamin Bloomfield
+- Source : <https://github.com/bbloomf/exsurge>
+
+exsurge grave la notation grégorienne carrée à partir des fichiers GABC
+(`dist/exsurge.min.js` dans la PWA, inliné dans `spa.html`). Il n'est chargé
+qu'à l'ouverture d'un `.gabc`.
+
+```text
+MIT License
+
+Copyright (c) 2019 Benjamin Bloomfield
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
 ## fflate
 
 - Licence : MIT

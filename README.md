@@ -24,12 +24,15 @@ Cantus opens:
 - LilyPond: `.ly`, `.lilypond`
 - ABC: `.abc`
 - MIDI: `.mid`, `.midi`
+- GABC (Gregorian square-note notation): `.gabc`
 
 Use **Open a file** or **Open a folder**. A folder, or a selection of several files, becomes one library item; LilyPond files pulled in by `\include` stay with the piece they belong to.
 
 When Cantus is installed on Android, you can share one or more scores to it from another app.
 
 MuseScore, LilyPond, ABC and MIDI files are converted by the optional scoretk converter. MIDI carries no notation, so Cantus shows an automatic transcription and tells you so.
+
+GABC files are typeset directly in square-note notation by exsurge, without scoretk or Verovio. Their title, mode and initial are shown, and each line of chant is one page. Playback and export are not available for GABC.
 
 ### Read
 
@@ -86,7 +89,7 @@ The app makes network requests for its own files: the page, scripts, sound sampl
 
 ## Known limitations
 
-- **Optional converter.** Builds made without the scoretk package can open MusicXML and MXL only, and cannot export. MuseScore, LilyPond, ABC and MIDI import require it.
+- **Optional converter.** Builds made without the scoretk package can open MusicXML, MXL and GABC only, and cannot export. MuseScore, LilyPond, ABC and MIDI import require it.
 - **MIDI is a transcription.** A MIDI file contains no notation, so the score you see is generated from the notes.
 - **Playback details.** Fermata and breath marks are ignored, and a two-chord tremolo sounds from its first chord only.
 - **Remote `?file=` links.** A remote `?file=` address is read as plain text, so only uncompressed MusicXML works, and the remote server must allow access from other sites.
@@ -114,6 +117,7 @@ The source code and issue tracker are at <https://github.com/jperon/cantus>. Bug
 Cantus is free software under the GNU GPL v3 or later; see [LICENSE](LICENSE). It uses:
 
 - Verovio for music engraving (LGPL-3.0-or-later);
+- exsurge for Gregorian square-note notation from GABC (MIT);
 - fflate for compressed MusicXML (MIT);
 - MuseScore_General sound samples (MIT);
 - Cantus Serif, based on Liberation Serif (SIL Open Font License 1.1);
