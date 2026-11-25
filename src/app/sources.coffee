@@ -273,7 +273,7 @@ loadFirstSource = (token) ->
     .catch (err) ->
       return unless token is loadToken
       if estGabc(currentSources?[index]) and notationView is "classic"
-        return replierEnNotationCarree index, token, err
+        return replierEnNotationCarree err
       reportSourceError index, err
       loadFirstSource token
 
@@ -281,17 +281,25 @@ loadFirstSource = (token) ->
 # paquet) : revenir à la notation carrée, qui n'en dépend pas, plutôt que de
 # laisser un écran vide. Le retour est mémorisé pour ne pas répéter l'échec à
 # chaque ouverture.
-replierEnNotationCarree = (index, token, err, reprendre) ->
+#
+# Le rechargement repart de zéro par startLoad : reprendre la chaîne au milieu
+# laisserait les mouvements déjà chargés en classique alors que notationView
+# vaut square (positions lues dans le mauvais repère, choix incohérent).
+replierEnNotationCarree = (err) ->
+  cible = positionBascule
   notationView = "square"
-  # La vue classique est inutilisable pour ce fichier : mémoriser le retour
-  # en carré évite de réafficher l'erreur à chaque ouverture.
   saveNotationView()
-  rafraichirBasculeNotation()
   showError t "errors.notationFallback", {error: err?.message or err}
-  sourceCache.delete index
-  nextSourceToLoad = index
-  # Reprendre la chaîne interrompue : premier chargement ou suite des sources.
-  (reprendre ? loadFirstSource) token
+  sourceCache.clear()
+  startLoad 1, true
+  notationView = "square"
+  # startLoad a invalidé la restauration précédente : la refaire avec le
+  # nouveau jeton, si une bascule était en cours.
+  positionBascule = if cible? then {
+    sourceIndex: cible.sourceIndex
+    pos: cible.pos
+    token: loadToken
+  } else null
 
 # Report a source that could not be converted, without stopping the others
 reportSourceError = (index, err) ->
@@ -352,7 +360,7 @@ stepLoad = (token) ->
       .catch (err) ->
         return unless token is loadToken
         if estGabc(currentSources?[index]) and notationView is "classic"
-          return replierEnNotationCarree index, token, err, stepLoad
+          return replierEnNotationCarree err
         reportSourceError index, err
         stepLoad token
     return

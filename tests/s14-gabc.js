@@ -908,6 +908,73 @@ async function runScoretkFallback(browser, url, pageName, results) {
   await ctx.close();
 }
 
+// Deux GABC dans le même dossier, le second inconvertible : le repli doit
+// repartir en vue carrée pour tout le dossier, sans laisser le premier en
+// classique alors que notationView vaut square.
+async function runMixedFallback(browser, url, pageName, results) {
+  const { page, ctx, errors } = await L.newPage(browser, url, {
+    pageName, viewport: { width: 500, height: 900 },
+  });
+  try {
+    await L.waitReady(page);
+    await page.setInputFiles('#file-input', [
+      { name: 'a-kyrie.gabc', mimeType: 'text/plain', buffer: fs.readFileSync(KYRIE) },
+      { name: 'b-long.gabc', mimeType: 'text/plain', buffer: fs.readFileSync(LONG) },
+    ]);
+    await L.waitFirstSvg(page, 120000);
+    await L.waitBackgroundLoaded(page, 180000);
+    await page.evaluate(() => {
+      const original = window.convertScoretkToXml;
+      window.convertScoretkToXml = (buffer, name, includes) =>
+        /(^|\/)b-/.test(name || '')
+          ? Promise.reject(new Error('second gabc inconvertible'))
+          : original(buffer, name, includes);
+    });
+    await clickToggle(page);
+    await L.waitUntil(page, () => /second gabc inconvertible/.test(
+      document.getElementById('protocol-error')?.textContent || ''),
+    { timeout: 120000, what: 'erreur du second gabc' });
+    await waitNotationReady(page);
+    const counts = await page.evaluate(() => ({
+      view: window.notationView,
+      classic: (window.movements || []).filter((m) => m.gabc && !m.gregorien).length,
+    }));
+    const firstStart = await movementStart(page,
+      (m) => m.gabc && m.sourceIndex === 0 && m.gregorien && m.loaded);
+    const secondStart = await movementStart(page,
+      (m) => m.gabc && m.sourceIndex === 1 && m.gregorien && m.loaded);
+    let first = null;
+    let second = null;
+    if (firstStart) {
+      await L.gotoPage(page, firstStart);
+      await L.waitUntil(page, () => !!document.querySelector('#page-current .scroll-page svg g.chantLine'),
+        { timeout: 60000, what: 'premier gabc carré rendu' });
+      first = await notationState(page);
+    }
+    if (secondStart) {
+      await L.gotoPage(page, secondStart);
+      await L.waitUntil(page, () => !!document.querySelector('#page-current .scroll-page svg g.chantLine'),
+        { timeout: 60000, what: 'second gabc carré rendu' });
+      second = await notationState(page);
+    }
+    L.record(results, '14. Repli multi-gabc : tout le dossier repart en carré', pageName,
+      firstStart === 1 && secondStart != null && counts.view === 'square' &&
+      counts.classic === 0 && first?.view === 'square' && first.chantLines > 0 &&
+      first.staffs === 0 && second?.view === 'square' && second.chantLines > 0 &&
+      second.staffs === 0 && /second gabc inconvertible/.test(second.errorText) ? 'OK' : 'ÉCHEC',
+      JSON.stringify({ firstStart, secondStart, counts, first: first && {
+        view: first.view, chant: first.chantLines, staffs: first.staffs },
+      second: second && { view: second.view, chant: second.chantLines, staffs: second.staffs } }));
+    const relevant = L.summarize(errors);
+    L.record(results, '6. Erreurs JS (repli multi-gabc)', pageName,
+      relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
+  } catch (e) {
+    L.record(results, '14. Repli multi-gabc', pageName, 'ÉCHEC',
+      'exception du test : ' + e.message);
+  }
+  await ctx.close();
+}
+
 // Bascules rapides : seule la dernière doit rester, sans état intermédiaire ni
 // écran vide.
 async function runRapid(browser, url, pageName, results) {
@@ -960,6 +1027,7 @@ async function runRapid(browser, url, pageName, results) {
       await runMixedChoice(browser, url, pageName, results);
       await runButtonAbsent(browser, url, pageName, results);
       await runScoretkFallback(browser, url, pageName, results);
+      await runMixedFallback(browser, url, pageName, results);
       await runRapid(browser, url, pageName, results);
     }
     await runOffline(browser, url, results);
