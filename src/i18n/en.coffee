@@ -111,10 +111,8 @@ registerLanguage 'en', 'English',
   'nav.menuLabel': 'Score actions'
   'nav.export': 'Export'
   'nav.settings': 'Settings'
-  'notation.square': 'Exsurge'
-  'notation.classic': 'Classical'
-  'notation.neumes': 'Verovio'
-  'notation.toggleTitle': 'Choose the view: square (Exsurge), classical or neume (Verovio)'
+  'notation.gregorian': 'Gregorian'
+  'notation.toggleTitle': 'Switch between Gregorian and classical notation'
 
   'export.title': 'Export the score'
   'export.close': 'Close export'

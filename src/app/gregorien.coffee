@@ -280,41 +280,21 @@ rafraichirBasculeNotation = ->
   dernierMouvementGabc = mv if mv?.gabc
   visible = !!mv?.gabc and fileLoaded
   btn.classList.toggle "hidden", not visible
-  # Trois vues : le libellé annonce la vue courante. La touche est un cycle
-  # (carré → classique → neumes → carré) ; aria-pressed reste vrai en carré,
-  # l'état de départ.
-  cle = switch notationView
-    when "classic" then "notation.classic"
-    when "neumes" then "notation.neumes"
-    else "notation.square"
-  btn.setAttribute "data-i18n", cle
-  btn.textContent = t cle
   btn.setAttribute "aria-pressed", if notationView is "square" then "true" else "false"
   btn.disabled = false
 
-# Vues dans l'ordre du cycle du bouton.
-vueSuivante = (vue) ->
-  switch vue
-    when "square" then "classic"
-    when "classic" then "neumes"
-    else "square"
-
 # Bascule demandée par le bouton. Le choix est enregistré avant le
-# rechargement ; la position est mémorisée pour la restaurer à l'arrivée,
-# sauf depuis ou vers la vue neumes (retour en haut, sans restauration).
+# rechargement ; la position est mémorisée pour la restaurer à l'arrivée.
 basculerVueNotation = ->
   mv = mouvementAffiche()
   mv = dernierMouvementGabc unless mv?.gabc
   return unless mv?.gabc
-  cible = vueSuivante notationView
-  if cible in ["classic", "neumes"] and not window.__musicaScoretkAvailable
+  cible = if notationView is "square" then "classic" else "square"
+  if cible is "classic" and not window.__musicaScoretkAvailable
     showError t "errors.notationNeedsScoretk"
     rafraichirBasculeNotation()
     return
-  pos = if notationView is "neumes" or cible is "neumes"
-    null
-  else
-    positionPremiereNoteVisible()
+  pos = positionPremiereNoteVisible()
   dernierRepereGabc = {sourceIndex: mv.sourceIndex, pos} if pos?
   repere = if dernierRepereGabc?.sourceIndex is mv.sourceIndex then dernierRepereGabc else null
   notationView = cible

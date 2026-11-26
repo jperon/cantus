@@ -664,7 +664,6 @@ async function notationState(page) {
       chantLines: slot.querySelectorAll('.scroll-page svg g.chantLine').length,
       squareNotes: slot.querySelectorAll('.scroll-page svg .note[source-index]').length,
       classicNotes: ids.length,
-      neumes: slot.querySelectorAll('.scroll-page svg g.nc').length,
       total: match ? parseInt(match[1], 10) : 0,
       transportHidden: document.getElementById('transport').classList.contains('hidden'),
       exportHidden: document.getElementById('export-overlay').classList.contains('hidden'),
@@ -689,7 +688,6 @@ async function waitNotationReady(page, timeout = 120000) {
     const svg = document.querySelector('#page-current .scroll-page svg');
     if (!svg) return false;
     if (window.notationView === 'square') return !!svg.querySelector('.note[source-index]');
-    if (window.notationView === 'neumes') return !!svg.querySelector('g.nc, g.neume');
     return !!svg.querySelector('g.staff');
   }, { timeout, interval: 200, what: 'mise à jour de la vue de notation' });
 }
@@ -991,8 +989,8 @@ async function runToggle(browser, url, pageName, results) {
       initial.view === 'square' && !initial.hidden && initial.pressed === 'true' &&
       initial.chantLines >= 2 && !initial.transportHidden ? 'OK' : 'ÉCHEC',
       JSON.stringify(initial));
-    L.record(results, '14. Bascule : bouton libellé « Exsurge »', pageName,
-      initial.label === 'Exsurge' ? 'OK' : 'ÉCHEC', `libellé « ${initial.label} »`);
+    L.record(results, '14. Bascule : bouton libellé « Grégorien »', pageName,
+      initial.label === 'Grégorien' ? 'OK' : 'ÉCHEC', `libellé « ${initial.label} »`);
     L.record(results, '14. Bascule : bouton utilisable à 360 px, sans débordement', pageName,
       initial.buttonRect && initial.buttonRect.left >= 0 && initial.buttonRect.right <= 360 &&
       initial.buttonRect.width >= 44 && initial.buttonRect.height >= 44 &&
@@ -1034,11 +1032,8 @@ async function runToggle(browser, url, pageName, results) {
     await page.focus('#notation-toggle');
     await page.keyboard.press('Space');
     await waitNotationReady(page);
-    // Classique → neumes → carré : le bouton cycle les trois vues.
-    await page.keyboard.press('Space');
-    await waitNotationReady(page);
     const square = await notationState(page);
-    L.record(results, '14. Bascule : deux Espaces ramènent à la vue carrée, transport disponible', pageName,
+    L.record(results, '14. Bascule : Espace revient à la vue carrée, transport disponible', pageName,
       square.view === 'square' && square.pressed === 'true' && square.chantLines >= 2 &&
       !square.transportHidden ? 'OK' : 'ÉCHEC',
       `vue ${square.view}, ${square.chantLines} lignes, transport masqué ${square.transportHidden}`);
@@ -1159,21 +1154,19 @@ async function runLongPosition(browser, url, pageName, results) {
       switchMs > 0 && switchMs < 60000 ? 'OK' : 'ÉCHEC',
       `${switchMs} ms pour ${start.total} pages carrées`);
 
-    // Le cycle passe par la vue neumes : deux clics de plus pour revenir au
-    // carré. La vue neumes ne restaure pas la position (retour en haut) ; le
-    // retour en carré vérifie donc l'affichage, pas la position.
-    await clickToggle(page);
-    await waitNotationReady(page);
-    const neumes = await notationState(page);
+    const returnReference = classicVisible[0]?.pos;
     await clickToggle(page);
     await waitNotationReady(page);
     const back = await notationState(page);
     const backVisible = await visibleNotePositions(page, 'square', LONG_HEADER);
-    L.record(results, '14. Retour en carré après la vue neumes : vue carrée affichée', pageName,
-      neumes.view === 'neumes' && neumes.neumes >= 20 && back.view === 'square' &&
-      back.chantLines >= 1 && backVisible.length > 0 ? 'OK' : 'ÉCHEC',
-      `neumes ${neumes.neumes}, vue ${back.view}, ${back.chantLines} lignes, ` +
-      `${backVisible.length} note(s) carrée(s) visible(s)`);
+    const returnTarget = back.probe?.target;
+    const expectedSquare = await expectedTarget(page, 'square', returnReference, sourceIndex);
+    L.record(results, '14. Retour en carré : position conservée et source-index visible', pageName,
+      back.view === 'square' && back.chantLines >= 1 && returnTarget != null &&
+      returnReference != null && expectedSquare != null && returnTarget.pos === expectedSquare &&
+      backVisible.some((note) => note.pos === returnTarget.pos) ? 'OK' : 'ÉCHEC',
+      `repère ${returnReference}, cible ${JSON.stringify(returnTarget)}, attendu ${expectedSquare}, ` +
+      `visibles ${JSON.stringify(backVisible.slice(0, 4))}`);
     const relevant = L.summarize(errors);
     L.record(results, '6. Erreurs JS (position de bascule)', pageName,
       relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
@@ -1418,9 +1411,6 @@ async function runRapid(browser, url, pageName, results) {
       `vue ${classic.view}, ${classic.staffs} portées, restauration ${classic.restoring}`);
     await clickToggle(page);
     await waitNotationReady(page);
-    // Classique → neumes → carré.
-    await clickToggle(page);
-    await waitNotationReady(page);
     const square = await notationState(page);
     L.record(results, '14. Bascules rapides : retour final en carré propre', pageName,
       square.view === 'square' && square.pressed === 'true' && square.chantLines >= 2 &&
@@ -1431,53 +1421,6 @@ async function runRapid(browser, url, pageName, results) {
       relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
   } catch (e) {
     L.record(results, '14. Bascules rapides', pageName, 'ÉCHEC',
-      'exception du test : ' + e.message);
-  }
-  await ctx.close();
-}
-
-// Vue neumes : gabc → MEI neumatique (scoretk) → Verovio. Le bouton cycle
-// carré → classique → neumes → carré, avec le libellé de la vue courante.
-async function runNeumes(browser, url, pageName, results) {
-  const { page, ctx, errors } = await L.newPage(browser, url, {
-    pageName, viewport: { width: 360, height: 720 },
-  });
-  try {
-    await L.waitReady(page);
-    await importGabc(page, KYRIE);
-    const initial = await notationState(page);
-
-    await clickToggle(page);
-    await waitNotationReady(page);
-    const classic = await notationState(page);
-
-    await clickToggle(page);
-    await waitNotationReady(page);
-    const neumes = await notationState(page);
-
-    L.record(results, '14. Vue neumes : Verovio affiche les neumes du MEI', pageName,
-      neumes.view === 'neumes' && neumes.neumes >= 20 && neumes.staffs > 0 &&
-      !neumes.errorVisible ? 'OK' : 'ÉCHEC',
-      `vue ${neumes.view}, ${neumes.neumes} neume(s), ${neumes.staffs} portée(s), ` +
-      `libellé « ${neumes.label} », erreur visible ${neumes.errorVisible}`);
-
-    await clickToggle(page);
-    await waitNotationReady(page);
-    const back = await notationState(page);
-
-    L.record(results, '14. Cycle des trois vues : Exsurge → Classique → Verovio → Exsurge', pageName,
-      initial.view === 'square' && initial.label === 'Exsurge' &&
-      classic.view === 'classic' && classic.label === 'Classique' && classic.staffs > 0 &&
-      neumes.view === 'neumes' && neumes.label === 'Verovio' &&
-      back.view === 'square' && back.label === 'Exsurge' && back.chantLines >= 2 ? 'OK' : 'ÉCHEC',
-      `${initial.label} → ${classic.label} → ${neumes.label} → ${back.label} ` +
-      `(${initial.view}, ${classic.view}, ${neumes.view}, ${back.view})`);
-
-    const relevant = L.summarize(errors);
-    L.record(results, '6. Erreurs JS (vue neumes)', pageName,
-      relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
-  } catch (e) {
-    L.record(results, '14. Vue neumes Verovio', pageName, 'ÉCHEC',
       'exception du test : ' + e.message);
   }
   await ctx.close();
@@ -1496,7 +1439,6 @@ async function runNeumes(browser, url, pageName, results) {
       await runTextSizeGabc(browser, url, pageName, results);
       await runToggle(browser, url, pageName, results);
       await runGabcPlayback(browser, url, pageName, results);
-      await runNeumes(browser, url, pageName, results);
       await runLongPosition(browser, url, pageName, results);
       await runMixedChoice(browser, url, pageName, results);
       await runButtonAbsent(browser, url, pageName, results);

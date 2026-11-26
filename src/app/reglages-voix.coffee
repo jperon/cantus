@@ -310,17 +310,11 @@ partsVariant = ->
   # Taille du texte chanté : le rendu Verovio et le viewBox grégorien en
   # dépendent, donc la variante aussi.
   variant = "#{variant}|x#{textSize}" if textSize isnt 100
-  # Vue gabc : la vue classique et la vue neumes produisent un autre XML que
-  # la notation carrée, donc d'autres pages. Sans ce suffixe, le cache SVG
-  # resservirait une page rendue dans l'autre vue.
-  variant = "#{variant}|n#{notationView}" if notationView isnt "square"
   return variant if visualTranspose is 0
   "#{variant}|t#{visualTranspose}"
 
-# Vue des sources gabc, réglage par fichier : "square" (défaut, exsurge),
-# "classic" (gabc → MusicXML → Verovio) ou "neumes" (gabc → MEI → Verovio).
+# Vue des sources gabc, réglage par fichier : "square" (défaut) ou "classic".
 # En dossier mixte, la valeur vaut pour toutes les sources gabc de l'entrée.
-notationsGabc = ["square", "classic", "neumes"]
 notationView = "square"
 
 loadNotationView = ->
@@ -328,17 +322,17 @@ loadNotationView = ->
   return unless currentFileId
   try
     saved = localStorage.getItem "musica-notation-#{currentFileId}"
-    notationView = saved if saved in notationsGabc
+    notationView = "classic" if saved is "classic"
   catch
     # localStorage unavailable (file:// on some browsers)
 
 saveNotationView = ->
   return unless currentFileId
   try
-    if notationView is "square"
-      localStorage.removeItem "musica-notation-#{currentFileId}"
+    if notationView is "classic"
+      localStorage.setItem "musica-notation-#{currentFileId}", "classic"
     else
-      localStorage.setItem "musica-notation-#{currentFileId}", notationView
+      localStorage.removeItem "musica-notation-#{currentFileId}"
   catch
     # localStorage unavailable (file:// on some browsers)
 

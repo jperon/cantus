@@ -39,13 +39,6 @@ convertirGabcEnXml = (source) ->
   octets = new TextEncoder().encode texte
   convertScoretkToXml octets.buffer, source.name, source.includes
 
-# Convertit un gabc en MEI neumatique pour la vue « neumes », rendue par
-# Verovio. Même source en mémoire, même transfert du tampon.
-convertirGabcEnMei = (source) ->
-  texte = decoderTexteGabc source?.data
-  octets = new TextEncoder().encode texte
-  convertScoretkToXml octets.buffer, source.name, source.includes, {to: "mei"}
-
 # XML converti et découpage en mouvements d'une source, gardés pour la
 # partition courante (le zoom, le redimensionnement et les voix rechargent
 # sans reconvertir). `token` empêche une conversion remplacée par une bascule
@@ -58,17 +51,16 @@ ensureSource = (index, token) ->
   if estGabc source
     return Promise.resolve().then ->
       return if token? and token isnt loadToken
-      if notationView in ["classic", "neumes"]
+      if notationView is "classic"
         unless window.__musicaScoretkAvailable
           throw new Error t "errors.notationNeedsScoretk"
-        convertir = if notationView is "neumes" then convertirGabcEnMei else convertirGabcEnXml
-        convertir(source).then (xml) ->
+        convertirGabcEnXml(source).then (xml) ->
           return if token? and token isnt loadToken
           info = {
             xml
-            splitInfo: if notationView is "classic" then detectSplitPoints(xml) else {splitPoints: [], totalMeasures: 0}
+            splitInfo: detectSplitPoints xml
             gabc: true
-            notation: notationView
+            notation: "classic"
           }
           sourceCache.set index, info
           info
@@ -87,22 +79,6 @@ ensureSource = (index, token) ->
 # Ajoute les mouvements d'une source à la fin de la liste globale
 appendSourceMovements = (index, info) ->
   gabc = estGabc currentSources?[index]
-  if info.notation is "neumes"
-    # Vue neumes : un seul mouvement, MEI rendu tel quel par Verovio. La
-    # lecture réutilise le chemin de la notation carrée (MusicXML converti).
-    movements.push
-      id: movements.length + 1
-      pageCount: 0
-      pushed: 0
-      loaded: false
-      sourceIndex: index
-      localIndex: 0
-      gabc: true
-      lectureGabc: true
-      measureStart: 0
-      measureEnd: null
-    console.log "Source #{index + 1}/#{currentSources.length} : 1 mouvement(s), #{movements.length} au total"
-    return
   if info.gregorien
     # Une source gabc en notation carrée est un seul mouvement, sans découpage.
     movements.push
@@ -143,9 +119,6 @@ appendSourceMovements = (index, info) ->
 # scoretk est global au fichier, pas au mouvement élagué.
 ensureWorkerSource = (index, info) ->
   return unless info?.xml?
-  # Un MEI n'est pas un MusicXML : la source de lecture est enregistrée par
-  # ensurePlaybackXml (voir pages-lecture.coffee), pas ici.
-  return if info.notation is "neumes"
   return if workerSources.has index
   workerSources.add index
   worker.postMessage
@@ -284,7 +257,7 @@ loadFirstSource = (token) ->
             reportSourceError index, err
             loadFirstSource token
         return
-      mvXml = if info.notation is "neumes" then info.xml else extractMovement info.splitInfo, 0
+      mvXml = extractMovement info.splitInfo, 0
       unless mvXml
         return loadFirstSource token
       ensureWorkerSource index, info
@@ -300,7 +273,7 @@ loadFirstSource = (token) ->
       natureTransportAffichee = "xml"
     .catch (err) ->
       return unless token is loadToken
-      if estGabc(currentSources?[index]) and notationView in ["classic", "neumes"]
+      if estGabc(currentSources?[index]) and notationView is "classic"
         return replierEnNotationCarree err
       reportSourceError index, err
       loadFirstSource token
@@ -365,7 +338,7 @@ stepLoad = (token) ->
           reportSourceError pending.sourceIndex, err
           stepLoad token
       return
-    mvXml = if info.notation is "neumes" then info.xml else extractMovement info.splitInfo, pending.localIndex
+    mvXml = extractMovement info.splitInfo, pending.localIndex
     unless mvXml
       pending.loaded = true
       return stepLoad token
@@ -387,7 +360,7 @@ stepLoad = (token) ->
         stepLoad token
       .catch (err) ->
         return unless token is loadToken
-        if estGabc(currentSources?[index]) and notationView in ["classic", "neumes"]
+        if estGabc(currentSources?[index]) and notationView is "classic"
           return replierEnNotationCarree err
         reportSourceError index, err
         stepLoad token
