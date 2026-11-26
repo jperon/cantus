@@ -19,6 +19,7 @@ const INVALIDE = path.join(GABC_DIR, 'invalide.gabc');
 const MALVEILLANT = path.join(GABC_DIR, 'malveillant.gabc');
 const KYRIE_MEI = path.join(GABC_DIR, 'kyrie.mei');
 const KYRIE_GABC_XML = path.join(GABC_DIR, 'kyrie-gabc.musicxml');
+const SANS_ENTETE = path.join(GABC_DIR, 'sans-entete.gabc');
 const XML = path.join(__dirname, 'fixtures', 'enchainement.xml');
 const MOVEMENTS_XML = path.join(__dirname, 'fixtures', 'movements.xml');
 
@@ -1289,6 +1290,40 @@ async function runGregorienAutre(browser, url, pageName, results) {
   await ctx.close();
 }
 
+// gabc brut de GregoBase : corps seul, sans en-tête ni ligne %%. exsurge
+// l'affiche tel quel ; scoretk ne le convertit qu'après le préfixe %% ajouté
+// par Cantus avant l'envoi.
+async function runSansEntete(browser, url, pageName, results) {
+  const { page, ctx, errors } = await L.newPage(browser, url, {
+    pageName, viewport: { width: 360, height: 720 },
+  });
+  try {
+    await L.waitReady(page);
+    await importGabc(page, SANS_ENTETE);
+    const square = await notationState(page);
+    L.record(results, '14. gabc sans en-tête : notation carrée', pageName,
+      square.view === 'square' && square.chantLines >= 1 && square.squareNotes >= 3
+        ? 'OK' : 'ÉCHEC',
+      `vue ${square.view}, ${square.chantLines} ligne(s), ${square.squareNotes} note(s)`);
+
+    await clickToggle(page);
+    await waitNotationReady(page);
+    const classic = await notationState(page);
+    L.record(results, '14. gabc sans en-tête : bascule classique sans erreur', pageName,
+      classic.view === 'classic' && classic.staffs > 0 && !classic.errorVisible
+        ? 'OK' : 'ÉCHEC',
+      `vue ${classic.view}, ${classic.staffs} portée(s), erreur visible ${classic.errorVisible}`);
+
+    const relevant = L.summarize(errors);
+    L.record(results, '6. Erreurs JS (gabc sans en-tête)', pageName,
+      relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
+  } catch (e) {
+    L.record(results, '14. gabc sans en-tête', pageName, 'ÉCHEC',
+      'exception du test : ' + e.message);
+  }
+  await ctx.close();
+}
+
 async function runButtonAbsent(browser, url, pageName, results) {
   const { page, ctx, errors } = await L.newPage(browser, url, { pageName });
   try {
@@ -1503,6 +1538,7 @@ async function runRapid(browser, url, pageName, results) {
       await runLongPosition(browser, url, pageName, results);
       await runMixedChoice(browser, url, pageName, results);
       await runGregorienAutre(browser, url, pageName, results);
+      await runSansEntete(browser, url, pageName, results);
       await runButtonAbsent(browser, url, pageName, results);
       await runScoretkFallback(browser, url, pageName, results);
       await runScoretkAbsent(browser, url, pageName, results);
