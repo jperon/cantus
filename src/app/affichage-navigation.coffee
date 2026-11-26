@@ -424,6 +424,20 @@ captureVerticalScroll = ->
 # Vertical scroll position (in system height units)
 verticalPos = 0  # Current position in vertical mode
 
+# Ajoute une page à la fin de la fenêtre rendue, sans toucher au défilement.
+appendRenderedPage = (page) ->
+  wrapper = $("page-current").querySelector ".scroll-wrapper"
+  return unless wrapper
+  div = document.createElement "div"
+  div.className = "scroll-page"
+  div.dataset.page = page  # Identify page by number
+  div.innerHTML = "<div class=\"loading-placeholder\">#{t 'loading'}</div>"
+  wrapper.appendChild div
+  renderPageAsync(page).then (svg) ->
+    if svg and div.isConnected
+      div.innerHTML = svg
+      requestAnimationFrame -> applyVerticalAlignment()
+
 # Check if we need to load more pages in vertical mode
 checkAndLoadMorePages = ->
   return unless scrollMode is "vertical"
@@ -437,17 +451,39 @@ checkAndLoadMorePages = ->
   lastPage = parseInt pages[pages.length - 1].dataset.page
   # If scrolled past 70% of loaded content, add more pages
   scrollProgress = slot.scrollTop / (slot.scrollHeight - slot.clientHeight)
-  if scrollProgress > 0.7 and lastPage < pageCount
-    nextPage = lastPage + 1
-    div = document.createElement "div"
-    div.className = "scroll-page"
-    div.dataset.page = nextPage  # Identify page by number
-    div.innerHTML = "<div class=\"loading-placeholder\">#{t 'loading'}</div>"
-    wrapper.appendChild div
-    renderPageAsync(nextPage).then (svg) ->
-      if svg and div.isConnected
-        div.innerHTML = svg
-        requestAnimationFrame -> applyVerticalAlignment()
+  appendRenderedPage lastPage + 1 if scrollProgress > 0.7 and lastPage < pageCount
+  prefetch()
+
+# Une source chargée en arrière-plan augmente le total de pages : la fenêtre
+# rendue a été dimensionnée sur le total connu au premier affichage et doit
+# être recalculée, comme après une navigation, sinon le défilement s'arrête à
+# la fin de la première source.
+#
+# Le rendu n'est refait que si la fenêtre change : les pages déjà affichées
+# gardent leur SVG et le défilement n'est pas déplacé. En vertical, la fenêtre
+# est seulement complétée vers l'avant (même étendue de 10 pages que
+# displayView) : retirer des pages déjà rendues ferait sauter le défilement en
+# cours.
+refreshRenderedWindow = ->
+  wrapper = $("page-current").querySelector ".scroll-wrapper"
+  pages = wrapper?.querySelectorAll ".scroll-page"
+  rendered = (parseInt(div.dataset.page, 10) for div in (pages ? []))
+  unless scrollMode is "vertical"
+    # Même fenêtre que displayView : page courante et suivante.
+    topPage = Math.floor(scrollPos / 2) + 1
+    wanted = if topPage + 1 <= pageCount then [topPage, topPage + 1] else [topPage]
+    return if wanted.length is rendered.length and wanted.every (p) -> p in rendered
+    displayView()
+    prefetch()
+    return
+  unless rendered.length
+    displayView()
+    prefetch()
+    return
+  target = Math.min pageCount, rendered[0] + 9
+  lastPage = rendered[rendered.length - 1]
+  if target > lastPage
+    appendRenderedPage p for p in [lastPage + 1 .. target]
   prefetch()
 
 # Première page de la fenêtre rendue (1 si le wrapper est vide)
