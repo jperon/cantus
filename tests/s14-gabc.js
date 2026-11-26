@@ -872,6 +872,149 @@ async function runGabcPlayback(browser, url, pageName, results) {
   await ctx.close();
 }
 
+// Surlignage de la note carrée pendant la lecture : même réglage que la
+// mesure, il suit la note jouée (offset source = en-tête + source-index),
+// change quand la position avance et disparaît à l'arrêt ou quand le réglage
+// est désactivé.
+async function noteHighlightState(page) {
+  return page.evaluate(() => window.__musicaNoteHighlightState());
+}
+
+async function seekTransport(page, fraction) {
+  await page.evaluate((f) => {
+    const seek = document.getElementById('transport-seek');
+    seek.value = String(Math.round(f * 1000));
+    seek.dispatchEvent(new Event('input', { bubbles: true }));
+    seek.dispatchEvent(new Event('change', { bubbles: true }));
+  }, fraction);
+}
+
+async function waitNoteHighlight(page, timeout = 30000) {
+  await L.waitUntil(page, () => {
+    const state = window.__musicaNoteHighlightState?.();
+    const el = document.querySelector('#page-current .note.note-playing[source-index]');
+    return !!el && !!state && state.rect != null && state.offset != null &&
+      state.sourceIndex != null && state.t != null && state.position != null &&
+      state.t <= state.position &&
+      (state.nextT == null || state.position < state.nextT);
+  }, { timeout, interval: 100, what: 'surlignage de la note carrée' });
+  return noteHighlightState(page);
+}
+
+async function runSquareHighlight(browser, url, pageName, results) {
+  const { page, ctx, errors } = await L.newPage(browser, url, {
+    pageName, viewport: { width: 360, height: 720 },
+  });
+  try {
+    await L.waitReady(page);
+    await importGabc(page, KYRIE);
+    await waitPlaybackData(page);
+    await L.openSettings(page);
+    await page.check('#highlight-measure');
+    await L.closeSettings(page);
+
+    await page.click('#transport-play');
+    await L.waitUntil(page, () => window.__musicaPlaybackState().state === 'playing',
+      { timeout: 30000, interval: 100, what: 'lecture carrée' });
+
+    await seekTransport(page, 0.5);
+    const first = await waitNoteHighlight(page);
+    // La note surlignée est celle de la position jouée : son offset source est
+    // exactement en-tête + source-index, et le suivi l'a amenée dans la zone
+    // de lecture.
+    const visible = await page.evaluate(() => {
+      const slot = document.getElementById('page-current').getBoundingClientRect();
+      const el = document.querySelector('#page-current .note.note-playing[source-index]');
+      const box = el?.getBoundingClientRect();
+      return {
+        ok: !!box && box.bottom > slot.top + 1 && box.top < slot.bottom - 1,
+        box: box ? { top: Math.round(box.top), bottom: Math.round(box.bottom) } : null,
+        slot: { top: Math.round(slot.top), bottom: Math.round(slot.bottom) },
+      };
+    });
+    L.record(results, '14. Vue carrée : la note jouée est surlignée et visible à la position choisie', pageName,
+      first.enabled && first.offset != null && first.sourceIndex != null &&
+      first.offset === first.headerLen + first.sourceIndex &&
+      first.rect && first.rect.width > 0 && first.rect.height > 0 &&
+      first.position != null && first.t != null && first.t <= first.position &&
+      (first.nextT == null || first.position < first.nextT) &&
+      visible.ok ? 'OK' : 'ÉCHEC',
+      `offset ${first.offset} = en-tête ${first.headerLen} + index ${first.sourceIndex}, ` +
+      `note ${first.t} ≤ position ${Math.round(first.position)} ms < ${first.nextT}, ` +
+      `page ${first.page}/${first.displayed}, ` +
+      `note ${visible.ok ? 'visible' : 'hors zone'} ${JSON.stringify(visible.box)} ` +
+      `dans ${JSON.stringify(visible.slot)}, ${first.updates} mise(s) à jour`);
+
+    // La position avance : une autre note est surlignée, sans état résiduel.
+    await page.evaluate((key) => { window.__s14NoteKey = key; }, first.key);
+    await seekTransport(page, 0.25);
+    await L.waitUntil(page, () => {
+      const state = window.__musicaNoteHighlightState?.();
+      return !!state && state.key != null && state.key !== window.__s14NoteKey &&
+        state.rect != null && state.t != null && state.position != null &&
+        state.t <= state.position &&
+        (state.nextT == null || state.position < state.nextT) &&
+        !!document.querySelector('#page-current .note.note-playing[source-index]');
+    }, { timeout: 30000, interval: 100, what: 'changement de note surlignée' });
+    const second = await page.evaluate(() => ({
+      ...window.__musicaNoteHighlightState(),
+      count: document.querySelectorAll('#page-current .note.note-playing').length,
+    }));
+    L.record(results, '14. Vue carrée : le surlignage change quand la position avance', pageName,
+      second.key !== first.key && second.offset === second.headerLen + second.sourceIndex &&
+      second.t != null && second.t <= second.position &&
+      (second.nextT == null || second.position < second.nextT) && second.count === 1
+        ? 'OK' : 'ÉCHEC',
+      `note ${first.key} (${Math.round(first.position)} ms) → ${second.key} (${Math.round(second.position)} ms), ` +
+      `offset ${second.offset} = ${second.headerLen} + ${second.sourceIndex}, ` +
+      `${second.updates} mise(s) à jour`);
+
+    // Arrêt : plus de surlignage. Réglage désactivé : il disparaît aussi.
+    await page.evaluate(() => window.stopPlayback());
+    await L.waitUntil(page, () => window.__musicaPlaybackState().state === 'stopped',
+      { timeout: 30000, interval: 100, what: 'arrêt de la lecture' });
+    const afterStop = await page.evaluate(() => ({
+      notes: document.querySelectorAll('#page-current .note.note-playing').length,
+      rects: document.querySelectorAll('#page-current .note-highlight').length,
+      state: window.__musicaNoteHighlightState(),
+    }));
+
+    await page.click('#transport-play');
+    await L.waitUntil(page, () => window.__musicaPlaybackState().state === 'playing',
+      { timeout: 30000, interval: 100, what: 'reprise de la lecture' });
+    await seekTransport(page, 0.5);
+    await waitNoteHighlight(page);
+    await L.openSettings(page);
+    await page.uncheck('#highlight-measure');
+    await L.closeSettings(page);
+    await L.waitUntil(page, () => {
+      const state = window.__musicaNoteHighlightState?.();
+      return !!state && state.rect == null &&
+        !document.querySelector('#page-current .note.note-playing');
+    }, { timeout: 30000, interval: 100, what: 'surlignage retiré par le réglage' });
+    const disabled = await page.evaluate(() => ({
+      notes: document.querySelectorAll('#page-current .note.note-playing').length,
+      rects: document.querySelectorAll('#page-current .note-highlight').length,
+      state: window.__musicaNoteHighlightState(),
+    }));
+    L.record(results, '14. Vue carrée : le surlignage disparaît à l’arrêt et quand le réglage est désactivé', pageName,
+      afterStop.notes === 0 && afterStop.rects === 0 && afterStop.state.rect === null &&
+      disabled.notes === 0 && disabled.rects === 0 && disabled.state.rect === null
+        ? 'OK' : 'ÉCHEC',
+      `arrêt : ${afterStop.notes} note(s), ${afterStop.rects} rectangle(s) ; ` +
+      `désactivé : ${disabled.notes} note(s), ${disabled.rects} rectangle(s)`);
+
+    await page.evaluate(() => window.stopPlayback());
+    const relevant = L.summarize(errors);
+    L.record(results, '6. Erreurs JS (surlignage carré)', pageName,
+      relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
+  } catch (e) {
+    L.record(results, '14. Surlignage de la note carrée', pageName, 'ÉCHEC',
+      'exception du test : ' + e.message);
+  }
+  await ctx.close();
+}
+
 // scoretk absent : la notation carrée reste affichée, le transport est masqué
 // (aucune lecture possible) et aucune erreur n'est montrée à l'écran.
 async function runScoretkAbsent(browser, url, pageName, results) {
@@ -1535,6 +1678,7 @@ async function runRapid(browser, url, pageName, results) {
       await runTextSizeGabc(browser, url, pageName, results);
       await runToggle(browser, url, pageName, results);
       await runGabcPlayback(browser, url, pageName, results);
+      await runSquareHighlight(browser, url, pageName, results);
       await runLongPosition(browser, url, pageName, results);
       await runMixedChoice(browser, url, pageName, results);
       await runGregorienAutre(browser, url, pageName, results);
