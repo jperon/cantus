@@ -6,6 +6,50 @@
 SCORETK_EXTENSIONS = window.__musicaFormats.scoretkExtensions
 SCORETK_EXT_RE = new RegExp "\\.(#{SCORETK_EXTENSIONS.join '|'})$", 'i'
 
+# Détecte un chant grégorien encodé autrement que gabc (MEI neumatique,
+# MusicXML produit par scoretk depuis un gabc) et le convertit en gabc, à la
+# demande, au chargement. Le texte obtenu est mémorisé sur la source
+# (`gabcTexte`) : estGabc et tout le chargement suivent ensuite le chemin gabc.
+# Résout false — source laissée intacte — pour un fichier ordinaire ou si la
+# conversion échoue : le chemin normal du fichier reprend, sans écran vide.
+preparerGabcAutre = (source) ->
+  return Promise.resolve true if estGabc source
+  name = String source?.name or ""
+  data = source?.data
+  return Promise.resolve false unless data? and GABC_AUTRE_EXT_RE.test name
+  estMxl = /\.mxl$/i.test name
+  Promise.resolve()
+    .then ->
+      if typeof data is "string" then data
+      else if estMxl then window.__musicaMxl.extractMxl data
+      else new TextDecoder().decode new Uint8Array data
+    .then (texte) ->
+      if /\.mei$/i.test name
+        # MEI neumatique seulement : un autre MEI garde la conversion
+        # MusicXML habituelle.
+        return null unless MEI_NEUMES_RE.test texte
+        from = "mei"
+      else
+        return null unless MUSICXML_GABC_RE.test texte
+        from = "musicxml"
+      unless window.__musicaScoretkAvailable
+        throw new Error "import de ce format indisponible : paquet scoretk absent de cette version"
+      # Le worker détache le tampon : lui donner une copie, pour que le fichier
+      # reste disponible si la conversion échoue. Un .mxl se convertit depuis
+      # le MusicXML extrait.
+      octets = if estMxl or typeof data is "string"
+        new TextEncoder().encode texte
+      else
+        new Uint8Array data.slice 0
+      convertScoretkToGabc octets.buffer, name, from, source.includes
+    .then (texte) ->
+      return false unless texte?
+      source.gabcTexte = texte
+      true
+    .catch (err) ->
+      console.warn "Conversion gabc impossible pour #{name} : #{err?.message or err}"
+      false
+
 # Convertit une source en MusicXML. Aucune conversion n'a lieu à l'import :
 # le contenu brut est converti à la demande.
 convertSource = (source) ->
@@ -34,10 +78,12 @@ convertSource = (source) ->
 # du texte décodé. Aucune donnée n'est réimportée : la source est déjà en
 # mémoire.
 convertirGabcEnXml = (source) ->
-  texte = decoderTexteGabc source?.data
-  # convertScoretkToXml transfère le tampon (ArrayBuffer), pas la vue.
+  texte = decoderTexteGabc source
   octets = new TextEncoder().encode texte
-  convertScoretkToXml octets.buffer, source.name, source.includes
+  # Le nom d'une source convertie (.mei, .musicxml) ne dit pas gabc : forcer le
+  # format d'entrée. convertScoretkToXml transfère le tampon (ArrayBuffer), pas
+  # la vue.
+  convertScoretkToXml octets.buffer, source.name, source.includes, "gabc"
 
 # XML converti et découpage en mouvements d'une source, gardés pour la
 # partition courante (le zoom, le redimensionnement et les voix rechargent
@@ -48,9 +94,9 @@ ensureSource = (index, token) ->
   return Promise.resolve cached if cached
   source = currentSources?[index]
   return Promise.reject new Error "source inconnue" unless source
-  if estGabc source
-    return Promise.resolve().then ->
-      return if token? and token isnt loadToken
+  preparerGabcAutre(source).then (gabc) ->
+    return if token? and token isnt loadToken
+    if gabc
       if notationView is "classic"
         unless window.__musicaScoretkAvailable
           throw new Error t "errors.notationNeedsScoretk"
@@ -69,12 +115,12 @@ ensureSource = (index, token) ->
         info.notation = "square"
         sourceCache.set index, info
         info
-  else
-    convertSource(source).then (xml) ->
-      return if token? and token isnt loadToken
-      info = {xml, splitInfo: detectSplitPoints xml}
-      sourceCache.set index, info
-      info
+    else
+      convertSource(source).then (xml) ->
+        return if token? and token isnt loadToken
+        info = {xml, splitInfo: detectSplitPoints xml}
+        sourceCache.set index, info
+        info
 
 # Ajoute les mouvements d'une source à la fin de la liste globale
 appendSourceMovements = (index, info) ->

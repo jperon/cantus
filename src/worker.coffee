@@ -898,8 +898,12 @@ handleMessage = (e) ->
 
       when "convertScoretk"
         { id, bytes, name, includes } = e.data
-        from = scoretkFrom name
+        from = e.data.from ? scoretkFrom name
+        # "musicxml" par défaut ; "gabc" pour un MEI neumatique ou un MusicXML
+        # issu de gabc, converti ensuite en notation carrée (sources.coffee).
+        to = e.data.to ? 'musicxml'
         options = { from }
+        options.to = to
         if includes?
           # Les fichiers d'un dossier arrivent comme ArrayBuffers (clonage
           # structuré) ; scoretk attend des Uint8Array pour l'option `includes`.
@@ -915,7 +919,7 @@ handleMessage = (e) ->
             # convertWithTimeline les ajoute, sans changer le chemin
             # MusicXML ensuite. Les reprises restent écrites, comme pour tout
             # MusicXML : le worker les déroule à la lecture.
-            if from is 'gabc'
+            if from is 'gabc' and to isnt 'gabc'
               options.to = 'musicxml'
               options.expandRepeats = false
               # Vue classique : clef de sol sur cinq lignes (sol 8vb si la
@@ -930,8 +934,13 @@ handleMessage = (e) ->
             else
               api.convert new Uint8Array(bytes), options
           .then (result) ->
-            xml = new TextDecoder().decode result
-            self.postMessage { type: "scoretkConverted", id, xml }
+            texte = new TextDecoder().decode result
+            # `gabc` ou `xml` selon le format demandé : la page résout le champ
+            # correspondant.
+            if to is 'gabc'
+              self.postMessage { type: "scoretkConverted", id, gabc: texte }
+            else
+              self.postMessage { type: "scoretkConverted", id, xml: texte }
           .catch (err) ->
             self.postMessage {
               type: "scoretkError"

@@ -359,13 +359,25 @@ setupNavigation = ->
 # MusicXML. `name` permet au worker de déduire `from` de l'extension.
 # `includes` (table chemin relatif -> octets) est transmise telle quelle au
 # résolveur d'\include de scoretk pour les sources LilyPond d'un dossier.
-convertScoretkToXml = (buffer, name, includes) ->
+# `options.from` force le format d'entrée (source convertie en gabc, quel que
+# soit son nom) et `options.to` le format de sortie ("musicxml" par défaut).
+convertScoretk = (buffer, name, includes, options = {}) ->
   new Promise (resolve, reject) ->
     id = ++scoretkRequestId
     pendingScoretk.set id, {resolve, reject}
     message = { type: "convertScoretk", id, bytes: buffer, name }
     message.includes = includes if includes?
+    message.from = options.from if options.from?
+    message.to = options.to if options.to?
     worker.postMessage message, [buffer]
+
+convertScoretkToXml = (buffer, name, includes, from) ->
+  convertScoretk buffer, name, includes, {from, to: "musicxml"}
+
+# Conversion d'un MEI neumatique / MusicXML issu de gabc vers le texte gabc :
+# le chemin gabc (notation carrée) prend ensuite le relais.
+convertScoretkToGabc = (buffer, name, from, includes) ->
+  convertScoretk buffer, name, includes, {from, to: "gabc"}
 
 # Extensions importables : dérivées de src/formats.coffee, source unique
 # partagée avec build.js (attribut `accept`) et le service worker. Sans

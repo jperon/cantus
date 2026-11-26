@@ -11,19 +11,36 @@
 
 GABC_EXT_RE = /\.gabc$/i
 
+# Chant grégorien encodé dans un autre format : MEI neumatique (module Neumes
+# MEI 5.1) ou MusicXML produit par scoretk depuis un gabc. Ces fichiers sont
+# convertis en gabc à la demande (voir preparerGabcAutre dans sources.coffee) ;
+# le texte obtenu est mémorisé sur la source, qui suit ensuite le chemin gabc.
+GABC_AUTRE_EXT_RE = /\.(mei|xml|musicxml|mxl)$/i
+# Marqueurs lus sur le texte, sans parser : un élément <neume> ou <syllable>
+# (MEI neumatique), ou une <other-direction> dont le texte commence par
+# « gabc: » (MusicXML produit par scoretk depuis un gabc).
+MEI_NEUMES_RE = /<(?:neume|syllable)[\s>]/
+MUSICXML_GABC_RE = /<other-direction\b[^>]*>\s*gabc:/
+
 # Une source gabc se reconnaît à son extension (le partage et le lancement
 # gardent le nom du fichier ; le service worker ajoute une extension de repli
-# pour les types MIME qu'il connaît).
-estGabc = (source) -> GABC_EXT_RE.test String(source?.name or '')
+# pour les types MIME qu'il connaît), ou au texte gabc obtenu par conversion
+# d'un MEI neumatique / MusicXML issu de gabc.
+estGabc = (source) ->
+  source?.gabcTexte? or GABC_EXT_RE.test String(source?.name or '')
 
-decoderTexteGabc = (data) ->
+# Texte gabc de la source : le texte converti s'il existe, sinon le contenu
+# brut (source .gabc, ou texte déjà décodé).
+decoderTexteGabc = (source) ->
+  return String source.gabcTexte if source?.gabcTexte?
+  data = source?.data
   return String data if typeof data is 'string'
   throw new Error "contenu gabc absent" unless data?
   # UTF-8 strict : un fichier illisible est signalé plutôt que rendu de travers.
   new TextDecoder('utf-8', {fatal: true}).decode new Uint8Array data
 
 preparerSourceGabc = (source) ->
-  texte = decoderTexteGabc source?.data
+  texte = decoderTexteGabc source
   {gregorien: true, gabc: true, notation: "square", texte}
 
 # --- Chargement paresseux d'exsurge ---------------------------------------

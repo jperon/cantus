@@ -272,12 +272,12 @@ worker.onmessage = (e) ->
         showError message
 
     when "scoretkConverted", "scoretkError"
-      {id, xml, message} = e.data
+      {id, xml, gabc, message} = e.data
       pending = pendingScoretk.get id
       return unless pending
       pendingScoretk.delete id
       if type is "scoretkConverted"
-        pending.resolve xml
+        pending.resolve if gabc? then gabc else xml
       else
         pending.reject new Error message
 

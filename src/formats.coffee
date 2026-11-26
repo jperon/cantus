@@ -26,6 +26,10 @@ FORMATS = [
   {label: 'MusicXML', extensions: ['xml'], scoretk: false, share: false}
   {label: 'MusicXML', extensions: ['musicxml'], scoretk: false}
   {label: 'MusicXML', extensions: ['mxl'], scoretk: false}
+  # MEI (module Neumes MEI 5.1) : lu par scoretk ; un MEI neumatique est
+  # converti en gabc à la demande (voir src/app/sources.coffee), les autres MEI
+  # passent par la conversion MusicXML habituelle.
+  {label: 'MEI', extensions: ['mei'], scoretk: true, from: {mei: 'mei'}}
   # MuseScore (.mscz = archive, .mscx = XML)
   {label: 'MuseScore', extensions: ['mscz', 'mscx'], scoretk: true, from: {mscz: 'mscz', mscx: 'mscx'}}
   # LilyPond
