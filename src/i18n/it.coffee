@@ -109,8 +109,10 @@ registerLanguage 'it', 'Italiano',
   'nav.menuLabel': 'Azioni della partitura'
   'nav.export': 'Esporta'
   'nav.settings': 'Impostazioni'
-  'notation.gregorian': 'Gregoriano'
-  'notation.toggleTitle': 'Passa tra notazione gregoriana e classica'
+  'notation.square': 'Exsurge'
+  'notation.classic': 'Classico'
+  'notation.neumes': 'Verovio'
+  'notation.toggleTitle': 'Scegli la vista: quadrata (Exsurge), classica o neumi (Verovio)'
 
   'export.title': 'Esporta la partitura'
   'export.close': 'Chiudi l’esportazione'

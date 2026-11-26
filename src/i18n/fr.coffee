@@ -109,8 +109,10 @@ registerLanguage 'fr', 'Français',
   'nav.menuLabel': 'Actions de la partition'
   'nav.export': 'Exporter'
   'nav.settings': 'Réglages'
-  'notation.gregorian': 'Grégorien'
-  'notation.toggleTitle': 'Basculer entre notation grégorienne et classique'
+  'notation.square': 'Exsurge'
+  'notation.classic': 'Classique'
+  'notation.neumes': 'Verovio'
+  'notation.toggleTitle': 'Choisir la vue : carrée (Exsurge), classique ou neumes (Verovio)'
 
   'export.title': 'Exporter la partition'
   'export.close': 'Fermer l’export'

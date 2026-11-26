@@ -66,7 +66,7 @@ playbackKey = (movementId, linear = not expandRepeats) ->
   movement = movements.find (m) -> m.id is movementId
   mode = if linear then "linear" else "expanded"
   bounds = "#{movement?.measureStart ? 0}:#{movement?.measureEnd ? ''}"
-  notation = if movement?.gregorien then "gregorien" else "xml"
+  notation = if movement?.gregorien then "gregorien" else if movement?.lectureGabc then "neumes" else "xml"
   "#{movementId}:#{loadedVariant movementId}:#{mode}:#{bounds}:#{notation}"
 
 # XML MusicXML des sources gabc converties pour la lecture en notation carrée :
@@ -119,14 +119,16 @@ requestPlaybackData = (movementId, linear = not expandRepeats) ->
   height = currentPageHeight
   scale = currentScale
   movement = movements.find (m) -> m.id is movementId
-  gregorien = !!movement?.gregorien
+  # Notation carrée et vue neumes : les données de lecture viennent du
+  # MusicXML converti, pas du XML/MEI chargé dans Verovio.
+  lectureCarree = !!movement?.gregorien or !!movement?.lectureGabc
   measureStart = movement?.measureStart ? 0
   measureEnd = movement?.measureEnd ? null
   # Le mode de reprise, les bornes et la vue font partie de la clé persistante :
   # les données des deux modes ou des deux vues ne se servent jamais l'une pour
   # l'autre. La mise en page aussi : les numéros de page des marqueurs diffèrent
   # entre un système par page (horizontal) et la mise en page naturelle.
-  notation = if gregorien then "gregorien" else "xml"
+  notation = if lectureCarree then (if movement?.gregorien then "gregorien" else "neumes") else "xml"
   variant = "#{loadedVariant movementId}|#{layoutLabel()}|#{if linear then 'linear' else 'expanded'}|#{measureStart}:#{measureEnd ? ''}|#{notation}"
   promise = new Promise (resolve, reject) ->
     pendingPlayback.set key, {resolve, reject}
@@ -154,7 +156,7 @@ requestPlaybackData = (movementId, linear = not expandRepeats) ->
         # Notation carrée : le gabc doit d'abord être converti et enregistré
         # dans le worker. La conversion est asynchrone et ne touche pas au
         # rendu ; les demandes identiques sont déjà dédupliquées plus haut.
-        preparer = if gregorien then ensurePlaybackXml movement, requestToken else Promise.resolve()
+        preparer = if lectureCarree then ensurePlaybackXml movement, requestToken else Promise.resolve()
         preparer.then ->
           # Un rechargement a pu remplacer la demande pendant la conversion :
           # ne pas envoyer de requête pour l'ancien chargement.
@@ -172,7 +174,7 @@ requestPlaybackData = (movementId, linear = not expandRepeats) ->
           # La source entière (bornes 0/null côté worker, sans marqueurs) est
           # désignée par son identifiant : le mouvement grégorien n'a pas de
           # pagination Verovio.
-          message.sourceId = movement.sourceIndex if gregorien
+          message.sourceId = movement.sourceIndex if lectureCarree
           worker.postMessage message
         .catch (err) ->
           # Même précaution que pour le cache persistant : un chargement

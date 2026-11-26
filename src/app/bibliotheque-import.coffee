@@ -359,12 +359,15 @@ setupNavigation = ->
 # MusicXML. `name` permet au worker de déduire `from` de l'extension.
 # `includes` (table chemin relatif -> octets) est transmise telle quelle au
 # résolveur d'\include de scoretk pour les sources LilyPond d'un dossier.
-convertScoretkToXml = (buffer, name, includes) ->
+# `options` (facultatif) est transmis au convertisseur scoretk, p. ex.
+# {to: "mei"} pour la vue neumes d'un gabc.
+convertScoretkToXml = (buffer, name, includes, options = null) ->
   new Promise (resolve, reject) ->
     id = ++scoretkRequestId
     pendingScoretk.set id, {resolve, reject}
     message = { type: "convertScoretk", id, bytes: buffer, name }
     message.includes = includes if includes?
+    message.options = options if options?
     worker.postMessage message, [buffer]
 
 # Extensions importables : dérivées de src/formats.coffee, source unique

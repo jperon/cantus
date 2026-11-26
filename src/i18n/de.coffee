@@ -109,8 +109,10 @@ registerLanguage 'de', 'Deutsch',
   'nav.menuLabel': 'Partituraktionen'
   'nav.export': 'Exportieren'
   'nav.settings': 'Einstellungen'
-  'notation.gregorian': 'Gregorianisch'
-  'notation.toggleTitle': 'Zwischen gregorianischer und klassischer Notation wechseln'
+  'notation.square': 'Exsurge'
+  'notation.classic': 'Klassisch'
+  'notation.neumes': 'Verovio'
+  'notation.toggleTitle': 'Ansicht wählen: quadratisch (Exsurge), klassisch oder Neumen (Verovio)'
 
   'export.title': 'Partitur exportieren'
   'export.close': 'Export schließen'

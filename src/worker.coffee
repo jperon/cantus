@@ -897,9 +897,11 @@ handleMessage = (e) ->
         registerSource e.data.sourceId, e.data.xml
 
       when "convertScoretk"
-        { id, bytes, name, includes } = e.data
+        { id, bytes, name, includes, options: extraOptions } = e.data
         from = scoretkFrom name
         options = { from }
+        if extraOptions?
+          options[key] = value for own key, value of extraOptions
         if includes?
           # Les fichiers d'un dossier arrivent comme ArrayBuffers (clonage
           # structuré) ; scoretk attend des Uint8Array pour l'option `includes`.
@@ -915,7 +917,7 @@ handleMessage = (e) ->
             # convertWithTimeline les ajoute, sans changer le chemin
             # MusicXML ensuite. Les reprises restent écrites, comme pour tout
             # MusicXML : le worker les déroule à la lecture.
-            if from is 'gabc'
+            if from is 'gabc' and not extraOptions?.to
               options.to = 'musicxml'
               options.expandRepeats = false
               # Vue classique : clef de sol sur cinq lignes (sol 8vb si la

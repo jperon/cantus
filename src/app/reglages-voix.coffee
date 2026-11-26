@@ -313,8 +313,10 @@ partsVariant = ->
   return variant if visualTranspose is 0
   "#{variant}|t#{visualTranspose}"
 
-# Vue des sources gabc, réglage par fichier : "square" (défaut) ou "classic".
+# Vue des sources gabc, réglage par fichier : "square" (défaut, exsurge),
+# "classic" (gabc → MusicXML → Verovio) ou "neumes" (gabc → MEI → Verovio).
 # En dossier mixte, la valeur vaut pour toutes les sources gabc de l'entrée.
+notationsGabc = ["square", "classic", "neumes"]
 notationView = "square"
 
 loadNotationView = ->
@@ -322,17 +324,17 @@ loadNotationView = ->
   return unless currentFileId
   try
     saved = localStorage.getItem "musica-notation-#{currentFileId}"
-    notationView = "classic" if saved is "classic"
+    notationView = saved if saved in notationsGabc
   catch
     # localStorage unavailable (file:// on some browsers)
 
 saveNotationView = ->
   return unless currentFileId
   try
-    if notationView is "classic"
-      localStorage.setItem "musica-notation-#{currentFileId}", "classic"
-    else
+    if notationView is "square"
       localStorage.removeItem "musica-notation-#{currentFileId}"
+    else
+      localStorage.setItem "musica-notation-#{currentFileId}", notationView
   catch
     # localStorage unavailable (file:// on some browsers)
 
