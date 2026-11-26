@@ -725,12 +725,43 @@ goToPage = (page) ->
   return unless fileLoaded and page >= 1 and page <= pageCount
   setScrollPos (page - 1) * 2
 
+# Au-delà de ce seuil dans le mouvement courant, « précédent » ramène d'abord
+# à son début, comme un lecteur audio, au lieu de changer de mouvement.
+PREV_RESTART_MS = 2000
+
+# Index du mouvement courant : celui de la lecture quand elle joue (la vue
+# peut être en retard d'une frame), sinon celui de la page affichée.
+currentMovementIndex = ->
+  if playback.state is "playing" and playback.movementId?
+    idx = movements.findIndex (m) -> m.id is playback.movementId
+    return idx if idx >= 0
+  getCurrentMovementIndex()
+
+# Mouvement visé par « précédent » : le courant pour le reprendre au début si
+# la lecture en est sortie (position > seuil, ou page affichée après la
+# première page à l'arrêt), sinon le précédent. -1 quand rien ne précède.
+# La position locale ne compte que si les données chargées sont bien celles du
+# mouvement courant : une page d'un mouvement tout juste affiché peut encore
+# avoir, à l'arrêt, la position de la lecture précédente.
+prevMovementTarget = ->
+  currentIdx = currentMovementIndex()
+  currentId = movements[currentIdx]?.id
+  startPage = getMovementStartPage currentIdx
+  localPosition = playback.hasData and playback.movementId is currentId
+  beyondStart = (localPosition and currentPlaybackPosition() > PREV_RESTART_MS) or
+    (playback.state isnt "playing" and displayedPage() > startPage)
+  if beyondStart then currentIdx else currentIdx - 1
+
 goToPrevMovement = ->
   return unless fileLoaded
-  currentIdx = getCurrentMovementIndex()
-  return if currentIdx <= 0
-  startPage = getMovementStartPage(currentIdx - 1)
+  currentIdx = currentMovementIndex()
+  targetIdx = prevMovementTarget()
+  return if targetIdx < 0
+  startPage = getMovementStartPage(targetIdx)
   setScrollPos (startPage - 1) * 2
+  # Reprise au début du mouvement courant : la lecture y revient et continue
+  # si elle était en cours ; la vue a déjà été calée sur la première page.
+  seekPlayback 0 if targetIdx is currentIdx and playback.hasData
 
 goToNextMovement = ->
   return unless fileLoaded
