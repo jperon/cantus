@@ -25,6 +25,7 @@ const NABC = path.join(GABC_DIR, 'nabc.gabc');
 const NABC_SANS_ENTETE = path.join(GABC_DIR, 'nabc-sans-entete.gabc');
 const NABC_ZERO = path.join(GABC_DIR, 'nabc-zero.gabc');
 const NABC_COMMENTAIRE = path.join(GABC_DIR, 'nabc-commentaire.gabc');
+const NABC_GREGOBASE = path.join(GABC_DIR, 'nabc-gregobase.gabc');
 const XML = path.join(__dirname, 'fixtures', 'enchainement.xml');
 const MOVEMENTS_XML = path.join(__dirname, 'fixtures', 'movements.xml');
 
@@ -461,6 +462,10 @@ async function nabcState(page) {
       nabcIds: ids.filter((id) => /^Nabc-/.test(id)),
       nabcUses: uses.filter((href) => /#Nabc-/.test(href)),
       nabcErrors: slot.querySelectorAll('.nabcError').length,
+      errTexts: svg
+        ? [...svg.querySelectorAll('text')]
+          .filter((el) => el.textContent.trim() === 'ERR').length
+        : 0,
       globals: {
         gregall: typeof window.exsurgeNabcGregall,
         gresgmodern: typeof window.exsurgeNabcGresgmodern,
@@ -544,6 +549,20 @@ async function runNabc(browser, url, pageName, results) {
       `SVG ${auto.svgs}, défs Saint-Gall ` +
       `${auto.nabcIds.filter((id) => /^Nabc-gregall-/.test(id)).length}, ` +
       `uses ${auto.nabcUses.length}, nabcError ${auto.nabcErrors}, global gregall ${auto.globals.gregall}`);
+
+    // Un gabc GregoBase avec en-tête mais sans nabc-lines : les | d'un groupe
+    // alternent gabc et NABC (plusieurs | pour une seule ligne). La détection
+    // doit donc poser une ligne, pas le nombre de |, sinon exsurge dessine ERR.
+    await importGabc(page, NABC_GREGOBASE);
+    const gregobase = await nabcState(page);
+    L.record(results, '14. NABC : un groupe multi-| ne compte que pour une ligne', pageName,
+      gregobase.svgs >= 1 && gregobase.nabcIds.some((id) => /^Nabc-gregall-/.test(id)) &&
+      gregobase.nabcUses.length > 0 && gregobase.nabcErrors === 0 &&
+      gregobase.errTexts === 0 && gregobase.globals.gregall === 'object' ? 'OK' : 'ÉCHEC',
+      `SVG ${gregobase.svgs}, défs Saint-Gall ` +
+      `${gregobase.nabcIds.filter((id) => /^Nabc-gregall-/.test(id)).length}, ` +
+      `uses ${gregobase.nabcUses.length}, nabcError ${gregobase.nabcErrors}, ` +
+      `textes ERR ${gregobase.errTexts}, global gregall ${gregobase.globals.gregall}`);
 
     // gabc avec nabc-lines : les neumes Saint-Gall sont dessinés, sans ERR.
     await importGabc(page, NABC);
