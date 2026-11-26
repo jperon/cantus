@@ -79,6 +79,8 @@ convertSource = (source) ->
 # mémoire.
 convertirGabcEnXml = (source) ->
   texte = decoderTexteGabc source
+  # Contournement : scoretk exige `%%` ; à retirer quand il acceptera un corps seul.
+  texte = "%%\n#{texte}" unless /^%%\s*$/m.test texte
   octets = new TextEncoder().encode texte
   # Le nom d'une source convertie (.mei, .musicxml) ne dit pas gabc : forcer le
   # format d'entrée. convertScoretkToXml transfère le tampon (ArrayBuffer), pas
