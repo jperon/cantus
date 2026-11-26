@@ -1817,6 +1817,122 @@ async function runRapid(browser, url, pageName, results) {
   await ctx.close();
 }
 
+// Défauts propres à une source grégorienne : tempo 120 et volume de voix
+// 100 % sans réglage, dans les deux vues (carré et classique). Un réglage
+// utilisateur reste prioritaire, et le retour au défaut ne l'enregistre pas.
+// Un MusicXML ordinaire garde les défauts généraux (80 / 50).
+async function runDefaults(browser, url, pageName, results) {
+  const { page, ctx, errors } = await L.newPage(browser, url, {
+    pageName, viewport: { width: 360, height: 720 },
+  });
+  const waitTempo = (value) => page.waitForFunction(
+    (v) => document.getElementById('tempo-input')?.value === v,
+    value, { timeout: 30000, polling: 100 });
+  try {
+    await L.waitReady(page);
+    await importGabc(page, KYRIE);
+    await waitPlaybackData(page);
+    await L.openSettings(page);
+    await waitTempo('120');
+    const carre = await page.evaluate(() => ({
+      tempo: document.getElementById('tempo-input').value,
+      hint: document.getElementById('tempo-hint').textContent,
+    }));
+    L.record(results, '14. gabc : tempo de lecture 120 par défaut, sans réglage', pageName,
+      carre.tempo === '120' ? 'OK' : 'ÉCHEC',
+      `tempo ${carre.tempo}, indication « ${carre.hint.trim()} »`);
+    await L.closeSettings(page);
+
+    // Vue classique du même gabc : le mouvement garde son origine gabc (les
+    // défauts grégoriens suivent), et la voix y est réglable.
+    await clickToggle(page);
+    await waitNotationReady(page);
+    await waitPlaybackData(page);
+    await L.openSettings(page);
+    await waitTempo('120');
+    const classicTempo = await page.$eval('#tempo-input', (el) => el.value);
+    const rows = await L.partRows(page);
+    L.record(results, '14. gabc en vue classique : tempo 120 et volume de voix 100 % par défaut', pageName,
+      classicTempo === '120' && rows.length > 0 && rows.every((r) => r.volume === '100') ? 'OK' : 'ÉCHEC',
+      `tempo ${classicTempo}, volumes ${rows.map((r) => r.volume).join('/') || 'aucun'}`);
+
+    // Réglages utilisateur prioritaires : tempo 140 mémorisé dans la clé du
+    // fichier, volume 90 dans les réglages de voix. Revenir à 100 % (le défaut
+    // grégorien) supprime le réglage au lieu de l'enregistrer.
+    await page.$eval('#tempo-input', (el) => {
+      el.value = '140';
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    const label = rows[0]?.name;
+    const setVolume = (value) => page.$eval('#parts-list .part-row:nth-child(1) select.part-volume', (el, v) => {
+      el.value = v;
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    }, value);
+    await setVolume('90');
+    await page.waitForTimeout(400);
+    const user = await page.evaluate((name) => {
+      const key = Object.keys(localStorage).find((k) => k.startsWith('musica-hidden-parts-'));
+      const parts = key ? JSON.parse(localStorage.getItem(key)) : null;
+      return {
+        override: document.getElementById('tempo-input').value,
+        storedTempo: Object.keys(localStorage).filter((k) => k.startsWith('musica-tempo-'))
+          .map((k) => localStorage.getItem(k)),
+        volume: parts?.volumes?.[name],
+      };
+    }, label);
+    // Le tempo choisi s'applique à la lecture chargée (le préchargement peut
+    // encore être en vol : l'attente est bornée, le défaut retombe sur l'état).
+    let userTempo = user.override;
+    try {
+      await L.waitUntil(page, () => {
+        const s = window.__musicaPlaybackState();
+        return s.hasData && s.tempo === 140;
+      }, { timeout: 15000, interval: 100, what: 'tempo choisi appliqué à la lecture' });
+      userTempo = 140;
+    } catch {
+      userTempo = await page.evaluate(() => window.__musicaPlaybackState().tempo);
+    }
+    await setVolume('100');
+    await page.waitForTimeout(300);
+    const restored = await page.evaluate((name) => {
+      const key = Object.keys(localStorage).find((k) => k.startsWith('musica-hidden-parts-'));
+      const parts = key ? JSON.parse(localStorage.getItem(key)) : null;
+      return {
+        volume: parts?.volumes?.[name],
+        select: document.querySelector('#parts-list .part-row:nth-child(1) select.part-volume')?.value,
+      };
+    }, label);
+    L.record(results, '14. gabc : tempo et volume choisis priment, le retour au défaut n’est pas enregistré', pageName,
+      user.override === '140' && user.storedTempo.length === 1 && user.storedTempo[0] === '140' &&
+      userTempo === 140 && user.volume === 90 &&
+      restored.volume == null && restored.select === '100' ? 'OK' : 'ÉCHEC',
+      `tempo ${user.override} (stocké ${JSON.stringify(user.storedTempo)}, lecture ${userTempo}), ` +
+      `volume ${user.volume} puis retour ${restored.volume ?? 'absent'} (menu ${restored.select})`);
+    await L.closeSettings(page);
+
+    // MusicXML ordinaire sans indication de tempo : défauts généraux inchangés.
+    await L.importFile(page, MOVEMENTS_XML);
+    await L.waitFirstSvg(page, 120000);
+    await L.waitBackgroundLoaded(page, 120000);
+    await L.openSettings(page);
+    await waitTempo('80');
+    const xmlTempo = await page.$eval('#tempo-input', (el) => el.value);
+    const xmlRows = await L.partRows(page);
+    L.record(results, '14. MusicXML ordinaire : défauts généraux inchangés (tempo 80, volume 50)', pageName,
+      xmlTempo === '80' && xmlRows.length > 0 && xmlRows.every((r) => r.volume === '50') ? 'OK' : 'ÉCHEC',
+      `tempo ${xmlTempo}, volumes ${xmlRows.map((r) => r.volume).join('/') || 'aucun'}`);
+    await L.closeSettings(page);
+
+    const relevant = L.summarize(errors);
+    L.record(results, '6. Erreurs JS (défauts grégoriens)', pageName,
+      relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
+  } catch (e) {
+    L.record(results, '14. Défauts grégoriens', pageName, 'ÉCHEC',
+      'exception du test : ' + e.message);
+  }
+  await ctx.close();
+}
+
 (async () => {
   const { server, url } = await L.startServer();
   const browser = await L.launch();
@@ -1830,6 +1946,7 @@ async function runRapid(browser, url, pageName, results) {
       await runTextSizeGabc(browser, url, pageName, results);
       await runToggle(browser, url, pageName, results);
       await runGabcPlayback(browser, url, pageName, results);
+      await runDefaults(browser, url, pageName, results);
       await runSquareHighlight(browser, url, pageName, results);
       await runLongPosition(browser, url, pageName, results);
       await runMixedChoice(browser, url, pageName, results);

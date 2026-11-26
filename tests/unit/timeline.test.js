@@ -302,6 +302,15 @@ test('fileTempoInfo : fichier sans tempo -> effectif 120, défaut 80', () => {
   assert.strictEqual(timeline.defaultPlaybackTempo(info), 80);
 });
 
+// Une source grégorienne (marquée par l'application) se lit à 120 par défaut ;
+// un tempo explicite du fichier reste prioritaire, et les autres fichiers
+// gardent 80.
+test('defaultPlaybackTempo : source grégorienne sans tempo -> 120', () => {
+  assert.strictEqual(timeline.defaultPlaybackTempo({ bpm: 120, explicit: false, gregorien: true }), 120);
+  assert.strictEqual(timeline.defaultPlaybackTempo({ bpm: 120, explicit: false }), 80);
+  assert.strictEqual(timeline.defaultPlaybackTempo({ bpm: 90, explicit: true, gregorien: true }), 90);
+});
+
 // Cas réels produits par scoretk (MusicXML source puis conversion) :
 // indication métronomique à la blanche, à la noire pointée, et 6/8 sans
 // indication (défaut appliqué à la noire pointée). Voir le README des fixtures.
