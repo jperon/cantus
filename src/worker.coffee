@@ -804,11 +804,28 @@ buildPlaybackData = (movementId, linearRepeats = false, measureStart, measureEnd
     playbackCache[cacheKey] = data
     data
 
+# Marqueurs de note d'une source grégorienne : début de la note (ms de
+# lecture) et offset dans le gabc. Le rendu carré n'a pas de pagination
+# Verovio ; la page retrouve la note par cet offset (source-index + longueur
+# d'en-tête mesurée par exsurge).
+buildNoteMarks = (timeline) ->
+  notes = timeline?.notes
+  return [] unless Array.isArray notes
+  marks = []
+  for note in notes
+    t = Number note.timeUs
+    offset = Number note.sourceOffset
+    continue unless isFinite(t) and isFinite(offset)
+    marks.push {t: Math.round(t / 1000), offset}
+  marks.sort (a, b) -> (a.t - b.t) or (a.offset - b.offset)
+  marks
+
 # Données de lecture d'une source entière, sans pagination : notation carrée
 # d'un gabc. Mêmes MIDI, durées, segments, pauses, libellés, correspondance des
 # pistes et tempo que la vue classique, avec les bornes de la source (0/null)
-# et sans marqueurs de synchronisation : il n'y a ni pagination Verovio ni
-# suivi de partition.
+# et sans marqueurs de synchronisation par mesure : il n'y a ni pagination
+# Verovio ni suivi de partition. `noteMarks` donne en revanche le début de
+# chaque note et son offset source, pour suivre la note carrée jouée.
 buildSourcePlaybackData = (sourceId, linearRepeats = false) ->
   unless timelineApi?.movementSlice?
     throw new Error "Module timeline absent du worker"
@@ -818,6 +835,7 @@ buildSourcePlaybackData = (sourceId, linearRepeats = false) ->
   loadSourcePlayback(sourceId, linearRepeats).then (source) ->
     {data} = playbackDataForSlice source, linearRepeats, 0, null
     data.syncMarks = []
+    data.noteMarks = buildNoteMarks source.timeline
     playbackCache[cacheKey] = data
     data
 
@@ -830,6 +848,7 @@ postPlaybackData = (movementId, loadToken, data) ->
     loadToken
     midi: data.midi
     syncMarks: data.syncMarks
+    noteMarks: data.noteMarks ? []
     staffLabels: data.staffLabels
     trackMap: data.trackMap
     duration: data.duration

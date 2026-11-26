@@ -284,6 +284,11 @@ cancelSeekPreviewFrame = ->
 # Applique le suivi et renvoie la page globale visée, ou null si le défilement
 # n'a pas bougé.
 applyFollowScroll = ->
+  # Notation carrée : pas de pagination Verovio, la note jouée porte offset
+  # source ; le suivi amène sa page et la garde visible.
+  if typeof estGregorienAffiche is "function" and estGregorienAffiche() and
+      typeof applyFollowScrollCarre is "function"
+    return applyFollowScrollCarre()
   return null unless playback.movementId?
   marks = playback.marks
   return null unless Array.isArray(marks) and marks.length
@@ -362,8 +367,15 @@ clearMeasureHighlight = ->
   if measureHighlightRect?.parentNode?
     measureHighlightRect.remove()
   measureHighlightRect = null
+  # Notation carrée : même réglage, surlignage de la note jouée.
+  clearNoteHighlight() if typeof clearNoteHighlight is "function"
 
 updateMeasureHighlight = ->
+  # Notation carrée : la note (et non une mesure Verovio) est surlignée.
+  if typeof estGregorienAffiche is "function" and estGregorienAffiche() and
+      typeof mettreAJourSurlignageNote is "function"
+    mettreAJourSurlignageNote()
+    return
   unless highlightMeasureEnabled
     clearMeasureHighlight()
     return
@@ -482,6 +494,7 @@ resetPlayback = ->
   playback.sourceDuration = 0
   playback.loading = false
   playback.marks = []
+  playback.noteMarks = []
   playback.pauses = []
   playback.followKey = null
   clearMeasureHighlight()
@@ -587,6 +600,7 @@ applyPlaybackData = (engine, movementId, data, position = 0) ->
   local = Math.min local, playback.duration if playback.duration > 0
   playback.position = local
   playback.marks = scaled.data.syncMarks ? []
+  playback.noteMarks = scaled.data.noteMarks ? []
   playback.pauses = scaled.data.pauses ? []
   playback.followKey = null
   engine.load scaled.data

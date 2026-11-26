@@ -147,9 +147,12 @@ playback =
   loadToken: 0
   rafId: null
   marks: []  # syncMarks du mouvement chargé (t en ms, page locale)
+  noteMarks: []  # notes carrées d'une source gabc (t en ms, offset source)
   pauses: []  # pauses du mouvement (timeUs/endTimeUs), pour geler le suivi
   followKey: null  # dernière cible de suivi appliquée
   highlightKey: null  # mesure surlignée (id Verovio) : rectangle de fond
+  highlightNoteKey: null  # note carrée surlignée : offset source
+  highlightNoteOffset: null  # offset source de cette note
   rawData: null  # données du worker, à l'échelle du fichier (sans facteur)
   tempoFactor: 1  # facteur tempo choisi / tempo initial du fichier
   tempoBpm: null  # tempo effectif utilisé pour la lecture chargée
@@ -302,11 +305,11 @@ worker.onmessage = (e) ->
         pending.reject new Error message
 
     when "playbackData"
-      {movementId, midi, syncMarks, staffLabels, trackMap, duration, offsetMs, sourceDurationMs, segments, pauses, linearRepeats, fileTempoBpm, fileTempoExplicit, fileTempoUnit, loadToken: replyToken} = e.data
+      {movementId, midi, syncMarks, noteMarks, staffLabels, trackMap, duration, offsetMs, sourceDurationMs, segments, pauses, linearRepeats, fileTempoBpm, fileTempoExplicit, fileTempoUnit, loadToken: replyToken} = e.data
       # Réponse d'un chargement remplacé : sa pagination ne vaut plus rien.
       return if replyToken? and replyToken isnt loadToken
       key = playbackKey movementId, !!linearRepeats
-      data = {midi, syncMarks, staffLabels, trackMap, duration, offsetMs, sourceDurationMs, segments: segments ? [], pauses: pauses ? [], linearRepeats: !!linearRepeats, fileTempoBpm, fileTempoExplicit, fileTempoUnit}
+      data = {midi, syncMarks, noteMarks: noteMarks ? [], staffLabels, trackMap, duration, offsetMs, sourceDurationMs, segments: segments ? [], pauses: pauses ? [], linearRepeats: !!linearRepeats, fileTempoBpm, fileTempoExplicit, fileTempoUnit}
       playbackCache.set key, data
       pending = pendingPlayback.get key
       if pending

@@ -423,6 +423,13 @@ scalePlaybackData = (data, factor) ->
       copy[key] = value for own key, value of mark
       copy.t = Number(copy.t) / f if copy.t?
       copy
+  # Notes carrées : mêmes temps de lecture que les marqueurs de mesure.
+  if Array.isArray data.noteMarks
+    scaled.noteMarks = for mark in data.noteMarks
+      copy = {}
+      copy[key] = value for own key, value of mark
+      copy.t = Number(copy.t) / f if copy.t?
+      copy
   if Array.isArray data.pauses
     scaled.pauses = for pause in data.pauses
       copy = {}

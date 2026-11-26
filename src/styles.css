@@ -836,6 +836,20 @@ body.theme-dark .measure-highlight {
   fill: rgba(255, 255, 255, 0.2);
 }
 
+/* Note carrée jouée : même fond que la mesure, sous le glyphe de la note. */
+.note-highlight {
+  fill: rgba(0, 0, 0, 0.16);
+  stroke: none;
+}
+
+body.theme-sepia .note-highlight {
+  fill: rgba(40, 20, 0, 0.18);
+}
+
+body.theme-dark .note-highlight {
+  fill: rgba(255, 255, 255, 0.2);
+}
+
 #storage-info {
   flex: 0 1 auto;
   font-size: 14px;

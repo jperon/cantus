@@ -409,6 +409,255 @@ restaurerPositionApresBascule = (cible) ->
     goToPage getGlobalPage target.movementId, target.page
     defilerVersNote target
 
+# --- Suivi et surlignage de la note en notation carrée ---------------------
+# La lecture carrée n'a pas de marqueurs Verovio : le worker fournit le début
+# de chaque note et son offset source (`playback.noteMarks`). L'offset se
+# traduit en `source-index` par la longueur d'en-tête mesurée par exsurge, le
+# même repère que la bascule de position.
+#
+# Les notes rendues sont indexées par offset une seule fois par page (WeakMap
+# sur l'élément de page) : le suivi et le surlignage n'ont ensuite qu'à lire
+# cette table, sans reparcourir le DOM à chaque frame.
+
+indexNotesCarrees = new WeakMap()
+
+indexPageCarree = (pageEl) ->
+  return indexNotesCarrees.get pageEl if indexNotesCarrees.has pageEl
+  # Page encore en cours de rendu : ne pas figer un index vide.
+  return null unless pageEl?.querySelector? "svg"
+  page = parseInt pageEl.dataset.page
+  mv = getMovementForPage(page)?.movement
+  entete = mv?.enteteLongueur ? 0
+  byPos = new Map()
+  positions = []
+  for el in pageEl.querySelectorAll ".note[source-index]"
+    pos = positionNoteElement el, entete, true
+    continue unless pos?
+    continue if byPos.has pos
+    byPos.set pos, el
+    positions.push pos
+  positions.sort (a, b) -> a - b
+  index = {byPos, positions}
+  indexNotesCarrees.set pageEl, index
+  index
+
+# Note carrée de position source `pos` parmi les pages rendues. Les positions
+# des deux vues coïncident (offset MusicXML = en-tête + source-index), mais on
+# replie sur la note précédente pour rester lisible si une note manque.
+trouverNoteCarree = (pos) ->
+  return null unless pos?
+  slot = $ "page-current"
+  return null unless slot
+  avant = null
+  avantPos = -Infinity
+  premiere = null
+  premierePos = Infinity
+  for pageEl in slot.querySelectorAll ".scroll-page"
+    index = indexPageCarree pageEl
+    continue unless index?
+    exact = index.byPos.get pos
+    return exact if exact?
+    for candidate in index.positions
+      if candidate <= pos and candidate > avantPos
+        avantPos = candidate
+        avant = index.byPos.get candidate
+      if candidate < premierePos
+        premierePos = candidate
+        premiere = index.byPos.get candidate
+  avant ? premiere
+
+# Index complet des notes d'un mouvement carré (offset -> page locale),
+# construit une fois à la demande depuis les SVG gardés en mémoire : il permet
+# d'atteindre une page que la fenêtre rendue ne contient pas encore (saut de
+# lecture lointain).
+indexMouvementCarre = (mv) ->
+  return mv.indexNotesCarree if mv.indexNotesCarree?
+  byPos = new Map()
+  positions = []
+  entete = mv?.enteteLongueur ? 0
+  for svg, i in (mv?.gregorienSvgs ? [])
+    continue unless typeof svg is "string" and svg
+    try
+      doc = new DOMParser().parseFromString svg, "image/svg+xml"
+      for el in doc.querySelectorAll ".note[source-index]"
+        pos = positionNoteElement el, entete, true
+        continue unless pos?
+        continue if byPos.has pos
+        byPos.set pos, i + 1
+        positions.push pos
+    catch
+      continue
+  positions.sort (a, b) -> a - b
+  mv.indexNotesCarree = {byPos, positions}
+  mv.indexNotesCarree
+
+# Page locale de la note à `pos` : exacte, sinon la dernière position ≤ pos,
+# sinon la première note du mouvement.
+pageNoteCarree = (mv, pos) ->
+  index = indexMouvementCarre mv
+  return null unless index?.positions.length
+  return index.byPos.get pos if index.byPos.has pos
+  lo = 0
+  hi = index.positions.length
+  while lo < hi
+    mid = (lo + hi) >> 1
+    if index.positions[mid] <= pos then lo = mid + 1 else hi = mid
+  found = if lo > 0 then index.positions[lo - 1] else index.positions[0]
+  index.byPos.get found
+
+# Marge (px) autour de la zone de lecture : une note déjà visible n'entraîne
+# pas de défilement à chaque frame.
+MARGE_SUIVI_CARRE = 16
+
+# Suivi carré : amène la page de la note courante si elle n'est pas rendue,
+# puis défile seulement quand la note sort de la zone visible. Renvoie la page
+# globale visée, ou null si la vue n'a pas bougé.
+applyFollowScrollCarre = ->
+  marks = playback.noteMarks
+  return null unless Array.isArray(marks) and marks.length
+  api = window.__musicaPlayback
+  mark = if api?.markAt? then api.markAt marks, followPosition() else null
+  return null unless mark?.offset?
+  slot = $ "page-current"
+  el = trouverNoteCarree mark.offset
+  unless el?
+    mv = mouvementAffiche()
+    page = if mv? then pageNoteCarree mv, mark.offset else null
+    return null unless page?
+    target = getGlobalPage mv.id, page
+    return null unless target >= 1
+    # Éviter de relancer le saut à chaque frame tant que la page n'est pas
+    # rendue ; dès qu'elle l'est, `trouverNoteCarree` la trouve.
+    key = "page:#{target}"
+    return null if playback.followKey is key
+    goToPage target
+    playback.followKey = key
+    return target
+  pageEl = el.closest? ".scroll-page"
+  return null unless pageEl?
+  target = parseInt pageEl.dataset.page
+  rect = el.getBoundingClientRect()
+  slotRect = slot.getBoundingClientRect()
+  if rect.top < slotRect.top + MARGE_SUIVI_CARRE or
+      rect.bottom > slotRect.bottom - MARGE_SUIVI_CARRE
+    top = rect.top - slotRect.top + slot.scrollTop
+    slot.scrollTo top: Math.max(0, top - slot.clientHeight * 0.35), behavior: "instant"
+    showIndicator?()
+    savePositionDebounced?()
+    playback.followKey = "note:#{mark.offset}"
+    return target
+  null
+
+# Surlignage de la note jouée : rectangle de fond sous le glyphe, même style
+# que `.measure-highlight`, et classe `note-playing` sur la note pour que les
+# tests et l'inspection retrouvent la note exacte.
+noteHighlightRect = null
+noteHighlightElement = null
+noteHighlightUpdates = 0
+noteHighlightT = null
+noteHighlightNextT = null
+
+clearNoteHighlight = ->
+  playback.highlightNoteKey = null
+  playback.highlightNoteOffset = null
+  noteHighlightT = null
+  noteHighlightNextT = null
+  noteHighlightElement?.classList.remove "note-playing"
+  noteHighlightElement = null
+  noteHighlightRect?.remove() if noteHighlightRect?.parentNode?
+  noteHighlightRect = null
+
+placerSurlignageNote = (el) ->
+  try
+    box = el.getBBox()
+  catch
+    return false
+  return false unless box.width > 0 and box.height > 0
+  parent = el.parentNode
+  return false unless parent?
+  unless noteHighlightRect?.parentNode is parent
+    noteHighlightRect?.remove() if noteHighlightRect?.parentNode?
+    rect = document.createElementNS SVG_NS, "rect"
+    rect.setAttribute "class", "note-highlight"
+    rect.setAttribute "aria-hidden", "true"
+    rect.setAttribute "pointer-events", "none"
+    parent.insertBefore rect, el
+    noteHighlightRect = rect
+  rect = noteHighlightRect
+  padX = Math.max 1, box.width * 0.12
+  padY = Math.max 1, box.height * 0.12
+  rect.setAttribute "x", String box.x - padX
+  rect.setAttribute "y", String box.y - padY
+  rect.setAttribute "width", String box.width + 2 * padX
+  rect.setAttribute "height", String box.height + 2 * padY
+  true
+
+mettreAJourSurlignageNote = ->
+  unless highlightMeasureEnabled and estGregorienAffiche()
+    clearNoteHighlight()
+    return
+  marks = playback.noteMarks
+  unless Array.isArray(marks) and marks.length
+    clearNoteHighlight()
+    return
+  api = window.__musicaPlayback
+  mark = if api?.markAt? then api.markAt marks, followPosition() else null
+  unless mark?.offset?
+    clearNoteHighlight()
+    return
+  key = String mark.offset
+  if key is playback.highlightNoteKey and noteHighlightElement?.isConnected and
+      noteHighlightRect?.isConnected
+    return
+  el = trouverNoteCarree mark.offset
+  unless el?
+    clearNoteHighlight()
+    return
+  if noteHighlightElement isnt el
+    noteHighlightElement?.classList.remove "note-playing"
+    noteHighlightElement = el
+    el.classList.add "note-playing"
+  unless placerSurlignageNote el
+    clearNoteHighlight()
+    return
+  playback.highlightNoteKey = key
+  playback.highlightNoteOffset = mark.offset
+  position = marks.indexOf mark
+  noteHighlightT = mark.t
+  noteHighlightNextT = if position >= 0 then marks[position + 1]?.t ? null else null
+  noteHighlightUpdates += 1
+
+# Sonde de test : note carrée surlignée, sa position source et son rectangle.
+window.__musicaNoteHighlightState = ->
+  el = noteHighlightElement
+  connected = el?.isConnected is true
+  pageEl = if connected then el.closest? ".scroll-page" else null
+  page = if pageEl? then parseInt(pageEl.dataset.page) else null
+  mv = if page? then getMovementForPage(page)?.movement else null
+  index = if connected then Number el.getAttribute "source-index" else null
+  rect = noteHighlightRect
+  rectOk = rect?.isConnected is true
+  position = if typeof followPosition is "function" then followPosition() else null
+  {
+    enabled: highlightMeasureEnabled
+    key: playback.highlightNoteKey
+    updates: noteHighlightUpdates
+    offset: playback.highlightNoteOffset ? null
+    sourceIndex: if isFinite(index) then index else null
+    headerLen: mv?.enteteLongueur ? 0
+    page: page
+    displayed: if typeof displayedPage is "function" then displayedPage() else null
+    position: if isFinite(position) then position else null
+    t: noteHighlightT
+    nextT: noteHighlightNextT
+    rect: if rectOk then {
+      x: Number rect.getAttribute "x"
+      y: Number rect.getAttribute "y"
+      width: Number rect.getAttribute "width"
+      height: Number rect.getAttribute "height"
+    } else null
+  }
+
 # Appelée par finishLoad : restaure la position de la bascule une fois toutes
 # les sources converties et les mouvements connus.
 restaurerPositionBascule = ->
