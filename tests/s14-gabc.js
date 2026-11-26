@@ -23,6 +23,8 @@ const KYRIE_GABC_XML = path.join(GABC_DIR, 'kyrie-gabc.musicxml');
 const SANS_ENTETE = path.join(GABC_DIR, 'sans-entete.gabc');
 const NABC = path.join(GABC_DIR, 'nabc.gabc');
 const NABC_SANS_ENTETE = path.join(GABC_DIR, 'nabc-sans-entete.gabc');
+const NABC_ZERO = path.join(GABC_DIR, 'nabc-zero.gabc');
+const NABC_COMMENTAIRE = path.join(GABC_DIR, 'nabc-commentaire.gabc');
 const XML = path.join(__dirname, 'fixtures', 'enchainement.xml');
 const MOVEMENTS_XML = path.join(__dirname, 'fixtures', 'movements.xml');
 
@@ -507,6 +509,29 @@ async function runNabc(browser, url, pageName, results) {
       sansNabcAucunGlobal && sansNabc.nabcScripts.length === 0 ? 'OK' : 'ÉCHEC',
       `SVG ${sansNabc.svgs}, défs NABC ${sansNabc.nabcIds.length}, globaux ${JSON.stringify(sansNabc.globals)}, ` +
       `scripts ${JSON.stringify(sansNabc.nabcScripts)}`);
+
+    // Un commentaire gabc (% jusqu'à la fin de ligne) n'annonce pas de NABC,
+    // même s'il contient un | entre parenthèses.
+    await importGabc(page, NABC_COMMENTAIRE);
+    const commentaire = await nabcState(page);
+    const commentaireAucunGlobal =
+      Object.values(commentaire.globals).every((type) => type === 'undefined');
+    L.record(results, '14. NABC : les commentaires ne déclenchent pas la détection', pageName,
+      commentaire.svgs >= 1 && commentaire.nabcIds.length === 0 &&
+      commentaire.nabcUses.length === 0 && commentaireAucunGlobal &&
+      commentaire.nabcScripts.length === 0 ? 'OK' : 'ÉCHEC',
+      `SVG ${commentaire.svgs}, défs NABC ${commentaire.nabcIds.length}, ` +
+      `globaux ${JSON.stringify(commentaire.globals)}, scripts ${JSON.stringify(commentaire.nabcScripts)}`);
+
+    // Un nabc-lines: 0; explicite prime : pas d'autodétection, pas de police.
+    await importGabc(page, NABC_ZERO);
+    const zero = await nabcState(page);
+    const zeroAucunGlobal = Object.values(zero.globals).every((type) => type === 'undefined');
+    L.record(results, '14. NABC : un nabc-lines 0 dans l’en-tête prime sur la détection', pageName,
+      zero.svgs >= 1 && zero.nabcIds.length === 0 && zero.nabcUses.length === 0 &&
+      zeroAucunGlobal && zero.nabcScripts.length === 0 ? 'OK' : 'ÉCHEC',
+      `SVG ${zero.svgs}, défs NABC ${zero.nabcIds.length}, ` +
+      `globaux ${JSON.stringify(zero.globals)}, scripts ${JSON.stringify(zero.nabcScripts)}`);
 
     // gabc brut de GregoBase (corps seul, sans ligne %%) : les | du NABC
     // doivent suffire à le détecter et à faire dessiner les neumes.
