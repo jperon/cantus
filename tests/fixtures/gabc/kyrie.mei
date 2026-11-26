@@ -1,0 +1,891 @@
+<?xml-model href="https://music-encoding.org/schema/5.1/mei-all.rng" type="application/xml" schematypens="http://purl.oclc.org/dsdl/schematron"?>
+<mei xmlns="http://www.music-encoding.org/ns/mei" meiversion="5.1">
+  <meiHead>
+    <fileDesc>
+      <titleStmt>
+        <title n="0">Kyrie (test)</title>
+        </titleStmt>
+      <pubStmt>
+        <date isodate="2026-01-01T00:00:00"/>
+        </pubStmt>
+      <sourceDesc>
+        <source>
+          <bibl>
+            <rend type="initial-style" n="2">1</rend>
+            </bibl>
+          </source>
+        </sourceDesc>
+      </fileDesc>
+    <workList>
+      <work>
+        <title type="mode" n="1">1</title>
+        <classification>
+          <termList>
+            <term type="mode" n="1">1</term>
+            </termList>
+          </classification>
+        </work>
+      </workList>
+    </meiHead>
+  <music>
+    <body>
+      <mdiv>
+        <score>
+          <scoreDef>
+            <staffGrp>
+              <staffDef n="1" lines="4">
+                <clef shape="C" line="3"/>
+                </staffDef>
+              </staffGrp>
+            </scoreDef>
+          <section xml:id="s1">
+            <staff n="1">
+              <layer n="1">
+                <syllable>
+                  <syl wordpos="m" con="d">Ký</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="b" oct="3">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">ri</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="b" oct="3">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="t" con="s">e</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="b" oct="3">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="t" con="s">*</syl>
+                  <divLine form="minima"/>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">e</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="a" oct="3">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">lé</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="b" oct="3">
+                      <episema form="h" type="HorizontalEpisema"/>
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">i</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="a" oct="3">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="t" con="s">son</syl>
+                  <neume n="0" type="pes">
+                    <nc pname="b" oct="3">
+                      </nc>
+                    <nc pname="c" oct="4" con="g">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="t" con="s"></syl>
+                  <divLine form="minor"/>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">Ký</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="c" oct="4">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">ri</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="b" oct="3">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="t" con="s">e</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="b" oct="3">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="t" con="s"></syl>
+                  <divLine form="minima"/>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">e</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="a" oct="3">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">lé</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="b" oct="3">
+                      <quilisma/>
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">i</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="a" oct="3">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="t" con="s">son</syl>
+                  <neume n="0" type="pes">
+                    <nc pname="b" oct="3">
+                      </nc>
+                    <nc pname="c" oct="4" con="g">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="t" con="s"></syl>
+                  <divLine form="minor"/>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">Ký</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="b" oct="3">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">ri</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="a" oct="3">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="t" con="s">e</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="b" oct="3">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="t" con="s"></syl>
+                  <divLine form="minima"/>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">e</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="a" oct="3">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">lé</syl>
+                  <neume n="0" type="clivis">
+                    <nc pname="b" oct="3">
+                      <signifLet type="Alteration" n="flat"/>
+                      </nc>
+                    <nc pname="b" oct="3" con="g">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">i</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="a" oct="3">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="t" con="s">son</syl>
+                  <neume n="0" type="pes">
+                    <nc pname="b" oct="3">
+                      </nc>
+                    <nc pname="c" oct="4" con="g">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="t" con="s"></syl>
+                  <divLine form="minor"/>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">Ký</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="c" oct="4">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">ri</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="b" oct="3">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="t" con="s">e</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="a" oct="3">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="t" con="s"></syl>
+                  <divLine form="minima"/>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">e</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="a" oct="3">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">lé</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="b" oct="3">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">i</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="c" oct="4">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="t" con="s">son</syl>
+                  <neume n="0" type="pes">
+                    <nc pname="b" oct="3">
+                      </nc>
+                    <nc pname="c" oct="4" con="g">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="t" con="s"></syl>
+                  <divLine form="minor"/>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">Ký</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="b" oct="3">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">ri</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="b" oct="3">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="t" con="s">e</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="b" oct="3">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="t" con="s"></syl>
+                  <divLine form="minima"/>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">e</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="a" oct="3">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">lé</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="b" oct="3">
+                      <episema form="h" type="HorizontalEpisema"/>
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">i</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="a" oct="3">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="t" con="s">son</syl>
+                  <neume n="0" type="pes">
+                    <nc pname="b" oct="3">
+                      </nc>
+                    <nc pname="c" oct="4" con="g">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="t" con="s"></syl>
+                  <divLine form="minor"/>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">Ký</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="c" oct="4">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">ri</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="b" oct="3">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="t" con="s">e</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="a" oct="3">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="t" con="s"></syl>
+                  <divLine form="minima"/>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">e</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="a" oct="3">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">lé</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="b" oct="3">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">i</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="c" oct="4">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="t" con="s">son</syl>
+                  <neume n="0" type="pes">
+                    <nc pname="b" oct="3">
+                      </nc>
+                    <nc pname="c" oct="4" con="g">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="t" con="s"></syl>
+                  <divLine form="minor"/>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">Ký</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="b" oct="3">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">ri</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="a" oct="3">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="t" con="s">e</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="b" oct="3">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="t" con="s"></syl>
+                  <divLine form="minima"/>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">e</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="a" oct="3">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">lé</syl>
+                  <neume n="0" type="clivis">
+                    <nc pname="b" oct="3">
+                      <signifLet type="Alteration" n="flat"/>
+                      </nc>
+                    <nc pname="b" oct="3" con="g">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">i</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="a" oct="3">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="t" con="s">son</syl>
+                  <neume n="0" type="pes">
+                    <nc pname="b" oct="3">
+                      </nc>
+                    <nc pname="c" oct="4" con="g">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="t" con="s"></syl>
+                  <divLine form="minor"/>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">Ký</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="c" oct="4">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">ri</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="b" oct="3">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="t" con="s">e</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="a" oct="3">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="t" con="s"></syl>
+                  <divLine form="minima"/>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">e</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="a" oct="3">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">lé</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="b" oct="3">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">i</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="c" oct="4">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="t" con="s">son</syl>
+                  <neume n="0" type="pes">
+                    <nc pname="b" oct="3">
+                      </nc>
+                    <nc pname="c" oct="4" con="g">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="t" con="s"></syl>
+                  <divLine form="minor"/>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">Ký</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="b" oct="3">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">ri</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="b" oct="3">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="t" con="s">e</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="b" oct="3">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="t" con="s"></syl>
+                  <divLine form="minima"/>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">e</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="a" oct="3">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">lé</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="b" oct="3">
+                      <quilisma/>
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">i</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="a" oct="3">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="t" con="s">son</syl>
+                  <neume n="0" type="pes">
+                    <nc pname="b" oct="3">
+                      </nc>
+                    <nc pname="c" oct="4" con="g">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="t" con="s"></syl>
+                  <divLine form="minor"/>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">Ký</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="c" oct="4">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">ri</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="b" oct="3">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="t" con="s">e</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="a" oct="3">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="t" con="s"></syl>
+                  <divLine form="minima"/>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">e</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="a" oct="3">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">lé</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="b" oct="3">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">i</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="c" oct="4">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="t" con="s">son</syl>
+                  <neume n="0" type="pes">
+                    <nc pname="b" oct="3">
+                      </nc>
+                    <nc pname="c" oct="4" con="g">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="t" con="s"></syl>
+                  <divLine form="minor"/>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">Ký</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="b" oct="3">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">ri</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="a" oct="3">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="t" con="s">e</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="b" oct="3">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="t" con="s"></syl>
+                  <divLine form="minima"/>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">e</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="a" oct="3">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">lé</syl>
+                  <neume n="0" type="clivis">
+                    <nc pname="b" oct="3">
+                      <signifLet type="Alteration" n="flat"/>
+                      </nc>
+                    <nc pname="b" oct="3" con="g">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">i</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="a" oct="3">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="t" con="s">son</syl>
+                  <neume n="0" type="pes">
+                    <nc pname="b" oct="3">
+                      </nc>
+                    <nc pname="c" oct="4" con="g">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="t" con="s"></syl>
+                  <divLine form="minor"/>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">Ký</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="c" oct="4">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">ri</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="b" oct="3">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="t" con="s">e</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="a" oct="3">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="t" con="s"></syl>
+                  <divLine form="minima"/>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">e</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="a" oct="3">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">lé</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="b" oct="3">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">i</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="c" oct="4">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="t" con="s">son</syl>
+                  <neume n="0" type="pes">
+                    <nc pname="b" oct="3">
+                      </nc>
+                    <nc pname="c" oct="4" con="g">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="t" con="s"></syl>
+                  <divLine form="minor"/>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">Ký</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="b" oct="3">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">ri</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="b" oct="3">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="t" con="s">e</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="b" oct="3">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="t" con="s"></syl>
+                  <divLine form="minima"/>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">e</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="a" oct="3">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">lé</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="b" oct="3">
+                      <episema form="h" type="HorizontalEpisema"/>
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">i</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="a" oct="3">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="t" con="s">son</syl>
+                  <neume n="0" type="pes">
+                    <nc pname="b" oct="3">
+                      </nc>
+                    <nc pname="c" oct="4" con="g">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="t" con="s"></syl>
+                  <divLine form="minor"/>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">Ký</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="c" oct="4">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">ri</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="b" oct="3">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="t" con="s">e</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="a" oct="3">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="t" con="s"></syl>
+                  <divLine form="minima"/>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">e</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="a" oct="3">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">lé</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="b" oct="3">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d">i</syl>
+                  <neume n="0" type="punctum">
+                    <nc pname="c" oct="4">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="t" con="s">son</syl>
+                  <neume n="0" type="pes">
+                    <nc pname="b" oct="3">
+                      </nc>
+                    <nc pname="c" oct="4" con="g">
+                      </nc>
+                    </neume>
+                  </syllable>
+                <syllable>
+                  <syl wordpos="m" con="d"></syl>
+                  <divLine form="finalis"/>
+                  </syllable>
+                </layer>
+              </staff>
+            </section>
+          </score>
+        </mdiv>
+      </body>
+    </music>
+  </mei>

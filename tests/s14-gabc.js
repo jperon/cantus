@@ -17,7 +17,10 @@ const LONG = path.join(GABC_DIR, 'long.gabc');
 const ACCORD = path.join(GABC_DIR, 'accord.gabc');
 const INVALIDE = path.join(GABC_DIR, 'invalide.gabc');
 const MALVEILLANT = path.join(GABC_DIR, 'malveillant.gabc');
+const KYRIE_MEI = path.join(GABC_DIR, 'kyrie.mei');
+const KYRIE_GABC_XML = path.join(GABC_DIR, 'kyrie-gabc.musicxml');
 const XML = path.join(__dirname, 'fixtures', 'enchainement.xml');
+const MOVEMENTS_XML = path.join(__dirname, 'fixtures', 'movements.xml');
 
 // Longueur de l'en-tête en unités UTF-16, comme exsurge et scoretk : tout ce
 // qui précède le corps, ligne %% et son saut de ligne compris. La fixture
@@ -1228,11 +1231,69 @@ async function runMixedChoice(browser, url, pageName, results) {
   await ctx.close();
 }
 
+// Chant grégorien encodé autrement que gabc : un MEI neumatique et un
+// MusicXML issu de gabc s'ouvrent comme kyrie.gabc (notation carrée exsurge,
+// même corps) et basculent vers la vue classique. Un MusicXML ordinaire reste
+// en rendu Verovio, sans bouton (runButtonAbsent, movements.xml).
+async function runGregorienAutre(browser, url, pageName, results) {
+  const { page, ctx, errors } = await L.newPage(browser, url, {
+    pageName, viewport: { width: 360, height: 720 },
+  });
+  try {
+    await L.waitReady(page);
+    // Référence : le même chant en gabc, ouvrable directement.
+    await importGabc(page, KYRIE);
+    const base = await notationState(page);
+
+    await importGabc(page, KYRIE_MEI);
+    const mei = await notationState(page);
+    L.record(results, '14. MEI neumatique : notation carrée, même nombre de notes que le gabc', pageName,
+      mei.view === 'square' && mei.chantLines >= 2 && mei.squareNotes > 0 &&
+      mei.squareNotes === base.squareNotes ? 'OK' : 'ÉCHEC',
+      `MEI ${mei.squareNotes} note(s) contre ${base.squareNotes} pour le gabc, ` +
+      `${mei.chantLines} ligne(s)`);
+
+    await clickToggle(page);
+    await waitNotationReady(page);
+    const meiClassic = await notationState(page);
+    L.record(results, '14. MEI neumatique : bascule vers la vue classique', pageName,
+      meiClassic.view === 'classic' && meiClassic.staffs > 0 && meiClassic.squareNotes === 0
+        ? 'OK' : 'ÉCHEC',
+      `vue ${meiClassic.view}, ${meiClassic.staffs} portée(s), ` +
+      `${meiClassic.squareNotes} note(s) carrée(s)`);
+
+    await importGabc(page, KYRIE_GABC_XML);
+    const xml = await notationState(page);
+    L.record(results, '14. MusicXML issu de gabc : notation carrée, même nombre de notes que le gabc', pageName,
+      xml.view === 'square' && xml.chantLines >= 2 && xml.squareNotes > 0 &&
+      xml.squareNotes === base.squareNotes ? 'OK' : 'ÉCHEC',
+      `MusicXML ${xml.squareNotes} note(s) contre ${base.squareNotes} pour le gabc, ` +
+      `${xml.chantLines} ligne(s)`);
+
+    await clickToggle(page);
+    await waitNotationReady(page);
+    const xmlClassic = await notationState(page);
+    L.record(results, '14. MusicXML issu de gabc : bascule vers la vue classique', pageName,
+      xmlClassic.view === 'classic' && xmlClassic.staffs > 0 && xmlClassic.squareNotes === 0
+        ? 'OK' : 'ÉCHEC',
+      `vue ${xmlClassic.view}, ${xmlClassic.staffs} portée(s), ` +
+      `${xmlClassic.squareNotes} note(s) carrée(s)`);
+
+    const relevant = L.summarize(errors);
+    L.record(results, '6. Erreurs JS (chant grégorien encodé autrement)', pageName,
+      relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
+  } catch (e) {
+    L.record(results, '14. Chant grégorien encodé autrement', pageName, 'ÉCHEC',
+      'exception du test : ' + e.message);
+  }
+  await ctx.close();
+}
+
 async function runButtonAbsent(browser, url, pageName, results) {
   const { page, ctx, errors } = await L.newPage(browser, url, { pageName });
   try {
     await L.waitReady(page);
-    await L.importFile(page, XML);
+    await L.importFile(page, MOVEMENTS_XML);
     await L.waitFirstSvg(page, 120000);
     await L.waitBackgroundLoaded(page, 120000);
     const state = await notationState(page);
@@ -1441,6 +1502,7 @@ async function runRapid(browser, url, pageName, results) {
       await runGabcPlayback(browser, url, pageName, results);
       await runLongPosition(browser, url, pageName, results);
       await runMixedChoice(browser, url, pageName, results);
+      await runGregorienAutre(browser, url, pageName, results);
       await runButtonAbsent(browser, url, pageName, results);
       await runScoretkFallback(browser, url, pageName, results);
       await runScoretkAbsent(browser, url, pageName, results);

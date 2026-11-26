@@ -1,0 +1,3261 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 4.0 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">
+<score-partwise version="4.0">
+  <work>
+    <work-title>Kyrie (test)</work-title>
+    </work>
+  <movement-title>Kyrie (test)</movement-title>
+  <identification>
+    <encoding>
+      <software>MuseScore Studio 4.7.4</software>
+      <encoding-date>2026-11-16</encoding-date>
+      <supports element="accidental" type="yes"/>
+      <supports element="beam" type="yes"/>
+      <supports element="print" attribute="new-page" type="yes" value="yes"/>
+      <supports element="print" attribute="new-system" type="yes" value="yes"/>
+      <supports element="stem" type="yes"/>
+      </encoding>
+    <miscellaneous>
+      <miscellaneous-field name="creationDate">2026-11-16</miscellaneous-field>
+      <miscellaneous-field name="platform">Linux</miscellaneous-field>
+      </miscellaneous>
+    </identification>
+  <defaults>
+    <scaling>
+      <millimeters>7</millimeters>
+      <tenths>40</tenths>
+      </scaling>
+    <page-layout>
+      <page-height>1696.72</page-height>
+      <page-width>1200.33</page-width>
+      <page-margins type="even">
+        <left-margin>85.7143</left-margin>
+        <right-margin>85.7143</right-margin>
+        <top-margin>85.7143</top-margin>
+        <bottom-margin>85.7143</bottom-margin>
+        </page-margins>
+      <page-margins type="odd">
+        <left-margin>85.7143</left-margin>
+        <right-margin>85.7143</right-margin>
+        <top-margin>85.7143</top-margin>
+        <bottom-margin>85.7143</bottom-margin>
+        </page-margins>
+      </page-layout>
+    </defaults>
+  <part-list>
+    <score-part id="P1">
+      <part-name print-object="no">Gregorian</part-name>
+      <part-abbreviation print-object="no">Gre</part-abbreviation>
+      <score-instrument id="P1-I1">
+        <instrument-name>Gregorian</instrument-name>
+        </score-instrument>
+      <midi-device id="P1-I1" port="1"></midi-device>
+      <midi-instrument id="P1-I1">
+        <midi-channel>1</midi-channel>
+        <volume>78.7402</volume>
+        <pan>0</pan>
+        </midi-instrument>
+      </score-part>
+    </part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes>
+        <divisions>2</divisions>
+        <time print-object="no">
+          <senza-misura/>
+          </time>
+        <key>
+          <fifths>0</fifths>
+          </key>
+        <clef>
+          <sign>C</sign>
+          <line>3</line>
+          </clef>
+        <staff-details>
+          <staff-lines>4</staff-lines>
+          </staff-details>
+        </attributes>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:header:n=name|v=Kyrie (test)</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:header:n=mode|v=1</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:header:n=initial-style|v=1</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:clef:t=c3|l=4</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=0|t=Ký|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=1|t=ri|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=2|t=e|w=1</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=3|t=*|w=1|b=,</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=4|t=e|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=5|t=lé|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=6|t=i|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=7|t=son|w=1</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=8|t=|w=1|b=;</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=9|t=Ký|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=10|t=ri|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=11|t=e|w=1</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=12|t=|w=1|b=,</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=13|t=e|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=14|t=lé|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=15|t=i|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=16|t=son|w=1</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=17|t=|w=1|b=;</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=18|t=Ký|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=19|t=ri|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=20|t=e|w=1</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=21|t=|w=1|b=,</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=22|t=e|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=23|t=lé|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:alter:i=23|a=0|l=g|g=x|o=172|e=174</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=24|t=i|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=25|t=son|w=1</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=26|t=|w=1|b=;</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=27|t=Ký|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=28|t=ri|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=29|t=e|w=1</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=30|t=|w=1|b=,</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=31|t=e|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=32|t=lé|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=33|t=i|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=34|t=son|w=1</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=35|t=|w=1|b=;</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=36|t=Ký|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=37|t=ri|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=38|t=e|w=1</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=39|t=|w=1|b=,</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=40|t=e|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=41|t=lé|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=42|t=i|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=43|t=son|w=1</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=44|t=|w=1|b=;</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=45|t=Ký|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=46|t=ri|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=47|t=e|w=1</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=48|t=|w=1|b=,</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=49|t=e|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=50|t=lé|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=51|t=i|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=52|t=son|w=1</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=53|t=|w=1|b=;</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=54|t=Ký|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=55|t=ri|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=56|t=e|w=1</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=57|t=|w=1|b=,</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=58|t=e|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=59|t=lé|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:alter:i=59|a=0|l=g|g=x|o=351|e=353</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=60|t=i|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=61|t=son|w=1</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=62|t=|w=1|b=;</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=63|t=Ký|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=64|t=ri|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=65|t=e|w=1</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=66|t=|w=1|b=,</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=67|t=e|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=68|t=lé|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=69|t=i|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=70|t=son|w=1</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=71|t=|w=1|b=;</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=72|t=Ký|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=73|t=ri|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=74|t=e|w=1</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=75|t=|w=1|b=,</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=76|t=e|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=77|t=lé|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=78|t=i|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=79|t=son|w=1</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=80|t=|w=1|b=;</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=81|t=Ký|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=82|t=ri|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=83|t=e|w=1</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=84|t=|w=1|b=,</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=85|t=e|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=86|t=lé|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=87|t=i|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=88|t=son|w=1</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=89|t=|w=1|b=;</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=90|t=Ký|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=91|t=ri|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=92|t=e|w=1</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=93|t=|w=1|b=,</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=94|t=e|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=95|t=lé|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:alter:i=95|a=0|l=g|g=x|o=530|e=532</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=96|t=i|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=97|t=son|w=1</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=98|t=|w=1|b=;</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=99|t=Ký|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=100|t=ri|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=101|t=e|w=1</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=102|t=|w=1|b=,</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=103|t=e|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=104|t=lé|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=105|t=i|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=106|t=son|w=1</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=107|t=|w=1|b=;</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=108|t=Ký|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=109|t=ri|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=110|t=e|w=1</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=111|t=|w=1|b=,</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=112|t=e|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=113|t=lé|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=114|t=i|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=115|t=son|w=1</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=116|t=|w=1|b=;</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=117|t=Ký|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=118|t=ri|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=119|t=e|w=1</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=120|t=|w=1|b=,</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=121|t=e|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=122|t=lé|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=123|t=i|w=0</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=124|t=son|w=1</other-direction>
+          </direction-type>
+        </direction>
+      <direction print-object="no">
+        <direction-type>
+          <other-direction print-object="no">gabc:syllable:i=125|t=|w=0|b=::</other-direction>
+          </direction-type>
+        </direction>
+      <note>
+        <pitch>
+          <step>B</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=g|g=|i=0|a=0|o=58|e=59</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>begin</syllabic>
+          <text>Ký</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>B</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=g|g=|i=1|a=0|o=63|e=64</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>middle</syllabic>
+          <text>ri</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>B</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=g|g=|i=2|a=0|o=67|e=68</other-notation>
+          </notations>
+        <notations>
+          <articulations>
+            <breath-mark/>
+            </articulations>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>end</syllabic>
+          <text>e</text>
+          </lyric>
+        </note>
+      <barline location="right">
+        <bar-style>tick</bar-style>
+        </barline>
+      </measure>
+    <measure number="2">
+      <note>
+        <pitch>
+          <step>A</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=f|g=|i=4|a=0|o=77|e=78</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>begin</syllabic>
+          <text>e</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>B</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>3</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations>
+          <articulations>
+            <tenuto/>
+            </articulations>
+          </notations>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=g|g=_|i=5|a=0|o=82|e=84</other-notation>
+          </notations>
+        <notations print-object="no">
+          <technical>
+            <other-technical print-object="no">gabc:sign:s=_|i=5</other-technical>
+            </technical>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>middle</syllabic>
+          <text>lé</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>A</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=f|g=|i=6|a=0|o=87|e=88</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>middle</syllabic>
+          <text>i</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>B</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=g|g=|i=7|a=0|o=93|e=94</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>end</syllabic>
+          <text>son</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>C</step>
+          <octave>4</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=h|g=|i=7|a=1|o=94|e=95</other-notation>
+          </notations>
+        <notations>
+          <articulations>
+            <breath-mark/>
+            </articulations>
+          </notations>
+        <notations>
+          <slur number="1" type="stop"/>
+          </notations>
+        </note>
+      <barline location="right">
+        <bar-style>short</bar-style>
+        </barline>
+      </measure>
+    <measure number="3">
+      <note>
+        <pitch>
+          <step>C</step>
+          <octave>4</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=h|g=|i=9|a=0|o=104|e=105</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>begin</syllabic>
+          <text>Ký</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>B</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=g|g=|i=10|a=0|o=109|e=110</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>middle</syllabic>
+          <text>ri</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>B</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=g|g=|i=11|a=0|o=113|e=114</other-notation>
+          </notations>
+        <notations>
+          <articulations>
+            <breath-mark/>
+            </articulations>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>end</syllabic>
+          <text>e</text>
+          </lyric>
+        </note>
+      <barline location="right">
+        <bar-style>tick</bar-style>
+        </barline>
+      </measure>
+    <measure number="4">
+      <note>
+        <pitch>
+          <step>A</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=f|g=|i=13|a=0|o=122|e=123</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>begin</syllabic>
+          <text>e</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>B</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations>
+          <ornaments>
+            <inverted-mordent/>
+            </ornaments>
+          </notations>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=g|g=w|i=14|a=0|o=127|e=129</other-notation>
+          </notations>
+        <notations print-object="no">
+          <technical>
+            <other-technical print-object="no">gabc:sign:s=w|i=14</other-technical>
+            </technical>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>middle</syllabic>
+          <text>lé</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>A</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=f|g=|i=15|a=0|o=132|e=133</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>middle</syllabic>
+          <text>i</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>B</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=g|g=|i=16|a=0|o=138|e=139</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>end</syllabic>
+          <text>son</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>C</step>
+          <octave>4</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=h|g=|i=16|a=1|o=139|e=140</other-notation>
+          </notations>
+        <notations>
+          <articulations>
+            <breath-mark/>
+            </articulations>
+          </notations>
+        <notations>
+          <slur number="1" type="stop"/>
+          </notations>
+        </note>
+      <barline location="right">
+        <bar-style>short</bar-style>
+        </barline>
+      </measure>
+    <measure number="5">
+      <note>
+        <pitch>
+          <step>B</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=g|g=|i=18|a=0|o=149|e=150</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>begin</syllabic>
+          <text>Ký</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>A</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=f|g=|i=19|a=0|o=154|e=155</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>middle</syllabic>
+          <text>ri</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>B</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=g|g=|i=20|a=0|o=158|e=159</other-notation>
+          </notations>
+        <notations>
+          <articulations>
+            <breath-mark/>
+            </articulations>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>end</syllabic>
+          <text>e</text>
+          </lyric>
+        </note>
+      <barline location="right">
+        <bar-style>tick</bar-style>
+        </barline>
+      </measure>
+    <measure number="6">
+      <note>
+        <pitch>
+          <step>A</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=f|g=|i=22|a=0|o=167|e=168</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>begin</syllabic>
+          <text>e</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>B</step>
+          <alter>-1</alter>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <accidental>flat</accidental>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=g|g=|i=23|a=1|o=174|e=175</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>middle</syllabic>
+          <text>lé</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>A</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=f|g=|i=24|a=0|o=178|e=179</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>middle</syllabic>
+          <text>i</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>B</step>
+          <alter>-1</alter>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=g|g=|i=25|a=0|o=184|e=185</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>end</syllabic>
+          <text>son</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>C</step>
+          <octave>4</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=h|g=|i=25|a=1|o=185|e=186</other-notation>
+          </notations>
+        <notations>
+          <articulations>
+            <breath-mark/>
+            </articulations>
+          </notations>
+        <notations>
+          <slur number="1" type="stop"/>
+          </notations>
+        </note>
+      <barline location="right">
+        <bar-style>short</bar-style>
+        </barline>
+      </measure>
+    <measure number="7">
+      <note>
+        <pitch>
+          <step>C</step>
+          <octave>4</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=h|g=|i=27|a=0|o=195|e=196</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>begin</syllabic>
+          <text>Ký</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>B</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=g|g=|i=28|a=0|o=200|e=201</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>middle</syllabic>
+          <text>ri</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>A</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=f|g=|i=29|a=0|o=204|e=205</other-notation>
+          </notations>
+        <notations>
+          <articulations>
+            <breath-mark/>
+            </articulations>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>end</syllabic>
+          <text>e</text>
+          </lyric>
+        </note>
+      <barline location="right">
+        <bar-style>tick</bar-style>
+        </barline>
+      </measure>
+    <measure number="8">
+      <note>
+        <pitch>
+          <step>A</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=f|g=|i=31|a=0|o=213|e=214</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>begin</syllabic>
+          <text>e</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>B</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=g|g=|i=32|a=0|o=218|e=219</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>middle</syllabic>
+          <text>lé</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>C</step>
+          <octave>4</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=h|g=|i=33|a=0|o=222|e=223</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>middle</syllabic>
+          <text>i</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>B</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=g|g=|i=34|a=0|o=228|e=229</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>end</syllabic>
+          <text>son</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>C</step>
+          <octave>4</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=h|g=|i=34|a=1|o=229|e=230</other-notation>
+          </notations>
+        <notations>
+          <articulations>
+            <breath-mark/>
+            </articulations>
+          </notations>
+        <notations>
+          <slur number="1" type="stop"/>
+          </notations>
+        </note>
+      <barline location="right">
+        <bar-style>short</bar-style>
+        </barline>
+      </measure>
+    <measure number="9">
+      <note>
+        <pitch>
+          <step>B</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=g|g=|i=36|a=0|o=239|e=240</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>begin</syllabic>
+          <text>Ký</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>B</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=g|g=|i=37|a=0|o=244|e=245</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>middle</syllabic>
+          <text>ri</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>B</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=g|g=|i=38|a=0|o=248|e=249</other-notation>
+          </notations>
+        <notations>
+          <articulations>
+            <breath-mark/>
+            </articulations>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>end</syllabic>
+          <text>e</text>
+          </lyric>
+        </note>
+      <barline location="right">
+        <bar-style>tick</bar-style>
+        </barline>
+      </measure>
+    <measure number="10">
+      <note>
+        <pitch>
+          <step>A</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=f|g=|i=40|a=0|o=257|e=258</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>begin</syllabic>
+          <text>e</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>B</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>3</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations>
+          <articulations>
+            <tenuto/>
+            </articulations>
+          </notations>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=g|g=_|i=41|a=0|o=262|e=264</other-notation>
+          </notations>
+        <notations print-object="no">
+          <technical>
+            <other-technical print-object="no">gabc:sign:s=_|i=41</other-technical>
+            </technical>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>middle</syllabic>
+          <text>lé</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>A</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=f|g=|i=42|a=0|o=267|e=268</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>middle</syllabic>
+          <text>i</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>B</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=g|g=|i=43|a=0|o=273|e=274</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>end</syllabic>
+          <text>son</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>C</step>
+          <octave>4</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=h|g=|i=43|a=1|o=274|e=275</other-notation>
+          </notations>
+        <notations>
+          <articulations>
+            <breath-mark/>
+            </articulations>
+          </notations>
+        <notations>
+          <slur number="1" type="stop"/>
+          </notations>
+        </note>
+      <barline location="right">
+        <bar-style>short</bar-style>
+        </barline>
+      </measure>
+    <measure number="11">
+      <note>
+        <pitch>
+          <step>C</step>
+          <octave>4</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=h|g=|i=45|a=0|o=284|e=285</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>begin</syllabic>
+          <text>Ký</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>B</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=g|g=|i=46|a=0|o=289|e=290</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>middle</syllabic>
+          <text>ri</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>A</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=f|g=|i=47|a=0|o=293|e=294</other-notation>
+          </notations>
+        <notations>
+          <articulations>
+            <breath-mark/>
+            </articulations>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>end</syllabic>
+          <text>e</text>
+          </lyric>
+        </note>
+      <barline location="right">
+        <bar-style>tick</bar-style>
+        </barline>
+      </measure>
+    <measure number="12">
+      <note>
+        <pitch>
+          <step>A</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=f|g=|i=49|a=0|o=302|e=303</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>begin</syllabic>
+          <text>e</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>B</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=g|g=|i=50|a=0|o=307|e=308</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>middle</syllabic>
+          <text>lé</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>C</step>
+          <octave>4</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=h|g=|i=51|a=0|o=311|e=312</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>middle</syllabic>
+          <text>i</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>B</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=g|g=|i=52|a=0|o=317|e=318</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>end</syllabic>
+          <text>son</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>C</step>
+          <octave>4</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=h|g=|i=52|a=1|o=318|e=319</other-notation>
+          </notations>
+        <notations>
+          <articulations>
+            <breath-mark/>
+            </articulations>
+          </notations>
+        <notations>
+          <slur number="1" type="stop"/>
+          </notations>
+        </note>
+      <barline location="right">
+        <bar-style>short</bar-style>
+        </barline>
+      </measure>
+    <measure number="13">
+      <note>
+        <pitch>
+          <step>B</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=g|g=|i=54|a=0|o=328|e=329</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>begin</syllabic>
+          <text>Ký</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>A</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=f|g=|i=55|a=0|o=333|e=334</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>middle</syllabic>
+          <text>ri</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>B</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=g|g=|i=56|a=0|o=337|e=338</other-notation>
+          </notations>
+        <notations>
+          <articulations>
+            <breath-mark/>
+            </articulations>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>end</syllabic>
+          <text>e</text>
+          </lyric>
+        </note>
+      <barline location="right">
+        <bar-style>tick</bar-style>
+        </barline>
+      </measure>
+    <measure number="14">
+      <note>
+        <pitch>
+          <step>A</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=f|g=|i=58|a=0|o=346|e=347</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>begin</syllabic>
+          <text>e</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>B</step>
+          <alter>-1</alter>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <accidental>flat</accidental>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=g|g=|i=59|a=1|o=353|e=354</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>middle</syllabic>
+          <text>lé</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>A</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=f|g=|i=60|a=0|o=357|e=358</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>middle</syllabic>
+          <text>i</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>B</step>
+          <alter>-1</alter>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=g|g=|i=61|a=0|o=363|e=364</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>end</syllabic>
+          <text>son</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>C</step>
+          <octave>4</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=h|g=|i=61|a=1|o=364|e=365</other-notation>
+          </notations>
+        <notations>
+          <articulations>
+            <breath-mark/>
+            </articulations>
+          </notations>
+        <notations>
+          <slur number="1" type="stop"/>
+          </notations>
+        </note>
+      <barline location="right">
+        <bar-style>short</bar-style>
+        </barline>
+      </measure>
+    <measure number="15">
+      <note>
+        <pitch>
+          <step>C</step>
+          <octave>4</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=h|g=|i=63|a=0|o=374|e=375</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>begin</syllabic>
+          <text>Ký</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>B</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=g|g=|i=64|a=0|o=379|e=380</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>middle</syllabic>
+          <text>ri</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>A</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=f|g=|i=65|a=0|o=383|e=384</other-notation>
+          </notations>
+        <notations>
+          <articulations>
+            <breath-mark/>
+            </articulations>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>end</syllabic>
+          <text>e</text>
+          </lyric>
+        </note>
+      <barline location="right">
+        <bar-style>tick</bar-style>
+        </barline>
+      </measure>
+    <measure number="16">
+      <note>
+        <pitch>
+          <step>A</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=f|g=|i=67|a=0|o=392|e=393</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>begin</syllabic>
+          <text>e</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>B</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=g|g=|i=68|a=0|o=397|e=398</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>middle</syllabic>
+          <text>lé</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>C</step>
+          <octave>4</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=h|g=|i=69|a=0|o=401|e=402</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>middle</syllabic>
+          <text>i</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>B</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=g|g=|i=70|a=0|o=407|e=408</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>end</syllabic>
+          <text>son</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>C</step>
+          <octave>4</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=h|g=|i=70|a=1|o=408|e=409</other-notation>
+          </notations>
+        <notations>
+          <articulations>
+            <breath-mark/>
+            </articulations>
+          </notations>
+        <notations>
+          <slur number="1" type="stop"/>
+          </notations>
+        </note>
+      <barline location="right">
+        <bar-style>short</bar-style>
+        </barline>
+      </measure>
+    <measure number="17">
+      <note>
+        <pitch>
+          <step>B</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=g|g=|i=72|a=0|o=418|e=419</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>begin</syllabic>
+          <text>Ký</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>B</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=g|g=|i=73|a=0|o=423|e=424</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>middle</syllabic>
+          <text>ri</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>B</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=g|g=|i=74|a=0|o=427|e=428</other-notation>
+          </notations>
+        <notations>
+          <articulations>
+            <breath-mark/>
+            </articulations>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>end</syllabic>
+          <text>e</text>
+          </lyric>
+        </note>
+      <barline location="right">
+        <bar-style>tick</bar-style>
+        </barline>
+      </measure>
+    <measure number="18">
+      <note>
+        <pitch>
+          <step>A</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=f|g=|i=76|a=0|o=436|e=437</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>begin</syllabic>
+          <text>e</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>B</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations>
+          <ornaments>
+            <inverted-mordent/>
+            </ornaments>
+          </notations>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=g|g=w|i=77|a=0|o=441|e=443</other-notation>
+          </notations>
+        <notations print-object="no">
+          <technical>
+            <other-technical print-object="no">gabc:sign:s=w|i=77</other-technical>
+            </technical>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>middle</syllabic>
+          <text>lé</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>A</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=f|g=|i=78|a=0|o=446|e=447</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>middle</syllabic>
+          <text>i</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>B</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=g|g=|i=79|a=0|o=452|e=453</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>end</syllabic>
+          <text>son</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>C</step>
+          <octave>4</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=h|g=|i=79|a=1|o=453|e=454</other-notation>
+          </notations>
+        <notations>
+          <articulations>
+            <breath-mark/>
+            </articulations>
+          </notations>
+        <notations>
+          <slur number="1" type="stop"/>
+          </notations>
+        </note>
+      <barline location="right">
+        <bar-style>short</bar-style>
+        </barline>
+      </measure>
+    <measure number="19">
+      <note>
+        <pitch>
+          <step>C</step>
+          <octave>4</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=h|g=|i=81|a=0|o=463|e=464</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>begin</syllabic>
+          <text>Ký</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>B</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=g|g=|i=82|a=0|o=468|e=469</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>middle</syllabic>
+          <text>ri</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>A</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=f|g=|i=83|a=0|o=472|e=473</other-notation>
+          </notations>
+        <notations>
+          <articulations>
+            <breath-mark/>
+            </articulations>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>end</syllabic>
+          <text>e</text>
+          </lyric>
+        </note>
+      <barline location="right">
+        <bar-style>tick</bar-style>
+        </barline>
+      </measure>
+    <measure number="20">
+      <note>
+        <pitch>
+          <step>A</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=f|g=|i=85|a=0|o=481|e=482</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>begin</syllabic>
+          <text>e</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>B</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=g|g=|i=86|a=0|o=486|e=487</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>middle</syllabic>
+          <text>lé</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>C</step>
+          <octave>4</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=h|g=|i=87|a=0|o=490|e=491</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>middle</syllabic>
+          <text>i</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>B</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=g|g=|i=88|a=0|o=496|e=497</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>end</syllabic>
+          <text>son</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>C</step>
+          <octave>4</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=h|g=|i=88|a=1|o=497|e=498</other-notation>
+          </notations>
+        <notations>
+          <articulations>
+            <breath-mark/>
+            </articulations>
+          </notations>
+        <notations>
+          <slur number="1" type="stop"/>
+          </notations>
+        </note>
+      <barline location="right">
+        <bar-style>short</bar-style>
+        </barline>
+      </measure>
+    <measure number="21">
+      <note>
+        <pitch>
+          <step>B</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=g|g=|i=90|a=0|o=507|e=508</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>begin</syllabic>
+          <text>Ký</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>A</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=f|g=|i=91|a=0|o=512|e=513</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>middle</syllabic>
+          <text>ri</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>B</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=g|g=|i=92|a=0|o=516|e=517</other-notation>
+          </notations>
+        <notations>
+          <articulations>
+            <breath-mark/>
+            </articulations>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>end</syllabic>
+          <text>e</text>
+          </lyric>
+        </note>
+      <barline location="right">
+        <bar-style>tick</bar-style>
+        </barline>
+      </measure>
+    <measure number="22">
+      <note>
+        <pitch>
+          <step>A</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=f|g=|i=94|a=0|o=525|e=526</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>begin</syllabic>
+          <text>e</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>B</step>
+          <alter>-1</alter>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <accidental>flat</accidental>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=g|g=|i=95|a=1|o=532|e=533</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>middle</syllabic>
+          <text>lé</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>A</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=f|g=|i=96|a=0|o=536|e=537</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>middle</syllabic>
+          <text>i</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>B</step>
+          <alter>-1</alter>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=g|g=|i=97|a=0|o=542|e=543</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>end</syllabic>
+          <text>son</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>C</step>
+          <octave>4</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=h|g=|i=97|a=1|o=543|e=544</other-notation>
+          </notations>
+        <notations>
+          <articulations>
+            <breath-mark/>
+            </articulations>
+          </notations>
+        <notations>
+          <slur number="1" type="stop"/>
+          </notations>
+        </note>
+      <barline location="right">
+        <bar-style>short</bar-style>
+        </barline>
+      </measure>
+    <measure number="23">
+      <note>
+        <pitch>
+          <step>C</step>
+          <octave>4</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=h|g=|i=99|a=0|o=553|e=554</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>begin</syllabic>
+          <text>Ký</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>B</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=g|g=|i=100|a=0|o=558|e=559</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>middle</syllabic>
+          <text>ri</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>A</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=f|g=|i=101|a=0|o=562|e=563</other-notation>
+          </notations>
+        <notations>
+          <articulations>
+            <breath-mark/>
+            </articulations>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>end</syllabic>
+          <text>e</text>
+          </lyric>
+        </note>
+      <barline location="right">
+        <bar-style>tick</bar-style>
+        </barline>
+      </measure>
+    <measure number="24">
+      <note>
+        <pitch>
+          <step>A</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=f|g=|i=103|a=0|o=571|e=572</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>begin</syllabic>
+          <text>e</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>B</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=g|g=|i=104|a=0|o=576|e=577</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>middle</syllabic>
+          <text>lé</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>C</step>
+          <octave>4</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=h|g=|i=105|a=0|o=580|e=581</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>middle</syllabic>
+          <text>i</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>B</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=g|g=|i=106|a=0|o=586|e=587</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>end</syllabic>
+          <text>son</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>C</step>
+          <octave>4</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=h|g=|i=106|a=1|o=587|e=588</other-notation>
+          </notations>
+        <notations>
+          <articulations>
+            <breath-mark/>
+            </articulations>
+          </notations>
+        <notations>
+          <slur number="1" type="stop"/>
+          </notations>
+        </note>
+      <barline location="right">
+        <bar-style>short</bar-style>
+        </barline>
+      </measure>
+    <measure number="25">
+      <note>
+        <pitch>
+          <step>B</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=g|g=|i=108|a=0|o=597|e=598</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>begin</syllabic>
+          <text>Ký</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>B</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=g|g=|i=109|a=0|o=602|e=603</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>middle</syllabic>
+          <text>ri</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>B</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=g|g=|i=110|a=0|o=606|e=607</other-notation>
+          </notations>
+        <notations>
+          <articulations>
+            <breath-mark/>
+            </articulations>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>end</syllabic>
+          <text>e</text>
+          </lyric>
+        </note>
+      <barline location="right">
+        <bar-style>tick</bar-style>
+        </barline>
+      </measure>
+    <measure number="26">
+      <note>
+        <pitch>
+          <step>A</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=f|g=|i=112|a=0|o=615|e=616</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>begin</syllabic>
+          <text>e</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>B</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>3</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations>
+          <articulations>
+            <tenuto/>
+            </articulations>
+          </notations>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=g|g=_|i=113|a=0|o=620|e=622</other-notation>
+          </notations>
+        <notations print-object="no">
+          <technical>
+            <other-technical print-object="no">gabc:sign:s=_|i=113</other-technical>
+            </technical>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>middle</syllabic>
+          <text>lé</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>A</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=f|g=|i=114|a=0|o=625|e=626</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>middle</syllabic>
+          <text>i</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>B</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=g|g=|i=115|a=0|o=631|e=632</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>end</syllabic>
+          <text>son</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>C</step>
+          <octave>4</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=h|g=|i=115|a=1|o=632|e=633</other-notation>
+          </notations>
+        <notations>
+          <articulations>
+            <breath-mark/>
+            </articulations>
+          </notations>
+        <notations>
+          <slur number="1" type="stop"/>
+          </notations>
+        </note>
+      <barline location="right">
+        <bar-style>short</bar-style>
+        </barline>
+      </measure>
+    <measure number="27">
+      <note>
+        <pitch>
+          <step>C</step>
+          <octave>4</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=h|g=|i=117|a=0|o=642|e=643</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>begin</syllabic>
+          <text>Ký</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>B</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=g|g=|i=118|a=0|o=647|e=648</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>middle</syllabic>
+          <text>ri</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>A</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=f|g=|i=119|a=0|o=651|e=652</other-notation>
+          </notations>
+        <notations>
+          <articulations>
+            <breath-mark/>
+            </articulations>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>end</syllabic>
+          <text>e</text>
+          </lyric>
+        </note>
+      <barline location="right">
+        <bar-style>tick</bar-style>
+        </barline>
+      </measure>
+    <measure number="28">
+      <note>
+        <pitch>
+          <step>A</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=f|g=|i=121|a=0|o=660|e=661</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>begin</syllabic>
+          <text>e</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>B</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=g|g=|i=122|a=0|o=665|e=666</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>middle</syllabic>
+          <text>lé</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>C</step>
+          <octave>4</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=h|g=|i=123|a=0|o=669|e=670</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>middle</syllabic>
+          <text>i</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>B</step>
+          <octave>3</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=g|g=|i=124|a=0|o=675|e=676</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="start"/>
+          </notations>
+        <lyric number="1">
+          <syllabic>end</syllabic>
+          <text>son</text>
+          </lyric>
+        </note>
+      <note>
+        <pitch>
+          <step>C</step>
+          <octave>4</octave>
+          </pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        <stem>none</stem>
+        <notations print-object="no">
+          <other-notation type="single">gabc:note:l=h|g=|i=124|a=1|o=676|e=677</other-notation>
+          </notations>
+        <notations>
+          <slur number="1" type="stop"/>
+          </notations>
+        </note>
+      <barline location="right">
+        <bar-style>light-heavy</bar-style>
+        </barline>
+      </measure>
+    </part>
+  </score-partwise>
