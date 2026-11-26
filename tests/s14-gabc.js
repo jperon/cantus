@@ -1852,9 +1852,57 @@ async function runDefaults(browser, url, pageName, results) {
     await waitTempo('120');
     const classicTempo = await page.$eval('#tempo-input', (el) => el.value);
     const rows = await L.partRows(page);
+    const label = rows[0]?.name;
     L.record(results, '14. gabc en vue classique : tempo 120 et volume de voix 100 % par défaut', pageName,
       classicTempo === '120' && rows.length > 0 && rows.every((r) => r.volume === '100') ? 'OK' : 'ÉCHEC',
       `tempo ${classicTempo}, volumes ${rows.map((r) => r.volume).join('/') || 'aucun'}`);
+    // Une seule voix : le groupe reste visible et ses réglages utilisables ;
+    // les menus « toutes les voix » disparaissent. Le garde-fou de la dernière
+    // voix affichée reste actif (bouton 👁 désactivé).
+    const single = await page.evaluate(() => {
+      const group = document.getElementById('parts-group');
+      const row = document.querySelector('#parts-list .part-row');
+      return {
+        groupHidden: group.classList.contains('hidden'),
+        bulkHidden: group.querySelector('.settings-parts-bulk')?.classList.contains('hidden') === true,
+        hasProgram: !!row?.querySelector('select.part-program'),
+      };
+    });
+    L.record(results, '14. gabc une voix : groupe visible, volume 100 et réglages de la voix utilisables', pageName,
+      !single.groupHidden && single.bulkHidden && rows.length === 1 && rows[0].volume === '100' &&
+      rows[0].displayed && rows[0].played && rows[0].displayDisabled &&
+      !rows[0].volumeDisabled && single.hasProgram ? 'OK' : 'ÉCHEC',
+      `groupe ${single.groupHidden ? 'masqué' : 'visible'}, menus « toutes les voix » ` +
+      `${single.bulkHidden ? 'masqués' : 'visibles'}, ${rows.length} voix volume ${rows[0]?.volume}, ` +
+      `affichage ${rows[0]?.displayed}${rows[0]?.displayDisabled ? ' (dernier, protégé)' : ''}, ` +
+      `lecture ${rows[0]?.played}, volume actif ${!rows[0]?.volumeDisabled}, instrument ${single.hasProgram}`);
+
+    // Son et instrument de l'unique voix : les contrôles visibles agissent.
+    await page.click('#parts-list .part-row:nth-child(1) .part-sound');
+    await page.waitForTimeout(200);
+    const muted = await L.partRows(page);
+    await page.click('#parts-list .part-row:nth-child(1) .part-sound');
+    await page.waitForTimeout(200);
+    const unmuted = await L.partRows(page);
+    await page.click('#parts-list .part-row:nth-child(1) .part-expand');
+    await page.waitForTimeout(150);
+    await page.selectOption('#parts-list .part-row:nth-child(1) select.part-program', '52');
+    await page.waitForTimeout(300);
+    const edit = await page.evaluate((name) => {
+      const key = Object.keys(localStorage).find((k) => k.startsWith('musica-hidden-parts-'));
+      const parts = key ? JSON.parse(localStorage.getItem(key)) : null;
+      return {
+        program: document.querySelector('#parts-list .part-row:nth-child(1) select.part-program')?.value,
+        stored: parts?.programs?.[name],
+      };
+    }, label);
+    L.record(results, '14. gabc une voix : son et instrument de l’unique voix modifiables', pageName,
+      muted[0]?.played === false && muted[0]?.volumeDisabled === true &&
+      unmuted[0]?.played === true && !unmuted[0]?.volumeDisabled &&
+      edit.program === '52' && edit.stored === 52 ? 'OK' : 'ÉCHEC',
+      `lecture ${unmuted[0]?.played ? 'rétablie' : 'non rétablie'} après coupure ` +
+      `(volume ${muted[0]?.volumeDisabled ? 'désactivé' : 'actif'} pendant), ` +
+      `instrument ${edit.program} (stocké ${edit.stored})`);
 
     // Réglages utilisateur prioritaires : tempo 140 mémorisé dans la clé du
     // fichier, volume 90 dans les réglages de voix. Revenir à 100 % (le défaut
@@ -1863,7 +1911,6 @@ async function runDefaults(browser, url, pageName, results) {
       el.value = '140';
       el.dispatchEvent(new Event('change', { bubbles: true }));
     });
-    const label = rows[0]?.name;
     const setVolume = (value) => page.$eval('#parts-list .part-row:nth-child(1) select.part-volume', (el, v) => {
       el.value = v;
       el.dispatchEvent(new Event('change', { bubbles: true }));
