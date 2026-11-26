@@ -76,8 +76,9 @@ chargerExsurge = ->
 # exsurge ne dessine les neumes NABC (Saint-Gall / Laon, après les `|` des
 # notes) qu'avec une police fournie à part, sous licence OFL. Chaque police
 # est un script : copié dans dist/ pour la PWA, inliné dans spa.html. Il n'est
-# évalué qu'à la première ouverture d'un gabc dont l'en-tête annonce
-# `nabc-lines` : un gabc sans NABC ne charge aucune de ces polices.
+# évalué qu'à la première ouverture d'un gabc qui annonce `nabc-lines` dans son
+# en-tête ou dont le corps contient du NABC : un gabc sans NABC ne charge
+# aucune de ces polices.
 POLICES_NABC =
   gregall:
     fichier: 'nabc-gregall.min.js'
@@ -101,10 +102,41 @@ applyNabcFont = (nom) ->
   select = $("nabc-font-select")
   select.value = nabcFont if select
 
-# Nombre de lignes de NABC de l'en-tête gabc (0 : aucun neume NABC).
-lignesNabc = (header) ->
+# Détecte le NABC d'un gabc sans en-tête (les exports bruts de GregoBase) :
+# un `|` à l'intérieur de parenthèses, par exemple `(e|ta)`. Le nombre de
+# lignes est le plus grand nombre de `|` d'un même groupe. On ne regarde que
+# le corps, après le `%%` s'il y en a un.
+detecterLignesNabc = (texte) ->
+  corps = String(texte ? '')
+  fin = corps.indexOf '%%'
+  corps = corps.slice(fin + 2) if fin >= 0
+  lignes = 0
+  motif = /\(([^()]*)\)/g
+  while (groupe = motif.exec corps)?
+    compte = (groupe[1].match(/\|/g) ? []).length
+    lignes = compte if compte > lignes
+  lignes
+
+# Nombre de lignes de NABC : en-tête gabc, sinon détection dans le corps
+# (0 : aucun neume NABC).
+lignesNabc = (header, texte) ->
   nombre = parseInt (header?.nabcLines ? header?['nabc-lines']), 10
-  if nombre > 0 then nombre else 0
+  return nombre if nombre > 0
+  detecterLignesNabc texte
+
+# exsurge ne lit `nabc-lines` que dans l'en-tête (Gabc.getNabcLines rend 0
+# sans `%%`). Quand la détection a trouvé le NABC dans le corps, on ajoute ce
+# champ à l'en-tête du seul texte donné à exsurge : le corps reste intact, donc
+# les source-index restent relatifs à son début. Sans en-tête, on en crée un.
+texteAvecEnteteNabc = (texte, header, lignes) ->
+  return texte unless lignes > 0
+  return texte if parseInt(header?.nabcLines, 10) > 0
+  champ = "nabc-lines:#{lignes};\n"
+  entete = header?.original
+  return "#{champ}%%\n#{texte}" unless entete
+  fin = /^[ \t]*%%+[ \t\r]*$/m.exec entete
+  return texte unless fin?
+  texte.slice(0, fin.index) + champ + texte.slice(fin.index)
 
 # Charge (une fois) la police NABC demandée et résout son objet de glyphes,
 # prêt pour ctxt.nabcFonts.
@@ -282,9 +314,11 @@ miseEnPageGabc = (texte, {scale, textSize, largeur} = {}) ->
     transpose: visualTranspose
   chargerExsurge().then (exsurge) ->
     header = new exsurge.GabcHeader texte
-    # Neumes NABC : la police n'est chargée que si l'en-tête `nabc-lines` en
-    # annonce (elle est absente de la portée d'un gabc ordinaire).
-    chargerPoliceNabcPour(lignesNabc header).then (policeNabc) ->
+    lignes = lignesNabc header, texte
+    # Neumes NABC : la police n'est chargée que si l'en-tête (ou, à défaut,
+    # le corps) annonce du NABC ; elle est absente de la portée d'un gabc
+    # ordinaire.
+    chargerPoliceNabcPour(lignes).then (policeNabc) ->
       # Mesurer après le chargement de la police évite un viewBox calculé sur une
       # police de repli plus large ou plus haute.
       attendrePolices = if document.fonts?.ready? then document.fonts.ready else Promise.resolve()
@@ -296,7 +330,8 @@ miseEnPageGabc = (texte, {scale, textSize, largeur} = {}) ->
         try
           ctxt = creerContexteGabc scale, textSize, exsurge
           ctxt.nabcFonts = [policeNabc] if policeNabc?
-          mappings = exsurge.Gabc.createMappingsFromSource ctxt, texte
+          texteExsurge = texteAvecEnteteNabc texte, header, lignes
+          mappings = exsurge.Gabc.createMappingsFromSource ctxt, texteExsurge
           unless mappings?.length
             throw new Error t 'errors.gabcInvalid'
           score = new exsurge.ChantScore ctxt, mappings, true
