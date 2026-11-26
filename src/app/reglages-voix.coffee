@@ -310,6 +310,10 @@ partsVariant = ->
   # Taille du texte chanté : le rendu Verovio et le viewBox grégorien en
   # dépendent, donc la variante aussi.
   variant = "#{variant}|x#{textSize}" if textSize isnt 100
+  # Vue gabc : la vue classique et la vue neumes produisent un autre XML que
+  # la notation carrée, donc d'autres pages. Sans ce suffixe, le cache SVG
+  # resservirait une page rendue dans l'autre vue.
+  variant = "#{variant}|n#{notationView}" if notationView isnt "square"
   return variant if visualTranspose is 0
   "#{variant}|t#{visualTranspose}"
 
