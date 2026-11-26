@@ -353,8 +353,12 @@ async function gotoPage(page, number) {
   await page.waitForTimeout(300);
 }
 
-async function pressArrow(page, dir) {
-  await page.keyboard.press(dir === 'right' ? 'ArrowRight' : 'ArrowLeft');
+// Tourne la page par la fonction de navigation de l'app. Les flèches ne le
+// font plus : elles déplacent la lecture de ±5 s.
+async function pageStep(page, dir) {
+  await page.evaluate((d) => {
+    if (d === 'right') window.goNext(); else window.goPrev();
+  }, dir);
 }
 
 // Attend que la page affichée change (utile pour la navigation)
@@ -419,7 +423,7 @@ module.exports = {
   waitBackgroundLoaded, importFile, importFiles, importFolder,
   openLibrary, libraryEntries, openLibraryEntry, deleteLibraryEntry,
   openSettings, closeSettings, staffHeights, partRows,
-  markSvg, markerPresent, tap, pressArrow, waitPageChange, gotoPage,
+  markSvg, markerPresent, tap, pageStep, waitPageChange, gotoPage,
   scrollState, resetScrollTop, staffCount,
   summarize, record,
   stats: () => ({ assertions, failures }),

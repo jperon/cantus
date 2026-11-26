@@ -50,7 +50,7 @@ async function runPage(browser, url, pageName, results) {
     // cale de page ne doit pas ramener la lecture en arrière (sinon la page
     // suivante la fait ré-avancer : c'est la boucle observée sur liseuse).
     const beforeBack = await page.evaluate(() => window.__musicaPlaybackState?.().position);
-    await L.pressArrow(page, 'left');
+    await L.pageStep(page, 'left');
     await page.waitForTimeout(1500);
     const afterBack = await page.evaluate(() => window.__musicaPlaybackState?.() || {});
     const backDrop = beforeBack - afterBack.position;

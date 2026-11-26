@@ -9,21 +9,21 @@ async function navigate(page) {
   const initial = await L.pageInfo(page);
   let n = 0;
   while (n < 3) {
-    await L.pressArrow(page, 'right');
+    await L.pageStep(page, 'right');
     await page.waitForTimeout(900);
     n++;
     const now = await L.pageInfo(page);
     if (now.page !== initial.page) break;
   }
-  const afterRight = await L.pageInfo(page);
-  const rightChanged = afterRight.page !== initial.page;
-  // retour vers la page initiale (le nombre de pressions peut différer :
+  const afterNext = await L.pageInfo(page);
+  const nextChanged = afterNext.page !== initial.page;
+  // retour vers la page initiale (le nombre de pas peut différer :
   // en mode vertical l’indicateur saute une page courte)
   for (let i = 0; i < 4; i++) {
     if ((await L.pageInfo(page)).page === initial.page) break;
-    await L.pressArrow(page, 'left'); await page.waitForTimeout(700);
+    await L.pageStep(page, 'left'); await page.waitForTimeout(700);
   }
-  const afterLeft = await L.pageInfo(page);
+  const afterBack = await L.pageInfo(page);
   // tap droit (autant de fois que nécessaire), puis tap gauche
   let t = 0;
   while (t < 3) {
@@ -41,10 +41,10 @@ async function navigate(page) {
   }
   const afterTapBack = await L.pageInfo(page);
   return {
-    initial: initial.page, afterRight: afterRight.page, afterLeft: afterLeft.page,
+    initial: initial.page, afterNext: afterNext.page, afterBack: afterBack.page,
     afterTap: afterTap.page, afterTapBack: afterTapBack.page,
-    rightChanged, tapChanged,
-    leftRestored: afterLeft.page === initial.page,
+    nextChanged, tapChanged,
+    backRestored: afterBack.page === initial.page,
     tapRestored: afterTapBack.page === initial.page,
   };
 }
@@ -84,16 +84,16 @@ async function runPage(browser, url, pageName, results) {
       const first = await L.waitFirstSvg(page, 180000);
       const info = await L.pageInfo(page);
       const nav = await navigate(page);
-      const ok = first.svgCount > 0 && info.total > 0 && nav.rightChanged && nav.leftRestored && nav.tapChanged && nav.tapRestored;
-      L.record(results, '1. Import .xml seul (Telemann) : affichage + flèches + tap', pageName,
+      const ok = first.svgCount > 0 && info.total > 0 && nav.nextChanged && nav.backRestored && nav.tapChanged && nav.tapRestored;
+      L.record(results, '1. Import .xml seul (Telemann) : affichage + navigation (fonction et tap)', pageName,
         ok ? 'OK' : 'ÉCHEC',
-        ok ? `affiche en ${first.ms} ms, ${info.total} pages, flèches ${nav.initial}→${nav.afterRight}→${nav.afterLeft}, tap ${nav.initial}→${nav.afterTap}→${nav.afterTapBack}`
+        ok ? `affiche en ${first.ms} ms, ${info.total} pages, navigation ${nav.initial}→${nav.afterNext}→${nav.afterBack}, tap ${nav.initial}→${nav.afterTap}→${nav.afterTapBack}`
           : JSON.stringify({ first, info, nav }));
       // Avance d'une seule page depuis le début (mode vertical)
       await L.resetScrollTop(page);
       await page.waitForTimeout(300);
       const beforeStep = await L.pageInfo(page);
-      await L.pressArrow(page, 'right');
+      await L.pageStep(page, 'right');
       await page.waitForTimeout(1000);
       const afterStep = await L.pageInfo(page);
       L.record(results, '1. Avance d’une page : l’indicateur passe de 1 à 2', pageName,
@@ -185,10 +185,10 @@ async function runPage(browser, url, pageName, results) {
       const first = await L.waitFirstSvg(page, 180000);
       const info = await L.pageInfo(page);
       const nav = await navigate(page);
-      const ok = first.svgCount > 0 && info.total > 1 && nav.rightChanged && nav.tapChanged;
+      const ok = first.svgCount > 0 && info.total > 1 && nav.nextChanged && nav.tapChanged;
       L.record(results, '1. Import .mxl seul (Magnificat_Bach.mxl) : affichage + navigation', pageName,
         ok ? 'OK' : 'ÉCHEC',
-        ok ? `${info.total} pages, flèches ${nav.initial}→${nav.afterRight}, tap →${nav.afterTap}`
+        ok ? `${info.total} pages, navigation ${nav.initial}→${nav.afterNext}, tap →${nav.afterTap}`
           : JSON.stringify({ first, info, nav }));
       const relevant = L.summarize(errors);
       L.record(results, '6. Erreurs JS (mxl)', pageName, relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
@@ -210,8 +210,8 @@ async function runPage(browser, url, pageName, results) {
       const info = await L.pageInfo(page);
       const nav = await navigate(page);
       L.record(results, '1. Import .mscz seul (Byrd) : affichage + navigation', pageName,
-        first.svgCount > 0 && nav.rightChanged && nav.tapChanged ? 'OK' : 'ÉCHEC',
-        `affiche en ${first.ms} ms, ${info.total} pages, flèches ${nav.initial}→${nav.afterRight}, tap →${nav.afterTap}`);
+        first.svgCount > 0 && nav.nextChanged && nav.tapChanged ? 'OK' : 'ÉCHEC',
+        `affiche en ${first.ms} ms, ${info.total} pages, navigation ${nav.initial}→${nav.afterNext}, tap →${nav.afterTap}`);
       // Nom affiché nettoyé (soulignés, « - » isolé), nom stocké inchangé.
       await L.openLibrary(page);
       const byrdNames = (await L.libraryEntries(page)).map((e) => e.name);
@@ -222,7 +222,7 @@ async function runPage(browser, url, pageName, results) {
       // Aller jusqu'à la page 6 (le fichier en a 8) puis mémoriser
       await L.gotoPage(page, 1);
       await L.resetScrollTop(page);
-      for (let i = 0; i < 5; i++) { await L.pressArrow(page, 'right'); await page.waitForTimeout(700); }
+      for (let i = 0; i < 5; i++) { await L.pageStep(page, 'right'); await page.waitForTimeout(700); }
       const before = await L.pageInfo(page);
       await page.waitForTimeout(2500);
       const positions = await saveLog(page);
@@ -364,7 +364,7 @@ async function runPage(browser, url, pageName, results) {
       await L.waitFirstSvg(page, 120000);
       await L.waitBackgroundLoaded(page, 120000);
       await page.waitForTimeout(800);
-      for (let i = 0; i < 2; i++) { await L.pressArrow(page, 'right'); await page.waitForTimeout(800); }
+      for (let i = 0; i < 2; i++) { await L.pageStep(page, 'right'); await page.waitForTimeout(800); }
       const before = await L.pageInfo(page);
       await L.gotoPage(page, 1);
       await page.waitForTimeout(1200);
@@ -390,7 +390,7 @@ async function runPage(browser, url, pageName, results) {
       await L.waitFirstSvg(page, 180000);
       await L.waitBackgroundLoaded(page, 180000);
       await page.waitForTimeout(1000);
-      for (let i = 0; i < 4; i++) { await L.pressArrow(page, 'right'); await page.waitForTimeout(700); }
+      for (let i = 0; i < 4; i++) { await L.pageStep(page, 'right'); await page.waitForTimeout(700); }
       const before = await L.pageInfo(page);
       await page.waitForTimeout(2500);
       const positions = await saveLog(page);

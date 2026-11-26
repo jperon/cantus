@@ -1404,7 +1404,8 @@ async function runToggle(browser, url, pageName, results) {
         ? 'OK' : 'ÉCHEC',
       JSON.stringify(initial.buttonRect));
 
-    // Clavier : focus + Entrée, puis Espace pour revenir.
+    // Clavier : focus + Entrée. Le retour se fait au clic : Espace est
+    // désormais le raccourci global lecture/pause, plus l'activation du bouton.
     await page.focus('#notation-toggle');
     await page.keyboard.press('Enter');
     await waitNotationReady(page);
@@ -1435,11 +1436,10 @@ async function runToggle(browser, url, pageName, results) {
       await page.waitForTimeout(200);
     }
 
-    await page.focus('#notation-toggle');
-    await page.keyboard.press('Space');
+    await page.click('#notation-toggle');
     await waitNotationReady(page);
     const square = await notationState(page);
-    L.record(results, '14. Bascule : Espace revient à la vue carrée, transport disponible', pageName,
+    L.record(results, '14. Bascule : clic sur la bascule revient à la vue carrée, transport disponible', pageName,
       square.view === 'square' && square.pressed === 'true' && square.chantLines >= 2 &&
       !square.transportHidden ? 'OK' : 'ÉCHEC',
       `vue ${square.view}, ${square.chantLines} lignes, transport masqué ${square.transportHidden}`);

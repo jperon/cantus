@@ -436,7 +436,7 @@ async function runZoomAndScroll(browser, url, pageName, results) {
     try {
       await importLoaded(page, L.FILES.telemannXml);
       // Se placer au milieu du document pour vérifier que le zoom ne perd pas la position
-      for (let i = 0; i < 3; i++) { await L.pressArrow(page, 'right'); await page.waitForTimeout(800); }
+      for (let i = 0; i < 3; i++) { await L.pageStep(page, 'right'); await page.waitForTimeout(800); }
       const info0 = await L.pageInfo(page);
       const rect0 = await page.$eval('#page-current .scroll-page svg', (s) => { const r = s.getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height) }; });
       await L.markSvg(page);
@@ -479,13 +479,13 @@ async function runZoomAndScroll(browser, url, pageName, results) {
       await L.closeSettings(page);
       await L.resetScrollTop(page);
       const s0 = await L.scrollState(page);
-      await L.pressArrow(page, 'right'); await page.waitForTimeout(900);
+      await L.pageStep(page, 'right'); await page.waitForTimeout(900);
       const s1 = await L.scrollState(page);
       const sysAligned = s1.systems.some((t) => Math.abs(t - s1.top) < 2);
       L.record(results, '3. Défilement par système : chaque pas s’aligne sur un système', pageName,
         sysAligned && s1.top > s0.top && s1.top - s0.top < s1.clientHeight ? 'OK' : 'ÉCHEC',
         `top ${s0.top} → ${s1.top} (systèmes ${s1.systems.slice(0, 5).join(',')}…, écran ${s1.clientHeight} px)`);
-      await L.pressArrow(page, 'right'); await page.waitForTimeout(900);
+      await L.pageStep(page, 'right'); await page.waitForTimeout(900);
       const s2 = await L.scrollState(page);
       const sysAligned2 = s2.systems.some((t) => Math.abs(t - s2.top) < 2);
       L.record(results, '3. Défilement par système : pas suivant', pageName,
@@ -498,7 +498,7 @@ async function runZoomAndScroll(browser, url, pageName, results) {
       await L.closeSettings(page);
       await L.resetScrollTop(page);
       const p0 = await L.scrollState(page);
-      await L.pressArrow(page, 'right'); await page.waitForTimeout(900);
+      await L.pageStep(page, 'right'); await page.waitForTimeout(900);
       const p1 = await L.scrollState(page);
       const targetPage = p1.pages.find((p) => p.top > 0 && Math.abs(p.top - p1.top) < 2);
       L.record(results, '3. Défilement par page (recouvrement 0) : saut à la page suivante', pageName,
@@ -509,7 +509,7 @@ async function runZoomAndScroll(browser, url, pageName, results) {
       await page.selectOption('#overlap-select', '30');
       await L.closeSettings(page);
       await L.resetScrollTop(page);
-      await L.pressArrow(page, 'right'); await page.waitForTimeout(900);
+      await L.pageStep(page, 'right'); await page.waitForTimeout(900);
       const o1 = await L.scrollState(page);
       const overlapAligned = o1.systems.some((t) => Math.abs(t - o1.top) < 2);
       L.record(results, '3. Recouvrement 30 % : avance partielle alignée sur un système', pageName,
@@ -552,7 +552,7 @@ async function runBackNavigation(browser, url, pageName, results) {
     const jump = await L.pageInfo(page);
     const seen = [jump.page];
     for (let i = 0; i < 20 && (await L.pageInfo(page)).page > 1; i++) {
-      await L.pressArrow(page, 'left');
+      await L.pageStep(page, 'left');
       await page.waitForTimeout(700);
       seen.push((await L.pageInfo(page)).page);
     }

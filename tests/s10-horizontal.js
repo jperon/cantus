@@ -77,7 +77,7 @@ async function walk(page) {
   let presses = 0;
   while (!(await atEnd())) {
     if (presses > 500) throw new Error('parcours non terminé après 500 pressions');
-    await L.pressArrow(page, 'right');
+    await L.pageStep(page, 'right');
     // L'indicateur ne change qu'à la page entière (deux demi-pages) : attendre
     // plutôt que toutes les pages présentes aient leur SVG. displayView crée la
     // page suivante immédiatement ; son rendu est asynchrone.

@@ -104,7 +104,7 @@ async function runPage(browser, url, pageName, results) {
       let presses = 0;
       let info = await L.pageInfo(page);
       while (info.page < info.total && presses < 25) {
-        await L.pressArrow(page, 'right');
+        await L.pageStep(page, 'right');
         await page.waitForTimeout(700);
         presses++;
         info = await L.pageInfo(page);
@@ -113,7 +113,7 @@ async function runPage(browser, url, pageName, results) {
       L.record(results, '2. Dernière page atteinte page par page', pageName,
         tailOk ? 'OK' : 'ÉCHEC',
         `départ ${lastStart}, ${presses} pressions, arrivée ${info.page}/${info.total}`);
-      await L.pressArrow(page, 'right');
+      await L.pageStep(page, 'right');
       await page.waitForTimeout(900);
       const afterEnd = await L.pageInfo(page);
       const domPages = await page.evaluate(() => [...document.querySelectorAll('#page-current .scroll-page')].map((d) => d.dataset.page));
@@ -129,8 +129,8 @@ async function runPage(browser, url, pageName, results) {
         // Aller au début du mouvement 4 (3 sauts), puis défiler dans ce mouvement
         let mv4 = null;
         for (let i = 0; i < 3; i++) mv4 = await nextMovement(page2);
-        await L.pressArrow(page2, 'right'); await page2.waitForTimeout(800);
-        await L.pressArrow(page2, 'right'); await page2.waitForTimeout(800);
+        await L.pageStep(page2, 'right'); await page2.waitForTimeout(800);
+        await L.pageStep(page2, 'right'); await page2.waitForTimeout(800);
         const afterScroll = await L.pageInfo(page2);
         const mv5 = await nextMovement(page2);
         const expectedNext = starts[3]; // début du mouvement 5
@@ -172,8 +172,8 @@ async function runPage(browser, url, pageName, results) {
         if (r.after.page === r.before.page) break;
         starts.push(r.after.page);
       }
-      await L.pressArrow(page, 'right'); await page.waitForTimeout(900);
-      await L.pressArrow(page, 'right'); await page.waitForTimeout(1200);
+      await L.pageStep(page, 'right'); await page.waitForTimeout(900);
+      await L.pageStep(page, 'right'); await page.waitForTimeout(1200);
       const before = await L.pageInfo(page);
       await page.waitForTimeout(2500);
       const positions = await dbPositions(page);
