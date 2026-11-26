@@ -103,20 +103,16 @@ applyNabcFont = (nom) ->
   select.value = nabcFont if select
 
 # Détecte le NABC d'un gabc sans en-tête (les exports bruts de GregoBase) :
-# un `|` à l'intérieur de parenthèses, par exemple `(e|ta)`. Le nombre de
-# lignes est le plus grand nombre de `|` d'un même groupe. On ne regarde que
-# le corps, après le `%%` s'il y en a un, et sans ses commentaires `%`.
-detecterLignesNabc = (texte) ->
+# un `|` à l'intérieur de parenthèses, par exemple `(e|ta)`. En gabc, les `|`
+# alternent gabc et NABC (`(gabc|nabc|gabc|nabc…)`) : un même groupe peut en
+# contenir plusieurs pour une seule ligne de neumes. On ne regarde que le
+# corps, après le `%%` s'il y en a un, et sans ses commentaires `%`.
+detecterNabc = (texte) ->
   corps = String(texte ? '')
   fin = corps.indexOf '%%'
   corps = corps.slice(fin + 2) if fin >= 0
   corps = corps.replace /%[^\n]*/g, ''
-  lignes = 0
-  motif = /\(([^()]*)\)/g
-  while (groupe = motif.exec corps)?
-    compte = (groupe[1].match(/\|/g) ? []).length
-    lignes = compte if compte > lignes
-  lignes
+  /\([^()]*\|[^()]*\)/.test corps
 
 # Valeur brute du champ `nabc-lines`, ou undefined s'il est absent.
 champNabc = (header) ->
@@ -124,14 +120,14 @@ champNabc = (header) ->
 
 # Nombre de lignes de NABC : un champ `nabc-lines` présent dans l'en-tête
 # prime toujours, même à 0 ; la détection dans le corps ne s'applique que s'il
-# est absent (0 : aucun neume NABC).
+# est absent et vaut alors une ligne (0 : aucun neume NABC).
 lignesNabc = (header, texte) ->
   brut = champNabc header
   if brut?
     nombre = parseInt brut, 10
     return nombre if nombre > 0
     return 0
-  detecterLignesNabc texte
+  if detecterNabc texte then 1 else 0
 
 # exsurge ne lit `nabc-lines` que dans l'en-tête (Gabc.getNabcLines rend 0
 # sans `%%`). Quand la détection a trouvé le NABC dans le corps, on ajoute ce
