@@ -988,6 +988,118 @@ async function runPage(browser, url, pageName, results) {
         `état ${stoppedJump.state.state}, mouvement ${stoppedJump.state.movementId}, ` +
         `position affichée ${stoppedJump.state.displayPosition} ms (offset ${stoppedJump.state.offset}), ` +
         `hauteurs jouées [${stoppedJump.pitches.join(',')}]`);
+
+      // (d) « Précédent » au-delà du début du mouvement courant : à l'arrêt, il
+      // revient d'abord au début de ce mouvement (position et vue), puis au
+      // mouvement précédent seulement au second appui.
+      await stopPlayback(page);
+      await waitState(page, 'stopped');
+      await page.evaluate((p) => window.goToPage(p), starts[1]);
+      await page.waitForFunction(({ id, page }) => {
+        const s = window.__musicaPlaybackState ? window.__musicaPlaybackState() : null;
+        return s && s.movementId === id && displayedPage() === page;
+      }, { id: 2, page: starts[1] }, { timeout: 8000, polling: 50 });
+      await page.waitForTimeout(300);
+      await page.evaluate((ms) => window.seekPlayback(ms), Math.round(m2.duration * 0.75));
+      await page.waitForTimeout(200);
+      const beforePrev = await page.evaluate(() => ({
+        state: window.__musicaPlaybackState(),
+        page: displayedPage(),
+      }));
+      await page.click('.nav-btn[data-action="prev-mov"]');
+      await page.waitForTimeout(500);
+      const restartedAtStop = await page.evaluate(() => ({
+        state: window.__musicaPlaybackState(),
+        page: displayedPage(),
+      }));
+      L.record(results, '6. Précédent au milieu d’un mouvement (arrêt) : retour au début du mouvement courant', pageName,
+        beforePrev.state.movementId === 2 && beforePrev.state.position > 2000 &&
+          restartedAtStop.state.movementId === 2 && restartedAtStop.state.position === 0 &&
+          restartedAtStop.page === starts[1] ? 'OK' : 'ÉCHEC',
+        `avant ${beforePrev.state.position} ms (mouvement ${beforePrev.state.movementId}, p.${beforePrev.page}) → ` +
+        `après ${restartedAtStop.state.position} ms (mouvement ${restartedAtStop.state.movementId}, ` +
+        `p.${restartedAtStop.page}), attendu 0 ms p.${starts[1]}`);
+      await page.click('.nav-btn[data-action="prev-mov"]');
+      await page.waitForFunction(({ id, page }) => {
+        const s = window.__musicaPlaybackState ? window.__musicaPlaybackState() : null;
+        return s && s.movementId === id && displayedPage() === page;
+      }, { id: 1, page: starts[0] }, { timeout: 8000, polling: 50 });
+      const prevAtStart = await page.evaluate(() => ({
+        state: window.__musicaPlaybackState(),
+        page: displayedPage(),
+      }));
+      L.record(results, '6. Second « précédent » au début du mouvement : mouvement précédent', pageName,
+        prevAtStart.state.movementId === 1 && prevAtStart.state.position === 0 &&
+          prevAtStart.page === starts[0] ? 'OK' : 'ÉCHEC',
+        `mouvement ${prevAtStart.state.movementId}, position ${prevAtStart.state.position} ms, ` +
+        `p.${prevAtStart.page}, attendu mouvement 1 p.${starts[0]}`);
+
+      // (e) Même règle pendant la lecture : au-delà du début, la lecture
+      // repart du début du mouvement courant sans changer de mouvement ni
+      // s'arrêter.
+      await page.evaluate((p) => window.goToPage(p), starts[1]);
+      // Attendre la page ET les données de lecture du mouvement 2 : lancer la
+      // lecture trop tôt partirait du mouvement 1 encore affiché, et le saut
+      // de page changerait ensuite de mouvement en cours de lecture.
+      await page.waitForFunction(({ id, page }) => {
+        const s = window.__musicaPlaybackState ? window.__musicaPlaybackState() : null;
+        return s && s.movementId === id && displayedPage() === page;
+      }, { id: 2, page: starts[1] }, { timeout: 8000, polling: 50 });
+      await page.waitForTimeout(300);
+      await page.click('#transport-play');
+      await waitState(page, 'playing');
+      await page.waitForFunction(() => {
+        const s = window.__musicaPlaybackState ? window.__musicaPlaybackState() : null;
+        return s && s.movementId === 2 && s.state === 'playing';
+      }, null, { timeout: 8000, polling: 50 });
+      await page.evaluate((ms) => window.seekPlayback(ms), Math.round(m2.duration * 0.75));
+      await page.waitForTimeout(400);
+      const beforePrevPlaying = await page.evaluate(() => ({
+        state: window.__musicaPlaybackState(),
+        page: displayedPage(),
+      }));
+      await page.click('.nav-btn[data-action="prev-mov"]');
+      await page.waitForTimeout(500);
+      const restartedPlaying = await page.evaluate(() => ({
+        state: window.__musicaPlaybackState(),
+        page: displayedPage(),
+      }));
+      const playingRestartOk = beforePrevPlaying.state.movementId === 2 &&
+        beforePrevPlaying.state.position > 2000 &&
+        restartedPlaying.state.state === 'playing' &&
+        restartedPlaying.state.movementId === 2 &&
+        restartedPlaying.state.position < 1500 &&
+        restartedPlaying.page === starts[1];
+      L.record(results, '6. Précédent au milieu d’un mouvement (lecture) : reprise au début, lecture continue', pageName,
+        playingRestartOk ? 'OK' : 'ÉCHEC',
+        `avant ${beforePrevPlaying.state.position} ms (mouvement ${beforePrevPlaying.state.movementId}, ` +
+        `p.${beforePrevPlaying.page}, ${beforePrevPlaying.state.state}) → ` +
+        `après ${restartedPlaying.state.position} ms (mouvement ${restartedPlaying.state.movementId}, ` +
+        `p.${restartedPlaying.page}, ${restartedPlaying.state.state})`);
+
+      // Au premier mouvement, la même règle ne peut pas reculer : retour au
+      // début de ce mouvement.
+      await stopPlayback(page);
+      await waitState(page, 'stopped');
+      await page.evaluate(() => window.goToPage(1));
+      await page.waitForFunction(() => {
+        const s = window.__musicaPlaybackState ? window.__musicaPlaybackState() : null;
+        return s && s.movementId === 1 && displayedPage() === 1;
+      }, null, { timeout: 8000, polling: 50 });
+      await page.waitForTimeout(300);
+      await page.evaluate((ms) => window.seekPlayback(ms), Math.round(m1.duration * 0.75));
+      await page.waitForTimeout(200);
+      await page.click('.nav-btn[data-action="prev-mov"]');
+      await page.waitForTimeout(400);
+      const firstRestart = await page.evaluate(() => ({
+        state: window.__musicaPlaybackState(),
+        page: displayedPage(),
+      }));
+      L.record(results, '6. Précédent au milieu du premier mouvement : retour au début, sans reculer', pageName,
+        firstRestart.state.movementId === 1 && firstRestart.state.position === 0 &&
+          firstRestart.page === 1 ? 'OK' : 'ÉCHEC',
+        `mouvement ${firstRestart.state.movementId}, position ${firstRestart.state.position} ms, ` +
+        `p.${firstRestart.page}`);
       await stopPlayback(page);
       await waitState(page, 'stopped');
     } catch (e) {
