@@ -203,6 +203,12 @@ construireSvgs = (score, ctxt, largeur, titre) ->
 # Met un gabc en page à la largeur voulue : une ligne de chant = une page.
 # Résout {svgs, mode} ; rejette un gabc vide, sans note ou illisible.
 miseEnPageGabc = (texte, {scale, textSize, largeur} = {}) ->
+  # Accords lus dans les [alt:] : réécriture du gabc avant exsurge (le repère
+  # source-index reste cohérent avec la vue classique, qui réécrit le même
+  # texte avant scoretk).
+  texte = window.__musicaAccords.reecrireTexteGabc texte,
+    actif: readAltChords
+    transpose: visualTranspose
   chargerExsurge().then (exsurge) ->
     # Mesurer après le chargement de la police évite un viewBox calculé sur une
     # police de repli plus large ou plus haute.

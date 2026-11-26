@@ -26,6 +26,8 @@ registerLanguage 'fr', 'Français',
   'settings.textSizeAria': 'Taille du texte chanté en pourcentage'
   'settings.hideEmptyStaves': 'Masquer les portées vides'
   'settings.hideEmptyStavesHint': 'Dans chaque système sauf le premier, les portées sans note sont masquées.'
+  'settings.readAltChords': 'Lire les accords dans [alt:]'
+  'settings.readAltChordsHint': 'Un [alt:] dont le contenu est un nom d’accord LilyPond (p. ex. fis:m7/a) est affiché comme symbole d’accord.'
   'settings.language': 'Langue'
   'settings.masterVolume': 'Volume général'
   'settings.tempo': 'Tempo de lecture'

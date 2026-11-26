@@ -26,6 +26,8 @@ registerLanguage 'de', 'Deutsch',
   'settings.textSizeAria': 'Größe des Gesangstextes in Prozent'
   'settings.hideEmptyStaves': 'Leere Notensysteme ausblenden'
   'settings.hideEmptyStavesHint': 'In jedem System außer dem ersten werden Notensysteme ohne Noten ausgeblendet.'
+  'settings.readAltChords': 'Akkorde in [alt:] lesen'
+  'settings.readAltChordsHint': 'Ein [alt:], dessen Inhalt ein LilyPond-Akkordname ist (z. B. fis:m7/a), wird als Akkordsymbol angezeigt.'
   'settings.language': 'Sprache'
   'settings.masterVolume': 'Gesamtlautstärke'
   'settings.tempo': 'Wiedergabetempo'

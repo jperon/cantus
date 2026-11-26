@@ -79,6 +79,11 @@ convertSource = (source) ->
 # mémoire.
 convertirGabcEnXml = (source) ->
   texte = decoderTexteGabc source
+  # Accords lus dans les [alt:] : le texte gabc est réécrit (symboles usuels,
+  # transposition visuelle) avant la conversion scoretk.
+  texte = window.__musicaAccords.reecrireTexteGabc texte,
+    actif: readAltChords
+    transpose: visualTranspose
   octets = new TextEncoder().encode texte
   # Le nom d'une source convertie (.mei, .musicxml) ne dit pas gabc : forcer le
   # format d'entrée. convertScoretkToXml transfère le tampon (ArrayBuffer), pas
@@ -91,7 +96,14 @@ convertirGabcEnXml = (source) ->
 # d'écrire son résultat dans le cache de la nouvelle vue.
 ensureSource = (index, token) ->
   cached = sourceCache.get index
-  return Promise.resolve cached if cached
+  if cached
+    # La conversion classique d'un gabc dépend des accords [alt:] et de la
+    # transposition visuelle, tous deux écrits dans le texte avant scoretk :
+    # une signature différente impose de reconvertir.
+    if cached.gabc and cached.accordsSignature isnt accordsSignature()
+      sourceCache.delete index
+    else
+      return Promise.resolve cached
   source = currentSources?[index]
   return Promise.reject new Error "source inconnue" unless source
   preparerGabcAutre(source).then (gabc) ->
@@ -107,6 +119,7 @@ ensureSource = (index, token) ->
             splitInfo: detectSplitPoints xml
             gabc: true
             notation: "classic"
+            accordsSignature: accordsSignature()
           }
           sourceCache.set index, info
           info

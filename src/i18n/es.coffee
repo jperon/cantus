@@ -26,6 +26,8 @@ registerLanguage 'es', 'Español',
   'settings.textSizeAria': 'Tamaño del texto cantado en porcentaje'
   'settings.hideEmptyStaves': 'Ocultar pentagramas vacíos'
   'settings.hideEmptyStavesHint': 'En cada sistema excepto el primero, se ocultan los pentagramas sin notas.'
+  'settings.readAltChords': 'Leer acordes en [alt:]'
+  'settings.readAltChordsHint': 'Un [alt:] cuyo contenido es un nombre de acorde LilyPond (p. ej. fis:m7/a) se muestra como símbolo de acorde.'
   'settings.language': 'Idioma'
   'settings.masterVolume': 'Volumen general'
   'settings.tempo': 'Tempo de reproducción'

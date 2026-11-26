@@ -65,6 +65,12 @@ html(lang="en")
               span(data-i18n="settings.hideEmptyStaves") Hide empty staves
           p.settings-hint(data-i18n="settings.hideEmptyStavesHint") In each system except the first, staves with no notes are hidden.
         .settings-group
+          .settings-row.settings-checks
+            label.settings-check
+              input#read-alt-chords(type="checkbox")
+              span(data-i18n="settings.readAltChords") Read chords in [alt:]
+          p.settings-hint(data-i18n="settings.readAltChordsHint") An [alt:] whose content is a LilyPond chord name (e.g. fis:m7/a) is shown as a chord symbol.
+        .settings-group
           span.settings-label(data-i18n="settings.scroll") Scrolling
           .settings-row(role="group" aria-label="Scrolling" data-i18n-aria-label="settings.scroll")
             button.scroll-unit-btn.active(type="button" data-unit="page" data-i18n="scroll.page") Per page

@@ -15,7 +15,7 @@ getMovementForPage = (globalPage) ->
   null
 
 # Settings defaults
-defaultSettings = { zoom: 40, theme: "white", tapSize: 30, scrollUnit: "page", overlap: 0, layout: "auto", masterVolume: 80, followPlayback: true, hideEmptyStaves: false, highlightMeasure: false, expandRepeats: true, pianoOnly: false, textSize: 100 }
+defaultSettings = { zoom: 40, theme: "white", tapSize: 30, scrollUnit: "page", overlap: 0, layout: "auto", masterVolume: 80, followPlayback: true, hideEmptyStaves: false, readAltChords: false, highlightMeasure: false, expandRepeats: true, pianoOnly: false, textSize: 100 }
 
 # Bornes et pas du réglage « Taille du texte » : pourcentage de la taille de
 # base du texte chanté, indépendant du zoom.
@@ -121,6 +121,14 @@ applyHideEmptyStaves = (enabled) ->
   box = $("hide-empty-staves")
   box.checked = hideEmptyStaves if box
 
+# Lire les accords dans [alt:] : purement visuel, appliqué au prochain
+# chargement (comme la transposition visuelle) ; sa valeur entre dans la
+# variante de cache SVG.
+applyReadAltChords = (enabled) ->
+  readAltChords = enabled is true
+  box = $("read-alt-chords")
+  box.checked = readAltChords if box
+
 # Surligner la mesure jouée : purement visuel, appliqué à chaud, sans rendu.
 applyHighlightMeasure = (enabled) ->
   highlightMeasureEnabled = enabled is true
@@ -162,6 +170,7 @@ applyAllSettings = ->
   applyMasterVolume settings.masterVolume
   applyFollowPlayback settings.followPlayback
   applyHideEmptyStaves settings.hideEmptyStaves
+  applyReadAltChords settings.readAltChords
   applyHighlightMeasure settings.highlightMeasure
   applyExpandRepeats settings.expandRepeats
   applyPianoOnly settings.pianoOnly
@@ -310,8 +319,16 @@ partsVariant = ->
   # Taille du texte chanté : le rendu Verovio et le viewBox grégorien en
   # dépendent, donc la variante aussi.
   variant = "#{variant}|x#{textSize}" if textSize isnt 100
+  # Accords lus dans les [alt:] : le texte gabc est réécrit avant rendu, donc
+  # la page diffère de celle du texte brut.
+  variant = "#{variant}|a" if readAltChords
   return variant if visualTranspose is 0
   "#{variant}|t#{visualTranspose}"
+
+# Signature du texte gabc réécrit pour les accords : la conversion en MusicXML
+# dépend du réglage et, quand il est actif, de la transposition visuelle. Sert à
+# invalider le XML converti en cache quand l'un des deux change.
+accordsSignature = -> if readAltChords then "a#{visualTranspose}" else "off"
 
 # Vue des sources gabc, réglage par fichier : "square" (défaut) ou "classic".
 # En dossier mixte, la valeur vaut pour toutes les sources gabc de l'entrée.

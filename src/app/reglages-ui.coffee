@@ -687,6 +687,18 @@ setupSettings = ->
       saveSettings settings
       partsChanged = true
 
+  # Accords dans les [alt:] : le texte gabc réécrit change le rendu, donc
+  # rechargement à la fermeture du panneau (comme la transposition visuelle).
+  altChordsBox = $("read-alt-chords")
+  if altChordsBox
+    altChordsBox.addEventListener "change", (e) ->
+      enabled = e.target.checked
+      applyReadAltChords enabled
+      settings = loadSettings()
+      settings.readAltChords = enabled
+      saveSettings settings
+      partsChanged = true
+
   # Surligner la mesure jouée : appliqué à chaud, sans re-rendu.
   highlightBox = $("highlight-measure")
   if highlightBox

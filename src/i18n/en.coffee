@@ -28,6 +28,8 @@ registerLanguage 'en', 'English',
   'settings.textSizeAria': 'Sung text size in percent'
   'settings.hideEmptyStaves': 'Hide empty staves'
   'settings.hideEmptyStavesHint': 'In each system except the first, staves with no notes are hidden.'
+  'settings.readAltChords': 'Read chords in [alt:]'
+  'settings.readAltChordsHint': 'An [alt:] whose content is a LilyPond chord name (e.g. fis:m7/a) is shown as a chord symbol.'
   'settings.language': 'Language'
   'settings.masterVolume': 'Master volume'
   'settings.tempo': 'Playback tempo'

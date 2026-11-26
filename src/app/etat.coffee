@@ -36,6 +36,7 @@ partPrograms = {}  # Libellé de voix -> programme GM choisi (absence = partitio
 partsChanged = false  # Réglages de voix modifiés, à appliquer à la fermeture
 followPlaybackEnabled = true  # Suivi du défilement pendant la lecture
 hideEmptyStaves = false  # Masquer les portées vides de chaque système (sauf le premier)
+readAltChords = false  # Lire les accords LilyPond des [alt:] comme symboles (opt-in)
 highlightMeasureEnabled = false  # Surligner la mesure jouée pendant la lecture
 expandRepeats = true  # Dérouler les reprises (false : lecture linéaire écrite)
 pianoOnly = false  # Toutes les voix mélodiques au piano (réglage global)

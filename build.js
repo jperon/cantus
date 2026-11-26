@@ -102,6 +102,7 @@ function compileCoffee(file) {
 const APP_SOURCES = [
   'demarrage.coffee',              // PWA, service worker, date de build
   'etat.coffee',                   // état global, répartiteur des messages worker
+  'accords-lilypond.coffee',       // analyse des accords LilyPond dans [alt:]
   'langue.coffee',                 // langue de l'interface, textes data-i18n
   'pages-lecture.coffee',          // pages SVG et données de lecture (caches)
   'transport-suivi.coffee',        // transport audio et suivi du défilement
