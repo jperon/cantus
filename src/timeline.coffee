@@ -96,6 +96,10 @@ tickToUs = (source, tick) ->
 # différente de 120 est en revanche toujours une indication réelle.
 DEFAULT_FILE_TEMPO_BPM = 120
 DEFAULT_PLAYBACK_TEMPO_BPM = 80
+# Une source grégorienne (gabc, y compris sa conversion en vue classique) se
+# lit à 120 par défaut : c'est le tempo de référence du chant, pas celui de la
+# lecture d'étude des autres fichiers.
+GREGORIAN_DEFAULT_TEMPO_BPM = 120
 TEMPO_MIN_BPM = 20
 TEMPO_MAX_BPM = 300
 
@@ -242,9 +246,13 @@ fileTempoInfo = (timeline, xml) ->
   explicit = quarterBpm isnt DEFAULT_FILE_TEMPO_BPM or xmlInitialTempoMark xml
   {bpm, explicit, unit, quarterRatio}
 
-# Tempo par défaut du réglage : celui du fichier s'il est explicite, sinon 80.
+# Tempo par défaut du réglage : celui du fichier s'il est explicite, sinon 120
+# pour une source grégorienne et 80 pour les autres fichiers. L'appelant marque
+# les sources grégoriennes (`gregorien`) : le worker ne connaît pas leur nature.
 defaultPlaybackTempo = (info) ->
-  if info?.explicit then clampPlaybackTempo info.bpm else DEFAULT_PLAYBACK_TEMPO_BPM
+  if info?.explicit then clampPlaybackTempo info.bpm
+  else if info?.gregorien then GREGORIAN_DEFAULT_TEMPO_BPM
+  else DEFAULT_PLAYBACK_TEMPO_BPM
 
 # Le réglage est un entier de 20 à 300 dans l'unité affichée (noires, blanches,
 # noires pointées…). Une valeur absente ou aberrante retombe sur le défaut 80.

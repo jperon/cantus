@@ -31,8 +31,24 @@ TRANSPOSE_MAX = 12
 # DEFAULT_PART_VOLUME doit rester aligné sur DEFAULT_VOICE_VOLUME du moteur
 # (audio.coffee), la moitié du maximum pour laisser de la marge au volume
 # général.
+
 DEFAULT_PART_SIZE = 100
 DEFAULT_PART_VOLUME = 50
+
+# Une source grégorienne (gabc, ou sa conversion en vue classique : le
+# mouvement garde alors `gabc` sans `gregorien`) lit à 120 et chante à 100 %.
+# Ces défauts ne valent que sans réglage du fichier : un tempo ou un volume
+# choisi par l'utilisateur reste prioritaire. `movementId` permet de viser un
+# mouvement qui n'est pas encore celui de la page affichée.
+estMouvementGrec = (movementId) ->
+  mv = if movementId?
+    movements.find (m) -> m.id is movementId
+  else if typeof mouvementAffiche is "function"
+    mouvementAffiche()
+  !!mv?.gabc
+
+# Défaut du volume de voix du fichier affiché.
+defaultPartVolume = -> if estMouvementGrec() then 100 else DEFAULT_PART_VOLUME
 
 # Valeur d'un réglage en pourcentage, unité comprise (« 40 % »).
 formatPercent = (value) -> "#{parseInt value, 10} %"
@@ -194,9 +210,10 @@ applyVoiceAudio = (labels) ->
   add label for label in Object.keys partPrograms
   add label for label in Array.from mutedParts
   engine.setPianoOnly pianoOnly if engine.setPianoOnly?
+  fallback = defaultPartVolume()
   for label in list
-    volume = parseInt partVolumes[label] ? DEFAULT_PART_VOLUME
-    volume = DEFAULT_PART_VOLUME unless isFinite volume
+    volume = parseInt partVolumes[label] ? fallback
+    volume = fallback unless isFinite volume
     engine.setVoiceVolume label, volume
     engine.setVoiceMuted label, mutedParts.has(label) if engine.setVoiceMuted?
     engine.setVoiceProgram label, (partPrograms[label] ? null) if engine.setVoiceProgram?

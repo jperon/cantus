@@ -558,7 +558,7 @@ fileTempoFromData = (data, movementId) ->
   bpm = Math.round Number data?.fileTempoBpm
   bpm = DEFAULT_FILE_TEMPO_BPM unless isFinite(bpm) and bpm > 0
   unit = data?.fileTempoUnit ? 'quarter'
-  {bpm, explicit: data?.fileTempoExplicit is true, unit, fileId: currentFileId, movementId}
+  {bpm, explicit: data?.fileTempoExplicit is true, unit, fileId: currentFileId, movementId, gregorien: estMouvementGrec movementId}
 
 # Tempo choisi (réglage du fichier, sinon défaut du fichier : son tempo
 # explicite ou 80), dans l'unité du fichier. Le facteur reste choisi / fichier

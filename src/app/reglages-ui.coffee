@@ -205,7 +205,7 @@ renderPartsList = ->
         opt.value = pct
         opt.textContent = "#{pct} %"
         volumeSel.appendChild opt
-      volumeSel.value = partVolumes[partLabel] ? DEFAULT_PART_VOLUME
+      volumeSel.value = partVolumes[partLabel] ? defaultPartVolume()
       volumeSel.disabled = not played
       controls.appendChild displayBtn
       controls.appendChild soundBtn
@@ -313,8 +313,9 @@ renderPartsList = ->
         partsChanged = true
       volumeSel.addEventListener "change", ->
         pct = parseInt volumeSel.value
-        pct = DEFAULT_PART_VOLUME unless isFinite pct
-        if pct is DEFAULT_PART_VOLUME then delete partVolumes[partLabel] else partVolumes[partLabel] = pct
+        fallback = defaultPartVolume()
+        pct = fallback unless isFinite pct
+        if pct is fallback then delete partVolumes[partLabel] else partVolumes[partLabel] = pct
         savePartSettings()
         renderPartsBulkSelects()
         # Application immédiate au moteur : jamais de partsChanged ni de rendu
@@ -387,7 +388,7 @@ renderPartsBulkSelects = ->
   volumeSel = $("parts-volumes-reset")
   if volumeSel
     fillBulkSelect volumeSel, PART_VOLUME_MIN, PART_VOLUME_MAX, PART_VOLUME_STEP,
-      (commonPartValue labels, partVolumes, DEFAULT_PART_VOLUME)
+      (commonPartValue labels, partVolumes, defaultPartVolume())
 
 # --- Transpositions visuelle et auditive ------------------------------------
 # Affichage neutre du sélecteur : « +2 », « 0 », « −3 » (signe moins
@@ -412,13 +413,19 @@ renderTranspositionUi = ->
 
 # --- Tempo de lecture -------------------------------------------------------
 # Affiche le tempo effectif : réglage du fichier s'il existe, sinon le défaut
-# du fichier (tempo initial explicite, ou 80). Le bouton « Tempo du fichier »
-# n'est actif que si un réglage s'écarte du défaut ; vider le champ fait de
-# même.
+# du fichier (tempo initial explicite, ou défaut de la source : 120 pour une
+# source grégorienne, 80 sinon). Le bouton « Tempo du fichier » n'est actif que
+# si un réglage s'écarte du défaut ; vider le champ fait de même.
 renderTempoUi = ->
   input = $("tempo-input")
   return unless input
   info = currentFileTempo()
+  if info?
+    # Le défaut suit la nature du mouvement affiché (dossier mixte) ; le tempo
+    # du fichier, lui, a pu être lu sur un autre mouvement.
+    mv = if typeof mouvementAffiche is "function" then mouvementAffiche() else null
+    grec = if mv? then !!mv.gabc else info.gregorien is true
+    info = Object.assign {}, info, {gregorien: grec}
   if playbackTempoOverride?
     input.value = playbackTempoOverride
   else if info?
@@ -444,7 +451,7 @@ renderTempoUi = ->
       hint.textContent = t "tempo.fileExplicit", {bpm: info.bpm, unit: plural}
     else
       hint.textContent = t "tempo.fileDefault",
-        {bpm: DEFAULT_PLAYBACK_TEMPO_BPM, unit: plural, ref: DEFAULT_FILE_TEMPO_BPM}
+        {bpm: window.__musicaTimeline.defaultPlaybackTempo(info), unit: plural, ref: DEFAULT_FILE_TEMPO_BPM}
   else if fileTempoError
     hint.textContent = t "tempo.unavailable", {bpm: DEFAULT_PLAYBACK_TEMPO_BPM, unit: plural}
   else
@@ -584,8 +591,9 @@ setupSettings = ->
     pct = parseInt e.target.value
     return renderPartsBulkSelects() unless isFinite pct
     labels = currentPartLabels()
+    fallback = defaultPartVolume()
     partVolumes = {}
-    partVolumes[label] = pct for label in labels when pct isnt DEFAULT_PART_VOLUME
+    partVolumes[label] = pct for label in labels when pct isnt fallback
     savePartSettings()
     renderPartsList()
     applyVoiceAudio labels
