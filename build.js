@@ -171,6 +171,15 @@ function readFflate() {
 // exsurge (notation carrée gabc) : MIT, bundle UMD exposant le global
 // `exsurge`. Copié dans dist/ pour la PWA, inliné dans spa.html.
 const EXSURGE_DIST = path.join(__dirname, 'node_modules', 'exsurge-ts', 'dist', 'exsurge.min.js');
+// Polices de neumes NABC, fournies à part par exsurge (SIL OFL 1.1, voir
+// node_modules/exsurge-ts/LICENSE-OFL.txt). Chargées seulement par un gabc
+// dont l'en-tête annonce nabc-lines.
+const NABC_FONTS = ['gregall', 'gresgmodern', 'grelaon'];
+const EXSURGE_OFL = path.join(__dirname, 'node_modules', 'exsurge-ts', 'LICENSE-OFL.txt');
+
+function nabcFontPath(name) {
+  return path.join(__dirname, 'node_modules', 'exsurge-ts', 'dist', `nabc-${name}.min.js`);
+}
 
 function copyExsurge() {
   if (!fs.existsSync(EXSURGE_DIST)) {
@@ -189,6 +198,36 @@ function readExsurge() {
     throw new Error(`exsurge introuvable : ${EXSURGE_DIST} (lancer npm install)`);
   }
   return fs.readFileSync(EXSURGE_DIST, 'utf-8');
+}
+
+// Copie les trois polices NABC dans dist/ pour la PWA (chargement à la demande).
+function copyNabcFonts() {
+  console.log('  Copying NABC fonts...');
+  for (const name of NABC_FONTS) {
+    const source = nabcFontPath(name);
+    if (!fs.existsSync(source)) {
+      throw new Error(`police NABC introuvable : ${source} (lancer npm install)`);
+    }
+    const dest = path.join(DIST, `nabc-${name}.min.js`);
+    fs.rmSync(dest, { force: true });
+    fs.copyFileSync(source, dest);
+    fs.chmodSync(dest, 0o644);
+    console.log(`  -> dist/nabc-${name}.min.js`);
+  }
+}
+
+// Sources des polices NABC pour spa.html : un texte brut par police, évalué
+// seulement quand un gabc en a besoin.
+function readNabcFonts() {
+  const fonts = {};
+  for (const name of NABC_FONTS) {
+    const source = nabcFontPath(name);
+    if (!fs.existsSync(source)) {
+      throw new Error(`police NABC introuvable : ${source} (lancer npm install)`);
+    }
+    fonts[name] = escapeScript(fs.readFileSync(source, 'utf-8'));
+  }
+  return fonts;
 }
 
 // Copie le paquet scoretk dans dist/scoretk ; renvoie false s'il est absent
@@ -389,6 +428,10 @@ function copyLegalFiles() {
   console.log('  Copying license files...');
   fs.copyFileSync(path.join(__dirname, 'LICENSE'), path.join(DIST, 'LICENSE'));
   fs.copyFileSync(path.join(__dirname, 'THIRD-PARTY.md'), path.join(DIST, 'THIRD-PARTY.md'));
+  // Licence des polices de neumes NABC (SIL OFL 1.1), distribuées à part.
+  if (fs.existsSync(EXSURGE_OFL)) {
+    fs.copyFileSync(EXSURGE_OFL, path.join(DIST, 'LICENSE-OFL.txt'));
+  }
 }
 
 function copyScreenshots(label = 'Copying screenshots...') {
@@ -416,6 +459,7 @@ async function build() {
 
   const scoretkAvailable = copyScoretk();
   copyExsurge();
+  copyNabcFonts();
   const sampleAssets = copySamples();
   const samplesAvailable = sampleAssets.length > 0;
 
@@ -504,8 +548,10 @@ async function buildSpa() {
   const { mxlJs, storageJs, svgCacheJs, playbackCacheJs, midiJs, formatsJs, timelineJs, i18nJs, audioJs, playbackJs, workerJs, appJs } = compileScripts();
   const scoretkInline = readScoretk();
   const scoretkAvailable = !!scoretkInline;
-  // exsurge est inliné en texte brut, évalué seulement au premier gabc.
+  // exsurge est inliné en texte brut, évalué seulement au premier gabc ; les
+  // polices NABC aussi, chacune seulement si un gabc annonce nabc-lines.
   const exsurgeJs = escapeScript(readExsurge());
+  const nabcFonts = readNabcFonts();
 
   // 4. Read CSS
   const css = readCss();
@@ -575,6 +621,7 @@ ${workerJs}
     scoretkAvailable,
     scoretkInline,
     exsurgeJs,
+    nabcFonts,
     importAccept: importAccept(formats, scoretkAvailable),
   });
 
@@ -584,6 +631,7 @@ ${workerJs}
   console.log(`  -> dist/spa.html (${sizeMB} MB)`);
 
   copyExsurge();
+  copyNabcFonts();
   copyPwaFiles(buildDate, formats);
   copyLegalFiles();
   copyScreenshots();

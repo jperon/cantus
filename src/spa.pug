@@ -70,6 +70,14 @@ html(lang="en")
               input#read-alt-chords(type="checkbox")
               span(data-i18n="settings.readAltChords") Read chords in [alt:]
           p.settings-hint(data-i18n="settings.readAltChordsHint") An [alt:] whose content is a LilyPond chord name (e.g. fis:m7/a) is shown as a chord symbol.
+        .settings-group#nabc-font-group.hidden
+          label.settings-label(for="nabc-font-select" data-i18n="settings.nabcFont") Neume font
+          .settings-row
+            select#nabc-font-select.settings-select(data-i18n-aria-label="settings.nabcFontAria")
+              option(value="gregall" data-i18n="nabc.gregall") St. Gall
+              option(value="gresgmodern" data-i18n="nabc.gresgmodern") St. Gall modern
+              option(value="grelaon" data-i18n="nabc.grelaon") Laon
+          p.settings-hint(data-i18n="settings.nabcFontHint") Draws the St. Gall or Laon neumes of GABC files that carry them.
         .settings-group
           span.settings-label(data-i18n="settings.scroll") Scrolling
           .settings-row(role="group" aria-label="Scrolling" data-i18n-aria-label="settings.scroll")
@@ -254,6 +262,11 @@ html(lang="en")
       //- exsurge (notation carrée gabc) : source inlinée mais non évaluée au
       //- chargement ; gregorien.coffee l'évalue au premier fichier gabc.
       script#exsurge-src(type="text/plain") !{exsurgeJs}
+    if nabcFonts
+      //- Polices de neumes NABC : inlinées elles aussi, jamais évaluées avant
+      //- un gabc dont l'en-tête annonce nabc-lines.
+      each nabcJs, nabcName in nabcFonts
+        script(id=`nabc-${nabcName}-src`, type="text/plain") !{nabcJs}
     if samplesManifest
       //- Échantillons inlinés (file:// interdit fetch) : manifeste puis un
       //- Ogg base64 par programme, décodés paresseusement.

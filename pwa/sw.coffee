@@ -28,6 +28,16 @@ SCORETK_ASSETS = [
   './scoretk/scoretk_wasm_bg.wasm'
 ]
 
+# Polices de neumes NABC (grégorien), chargées à la demande par la page. Elles
+# sont précachées pour qu'un gabc avec NABC reste lisible hors ligne, quel que
+# soit le choix « Police des neumes » ; leur absence ne fait pas échouer
+# l'installation du service worker.
+NABC_ASSETS = [
+  './nabc-gregall.min.js'
+  './nabc-gresgmodern.min.js'
+  './nabc-grelaon.min.js'
+]
+
 # Échantillons audio (facultatifs : absents des builds sans échantillons).
 # Liste injectée par build.js depuis dist/samples ; le manifeste y figure.
 SAMPLE_ASSETS = []
@@ -54,7 +64,7 @@ self.addEventListener 'install', (event) ->
             # Mise en cache séparée : un paquet scoretk absent ne doit pas
             # faire échouer l'installation du service worker
             Promise.all(
-              SCORETK_ASSETS.concat(SAMPLE_ASSETS).map (u) ->
+              SCORETK_ASSETS.concat(NABC_ASSETS).concat(SAMPLE_ASSETS).map (u) ->
                 cache.add(new Request(u, cache: 'reload')).catch (err) ->
                   console.warn 'SW: asset facultatif non mis en cache', u, err
             )

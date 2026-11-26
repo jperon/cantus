@@ -666,6 +666,7 @@ html, body {
 }
 
 #parts-group.hidden,
+#nabc-font-group.hidden,
 #settings-install-group.hidden {
   display: none;
 }

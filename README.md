@@ -119,7 +119,7 @@ The source code and issue tracker are at <https://github.com/jperon/cantus>. Bug
 Cantus is free software under the GNU GPL v3 or later; see [LICENSE](LICENSE). It uses:
 
 - Verovio for music engraving (LGPL-3.0-or-later);
-- exsurge for Gregorian square-note notation from GABC (MIT);
+- exsurge for Gregorian square-note notation from GABC (MIT), with its St. Gall and Laon NABC neume fonts (SIL Open Font License 1.1);
 - fflate for compressed MusicXML (MIT);
 - MuseScore_General sound samples (MIT);
 - Cantus Serif, based on Liberation Serif (SIL Open Font License 1.1);

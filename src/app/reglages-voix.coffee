@@ -15,7 +15,7 @@ getMovementForPage = (globalPage) ->
   null
 
 # Settings defaults
-defaultSettings = { zoom: 40, theme: "white", tapSize: 30, scrollUnit: "page", overlap: 0, layout: "auto", masterVolume: 80, followPlayback: true, hideEmptyStaves: false, readAltChords: false, highlightMeasure: false, expandRepeats: true, pianoOnly: false, textSize: 100 }
+defaultSettings = { zoom: 40, theme: "white", tapSize: 30, scrollUnit: "page", overlap: 0, layout: "auto", masterVolume: 80, followPlayback: true, hideEmptyStaves: false, readAltChords: false, highlightMeasure: false, expandRepeats: true, pianoOnly: false, textSize: 100, nabcFont: "gregall" }
 
 # Bornes et pas du réglage « Taille du texte » : pourcentage de la taille de
 # base du texte chanté, indépendant du zoom.
@@ -179,6 +179,7 @@ applyAllSettings = ->
   applyTapSize settings.tapSize
   applyZoom settings.zoom
   applyTextSize settings.textSize
+  applyNabcFont settings.nabcFont
   applyScrollSettings settings.scrollUnit or "page", settings.overlap or 0
   applyLayoutSetting settings.layout
   applyMasterVolume settings.masterVolume
@@ -334,6 +335,9 @@ partsVariant = ->
   # Taille du texte chanté : le rendu Verovio et le viewBox grégorien en
   # dépendent, donc la variante aussi.
   variant = "#{variant}|x#{textSize}" if textSize isnt 100
+  # Police des neumes NABC (grégorien) : le rendu carré en dépend. Suffixe
+  # absent au défaut (Saint-Gall) : les clés existantes restent valables.
+  variant = "#{variant}|n#{nabcFont}" if nabcFont isnt "gregall"
   # Accords lus dans les [alt:] : le texte gabc est réécrit avant rendu, donc
   # la page diffère de celle du texte brut.
   variant = "#{variant}|a" if readAltChords

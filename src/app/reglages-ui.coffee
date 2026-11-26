@@ -543,6 +543,9 @@ updateStorageInfo = ->
 # Ouvre le panneau des réglages depuis le menu ⋯ de la barre du bas.
 openSettings = ->
   $("settings-overlay").classList.remove "hidden"
+  # Police des neumes : réglage utile seulement sur une source grégorienne en
+  # notation carrée ; masqué ailleurs, comme la liste des voix sans voix.
+  $("nabc-font-group")?.classList.toggle "hidden", not estGregorienAffiche()
   renderPartsList()
   renderTempoUi()
   renderTranspositionUi()
@@ -707,6 +710,17 @@ setupSettings = ->
       applyReadAltChords enabled
       settings = loadSettings()
       settings.readAltChords = enabled
+      saveSettings settings
+      partsChanged = true
+
+  # Police des neumes NABC (grégorien) : le rendu carré en dépend, donc
+  # rechargement à la fermeture du panneau, comme le texte ou la transposition.
+  nabcSelect = $("nabc-font-select")
+  if nabcSelect
+    nabcSelect.addEventListener "change", (e) ->
+      applyNabcFont e.target.value
+      settings = loadSettings()
+      settings.nabcFont = nabcFont
       saveSettings settings
       partsChanged = true
 

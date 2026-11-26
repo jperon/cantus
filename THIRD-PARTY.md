@@ -37,8 +37,8 @@ d'Android (Noto Serif, plus large) ne fasse chevaucher les syllabes.
 
 ## exsurge
 
-- Licence : MIT (le paquet déclare aussi OFL-1.1 pour ses glyphes NABC, que
-  Cantus n'utilise pas)
+- Licence : MIT pour le moteur (les glyphes NABC sont sous SIL OFL 1.1, voir
+  ci-dessous)
 - Copyright © 2019 Benjamin Bloomfield
 - Source : <https://github.com/bbloomf/exsurge>
 
@@ -69,6 +69,23 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+## Polices de neumes NABC (exsurge)
+
+- Licence : SIL Open Font License 1.1 (texte complet dans `LICENSE-OFL.txt`,
+  publié à côté de l'application et repris de `exsurge-ts`)
+- Copyright : gregall © 2014-2026 Jakub Jelinek ; gresgmodern © 2011
+  Association Saint-Benoît, Notre-Dame de Bellaigue, et © 2014-2026 Jakub
+  Jelinek ; grelaon © 2016-2026 Jakub Jelinek
+- Source : glyphes convertis des polices de
+  <https://github.com/gregorio-project/gregorio> par exsurge
+  (<https://github.com/bbloomf/exsurge>)
+
+Les trois polices (`dist/nabc-gregall.min.js`, `dist/nabc-gresgmodern.min.js`,
+`dist/nabc-grelaon.min.js`) dessinent les neumes de Saint-Gall et de Laon des
+fichiers GABC dont l'en-tête annonce `nabc-lines`. Elles sont inlinées dans
+`spa.html` et ne sont évaluées qu'à l'ouverture d'un tel fichier. Le réglage
+« Police des neumes » choisit l'une des trois ; Saint-Gall est le défaut.
 
 ## fflate
 

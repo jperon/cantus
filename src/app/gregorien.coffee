@@ -72,6 +72,77 @@ chargerExsurge = ->
     document.head.appendChild script
   promesseExsurge
 
+# --- Polices de neumes NABC ------------------------------------------------
+# exsurge ne dessine les neumes NABC (Saint-Gall / Laon, après les `|` des
+# notes) qu'avec une police fournie à part, sous licence OFL. Chaque police
+# est un script : copié dans dist/ pour la PWA, inliné dans spa.html. Il n'est
+# évalué qu'à la première ouverture d'un gabc dont l'en-tête annonce
+# `nabc-lines` : un gabc sans NABC ne charge aucune de ces polices.
+POLICES_NABC =
+  gregall:
+    fichier: 'nabc-gregall.min.js'
+    global: 'exsurgeNabcGregall'
+    propriete: 'gregall'
+  gresgmodern:
+    fichier: 'nabc-gresgmodern.min.js'
+    global: 'exsurgeNabcGresgmodern'
+    propriete: 'gresgmodern'
+  grelaon:
+    fichier: 'nabc-grelaon.min.js'
+    global: 'exsurgeNabcGrelaon'
+    propriete: 'grelaon'
+
+promessesPolicesNabc = {}
+
+# Applique le réglage « Police des neumes » : une clé inconnue revient au
+# défaut (Saint-Gall), comme les autres réglages bornés.
+applyNabcFont = (nom) ->
+  nabcFont = if POLICES_NABC[nom]? then nom else 'gregall'
+  select = $("nabc-font-select")
+  select.value = nabcFont if select
+
+# Nombre de lignes de NABC de l'en-tête gabc (0 : aucun neume NABC).
+lignesNabc = (header) ->
+  nombre = parseInt (header?.nabcLines ? header?['nabc-lines']), 10
+  if nombre > 0 then nombre else 0
+
+# Charge (une fois) la police NABC demandée et résout son objet de glyphes,
+# prêt pour ctxt.nabcFonts.
+chargerPoliceNabc = (nom) ->
+  config = POLICES_NABC[nom] ? POLICES_NABC.gregall
+  police = window[config.global]?[config.propriete]
+  return Promise.resolve police if police?
+  return promessesPolicesNabc[config.global] if promessesPolicesNabc[config.global]
+  promessesPolicesNabc[config.global] = new Promise (resolve, reject) ->
+    echouer = (err) ->
+      promessesPolicesNabc[config.global] = null
+      reject err
+    reussi = ->
+      police = window[config.global]?[config.propriete]
+      return resolve police if police?
+      echouer new Error t 'errors.nabcUnavailable'
+    inline = document.getElementById "nabc-#{nom}-src"
+    if inline?
+      try
+        new Function(inline.textContent)()
+      catch err
+        return echouer new Error(t('errors.nabcUnavailable') + " (#{err?.message or err})")
+      return reussi()
+    script = document.createElement 'script'
+    script.src = config.fichier
+    script.onload = reussi
+    script.onerror = -> echouer new Error t 'errors.nabcUnavailable'
+    document.head.appendChild script
+  promessesPolicesNabc[config.global]
+
+# Police à donner au contexte pour ce gabc, ou null s'il n'a pas de NABC ou si
+# la police manque : la portée reste alors lisible, sans les neumes.
+chargerPoliceNabcPour = (lignes) ->
+  return Promise.resolve null unless lignes > 0
+  chargerPoliceNabc(nabcFont).catch (err) ->
+    console.warn "Police des neumes indisponible : #{err?.message or err}"
+    null
+
 # --- Mise en page -----------------------------------------------------------
 # currentScale (30 à 80) est le zoom du lecteur : il règle la hauteur de la
 # portée, donc la taille des neumes et des paroles. La largeur reste celle de
@@ -210,37 +281,41 @@ miseEnPageGabc = (texte, {scale, textSize, largeur} = {}) ->
     actif: readAltChords
     transpose: visualTranspose
   chargerExsurge().then (exsurge) ->
-    # Mesurer après le chargement de la police évite un viewBox calculé sur une
-    # police de repli plus large ou plus haute.
-    attendrePolices = if document.fonts?.ready? then document.fonts.ready else Promise.resolve()
-    attendrePolices.then ->
-      largeur ?= largeurPageGabc()
-      # Le texte est mis en page entre les deux marges ; le viewBox les reprend
-      # ensuite autour de l'encombrement réel.
-      largeurMiseEnPage = Math.max 200, Math.floor(largeur - 2 * MARGE_GABC)
-      try
-        ctxt = creerContexteGabc scale, textSize, exsurge
-        header = new exsurge.GabcHeader texte
-        mappings = exsurge.Gabc.createMappingsFromSource ctxt, texte
-        unless mappings?.length
-          throw new Error t 'errors.gabcInvalid'
-        score = new exsurge.ChantScore ctxt, mappings, true
-        # `notes` contient aussi clés et barres : il faut au moins une vraie note.
-        unless score.notes?.some((element) -> element instanceof exsurge.Note)
-          throw new Error t 'errors.gabcInvalid'
-        nom = String(header.name or '').trim()
-        score.titles?.setTitle ctxt, nom if nom
-        # initial-style (initiale) et mode/annotation, comme Gregorio.
-        exsurge.Gabc.applyHeader score, ctxt, header, {legacy: true}
-        score.performLayout ctxt
-        score.layoutChantLines ctxt, largeurMiseEnPage
-        unless score.lines?.length
-          throw new Error t 'errors.gabcInvalid'
-        {svgs: construireSvgs(score, ctxt, largeurMiseEnPage, nom), mode: 'vertical',
-          enteteLongueur: exsurge.GabcHeader.getLength texte}
-      catch err
-        throw err if err?.message is t 'errors.gabcInvalid'
-        throw new Error "#{t 'errors.gabcInvalid'} (#{err?.message or err})"
+    header = new exsurge.GabcHeader texte
+    # Neumes NABC : la police n'est chargée que si l'en-tête `nabc-lines` en
+    # annonce (elle est absente de la portée d'un gabc ordinaire).
+    chargerPoliceNabcPour(lignesNabc header).then (policeNabc) ->
+      # Mesurer après le chargement de la police évite un viewBox calculé sur une
+      # police de repli plus large ou plus haute.
+      attendrePolices = if document.fonts?.ready? then document.fonts.ready else Promise.resolve()
+      attendrePolices.then ->
+        largeur ?= largeurPageGabc()
+        # Le texte est mis en page entre les deux marges ; le viewBox les reprend
+        # ensuite autour de l'encombrement réel.
+        largeurMiseEnPage = Math.max 200, Math.floor(largeur - 2 * MARGE_GABC)
+        try
+          ctxt = creerContexteGabc scale, textSize, exsurge
+          ctxt.nabcFonts = [policeNabc] if policeNabc?
+          mappings = exsurge.Gabc.createMappingsFromSource ctxt, texte
+          unless mappings?.length
+            throw new Error t 'errors.gabcInvalid'
+          score = new exsurge.ChantScore ctxt, mappings, true
+          # `notes` contient aussi clés et barres : il faut au moins une vraie note.
+          unless score.notes?.some((element) -> element instanceof exsurge.Note)
+            throw new Error t 'errors.gabcInvalid'
+          nom = String(header.name or '').trim()
+          score.titles?.setTitle ctxt, nom if nom
+          # initial-style (initiale) et mode/annotation, comme Gregorio.
+          exsurge.Gabc.applyHeader score, ctxt, header, {legacy: true}
+          score.performLayout ctxt
+          score.layoutChantLines ctxt, largeurMiseEnPage
+          unless score.lines?.length
+            throw new Error t 'errors.gabcInvalid'
+          {svgs: construireSvgs(score, ctxt, largeurMiseEnPage, nom), mode: 'vertical',
+            enteteLongueur: exsurge.GabcHeader.getLength texte}
+        catch err
+          throw err if err?.message is t 'errors.gabcInvalid'
+          throw new Error "#{t 'errors.gabcInvalid'} (#{err?.message or err})"
 
 # --- Requêtes de l'application ---------------------------------------------
 mouvementAffiche = ->
