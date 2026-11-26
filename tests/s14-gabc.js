@@ -15,6 +15,7 @@ const GABC_DIR = path.join(__dirname, 'fixtures', 'gabc');
 const KYRIE = path.join(GABC_DIR, 'kyrie.gabc');
 const LONG = path.join(GABC_DIR, 'long.gabc');
 const ACCORD = path.join(GABC_DIR, 'accord.gabc');
+const ACCORDS = path.join(GABC_DIR, 'accords.gabc');
 const INVALIDE = path.join(GABC_DIR, 'invalide.gabc');
 const MALVEILLANT = path.join(GABC_DIR, 'malveillant.gabc');
 const KYRIE_MEI = path.join(GABC_DIR, 'kyrie.mei');
@@ -1561,6 +1562,142 @@ async function runModernClef(browser, url, pageName, results) {
   await ctx.close();
 }
 
+// Accords LilyPond dans les [alt:] : option désactivée par défaut (texte
+// brut), puis symboles en carré et en classique, transposés par la
+// transposition visuelle +2.
+async function openSettingsUi(page) {
+  await page.click('#btn-menu');
+  await page.waitForSelector('#command-menu:not(.hidden)', { timeout: 10000 });
+  await page.click('#menu-settings');
+  await page.waitForFunction(
+    () => !document.getElementById('settings-overlay').classList.contains('hidden'),
+    null, { timeout: 10000 }
+  );
+}
+
+async function closeSettingsUi(page) {
+  await page.evaluate(() => document.getElementById('settings-close').click());
+}
+
+async function setAltChords(page, enabled) {
+  await openSettingsUi(page);
+  await page.evaluate((value) => {
+    const box = document.getElementById('read-alt-chords');
+    box.checked = value;
+    box.dispatchEvent(new Event('change', { bubbles: true }));
+  }, enabled);
+  await closeSettingsUi(page);
+}
+
+async function setVisualTranspose(page, value) {
+  await openSettingsUi(page);
+  await page.evaluate((semitones) => {
+    const select = document.getElementById('transpose-visual');
+    select.value = String(semitones);
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+  }, value);
+  await closeSettingsUi(page);
+}
+
+// Texte au-dessus de la portée (carré) et texte de la page (classique).
+async function altTextState(page) {
+  return page.evaluate(() => {
+    const slot = document.getElementById('page-current');
+    const above = [...slot.querySelectorAll('.scroll-page svg text.aboveLinesText')]
+      .map((el) => el.textContent.trim()).filter(Boolean);
+    const all = [...slot.querySelectorAll('.scroll-page svg text')]
+      .map((el) => el.textContent.trim()).filter(Boolean);
+    return {
+      above,
+      all: all.join(' | '),
+      view: window.notationView,
+      checked: document.getElementById('read-alt-chords')?.checked,
+    };
+  });
+}
+
+async function waitAltText(page, needle, timeout = 120000) {
+  await page.waitForFunction((text) => {
+    const slot = document.getElementById('page-current');
+    return [...slot.querySelectorAll('.scroll-page svg text.aboveLinesText')]
+      .some((el) => el.textContent.includes(text));
+  }, needle, { timeout, polling: 200 });
+}
+
+async function waitPageText(page, needle, timeout = 120000) {
+  await page.waitForFunction((text) => {
+    const slot = document.getElementById('page-current');
+    return !!slot && slot.textContent.includes(text);
+  }, needle, { timeout, polling: 200 });
+}
+
+async function runAltChords(browser, url, pageName, results) {
+  const { page, ctx, errors } = await L.newPage(browser, url, {
+    pageName, viewport: { width: 500, height: 900 },
+  });
+  try {
+    await L.waitReady(page);
+    await importGabc(page, ACCORDS, 120000);
+
+    // Option désactivée (défaut) : le contenu brut des [alt:] est affiché.
+    const off = await altTextState(page);
+    L.record(results, '14. [alt:] accords : texte brut par défaut (carré)', pageName,
+      off.view === 'square' && off.checked === false &&
+      ['fis:m7/a', 'bes:maj7', 'c:7.9-', 'Organum'].every((s) => off.above.includes(s)) &&
+      !off.all.includes('F♯m7/A') ? 'OK' : 'ÉCHEC',
+      JSON.stringify(off));
+
+    // Option activée : symboles en notation anglaise, texte ordinaire intact.
+    await setAltChords(page, true);
+    await waitAltText(page, 'F♯m7/A');
+    const on = await altTextState(page);
+    L.record(results, '14. [alt:] accords : symboles en carré', pageName,
+      on.checked === true &&
+      ['F♯m7/A', 'B♭maj7', 'C7♭9', 'Organum'].every((s) => on.above.includes(s)) &&
+      !on.all.includes('fis:m7/a') && !on.all.includes('bes:maj7') ? 'OK' : 'ÉCHEC',
+      JSON.stringify(on));
+
+    // Vue classique : mêmes symboles (scoretk écrit les [alt:] en <words>).
+    await clickToggle(page);
+    await waitNotationReady(page);
+    await waitPageText(page, 'F♯m7/A');
+    const classic = await altTextState(page);
+    L.record(results, '14. [alt:] accords : symboles en classique', pageName,
+      classic.view === 'classic' &&
+      ['F♯m7/A', 'B♭maj7', 'C7♭9', 'Organum'].every((s) => classic.all.includes(s)) &&
+      !classic.all.includes('fis:m7/a') ? 'OK' : 'ÉCHEC',
+      JSON.stringify(classic));
+
+    // Transposition visuelle +2 : fondamentales et basses transposées avec
+    // une orthographe correcte (fis → gis, bes → c, c → d).
+    await setVisualTranspose(page, 2);
+    await waitPageText(page, 'G♯m7/B');
+    const transposed = await altTextState(page);
+    L.record(results, '14. [alt:] accords : transposition +2 en classique', pageName,
+      ['G♯m7/B', 'Cmaj7', 'D7♭9'].every((s) => transposed.all.includes(s)) &&
+      !transposed.all.includes('F♯m7/A') ? 'OK' : 'ÉCHEC',
+      JSON.stringify(transposed));
+
+    // Retour en carré : la même transposition s'applique aux symboles.
+    await clickToggle(page);
+    await waitNotationReady(page);
+    await waitAltText(page, 'G♯m7/B');
+    const squareTransposed = await altTextState(page);
+    L.record(results, '14. [alt:] accords : transposition +2 en carré', pageName,
+      ['G♯m7/B', 'Cmaj7', 'D7♭9'].every((s) => squareTransposed.above.includes(s)) &&
+      !squareTransposed.all.includes('F♯m7/A') ? 'OK' : 'ÉCHEC',
+      JSON.stringify(squareTransposed));
+
+    const relevant = L.summarize(errors);
+    L.record(results, '6. Erreurs JS (accords [alt:])', pageName,
+      relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
+  } catch (e) {
+    L.record(results, '14. Accords LilyPond dans [alt:]', pageName, 'ÉCHEC',
+      'exception du test : ' + e.message);
+  }
+  await ctx.close();
+}
+
 // Deux GABC dans le même dossier, le second inconvertible : le repli doit
 // repartir en vue carrée pour tout le dossier, sans laisser le premier en
 // classique alors que notationView vaut square.
@@ -1687,6 +1824,7 @@ async function runRapid(browser, url, pageName, results) {
       await runScoretkFallback(browser, url, pageName, results);
       await runScoretkAbsent(browser, url, pageName, results);
       await runModernClef(browser, url, pageName, results);
+      await runAltChords(browser, url, pageName, results);
       await runMixedFallback(browser, url, pageName, results);
       await runRapid(browser, url, pageName, results);
     }
