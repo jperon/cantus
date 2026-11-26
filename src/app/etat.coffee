@@ -185,6 +185,11 @@ applyMovementLoaded = (movementId, mvPages, pushed, detectedMode) ->
   pageCount = movements.reduce (sum, m) ->
     sum + (m.pageCount or 0)
   , 0
+  # Une source suivante vient d'être ajoutée : le total de pages a grandi et la
+  # fenêtre rendue doit être recalculée comme après une navigation, sinon le
+  # défilement s'arrête à la fin de la première source. Le premier mouvement est
+  # déjà traité plus bas (son premier affichage).
+  refreshRenderedWindow() if movementId isnt 1 and fileLoaded
   # Update page indicator
   showIndicator()
   # Resolve pending movement load promise if any

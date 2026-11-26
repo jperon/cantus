@@ -653,6 +653,63 @@ async function runMixed(browser, url, pageName, results) {
   }
 }
 
+// Dossier de deux gabc en notation carrée : à la fin du chargement, sans
+// aucune navigation, la fenêtre rendue doit déjà couvrir la suite du dossier
+// comme après un saut. Avant correction, elle restait arrêtée aux pages du
+// premier gabc : le total augmentait mais la 2e source n'était jamais rendue.
+async function runGabcFolder(browser, url, pageName, results) {
+  const { page, ctx, errors } = await L.newPage(browser, url, {
+    pageName, viewport: { width: 500, height: 900 },
+  });
+  try {
+    await L.waitReady(page);
+    await page.setInputFiles('#file-input', [
+      { name: 'a-kyrie.gabc', mimeType: 'text/plain', buffer: fs.readFileSync(KYRIE) },
+      { name: 'b-long.gabc', mimeType: 'text/plain', buffer: fs.readFileSync(LONG) },
+    ]);
+    await L.waitFirstSvg(page, 120000);
+    await L.waitBackgroundLoaded(page, 180000);
+    const state = await page.evaluate(() => {
+      const slot = document.getElementById('page-current');
+      const totalText = document.getElementById('page-number')?.textContent || '';
+      const match = totalText.match(/\d+\s*\/\s*(\d+)/);
+      const movements = window.movements || [];
+      const pagesOf = (sourceIndex) => movements
+        .filter((m) => m.sourceIndex === sourceIndex)
+        .reduce((sum, m) => sum + (m.pageCount || 0), 0);
+      return {
+        total: match ? parseInt(match[1], 10) : 0,
+        pageSum: movements.reduce((sum, m) => sum + (m.pageCount || 0), 0),
+        firstSourcePages: pagesOf(0),
+        secondSourcePages: pagesOf(1),
+        rendered: [...slot.querySelectorAll('.scroll-page')].map((div) => ({
+          page: parseInt(div.dataset.page, 10),
+          svg: !!div.querySelector('svg'),
+          chantLines: div.querySelectorAll('svg g.chantLine').length,
+          text: [...div.querySelectorAll('svg text')].map((el) => el.textContent).join(' '),
+        })),
+      };
+    });
+    const second = state.rendered.filter((p) => p.page > state.firstSourcePages);
+    L.record(results, '14. Dossier de gabc : la 2e source est rendue dès la fin du chargement', pageName,
+      state.total === state.pageSum && state.secondSourcePages > 0 &&
+      second.length > 0 && second.some((p) => p.svg && p.chantLines > 0) &&
+      second.some((p) => /Long Kyrie/.test(p.text)) ? 'OK' : 'ÉCHEC',
+      JSON.stringify({
+        total: state.total, pageSum: state.pageSum,
+        firstSourcePages: state.firstSourcePages, secondSourcePages: state.secondSourcePages,
+        rendered: state.rendered,
+      }));
+    const relevant = L.summarize(errors);
+    L.record(results, '6. Erreurs JS (dossier gabc complet)', pageName,
+      relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
+  } catch (e) {
+    L.record(results, '14. Dossier de gabc', pageName, 'ÉCHEC',
+      'exception du test : ' + e.message);
+  }
+  await ctx.close();
+}
+
 // --- Bascule carré / classique ---------------------------------------------
 
 async function notationState(page) {
@@ -1990,6 +2047,7 @@ async function runDefaults(browser, url, pageName, results) {
       await runLarge(browser, url, pageName, results);
       await runRace(browser, url, pageName, results);
       await runMixed(browser, url, pageName, results);
+      await runGabcFolder(browser, url, pageName, results);
       await runTextSizeGabc(browser, url, pageName, results);
       await runToggle(browser, url, pageName, results);
       await runGabcPlayback(browser, url, pageName, results);
