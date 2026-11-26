@@ -12,7 +12,7 @@
 #   onEnd(cb)
 #   setMasterVolume(v)           -> 0..100
 #   setTranspose(semitones)      -> décalage des hauteurs jouées (percussions exclues)
-#   setVoiceVolume(label, v)     -> 0..100, par libellé de voix (défaut 50)
+#   setVoiceVolume(label, v)     -> 0..100, par libellé de voix (défaut 70)
 #   setVoiceMuted(label, m)      -> true : silence réel
 #   setVoiceProgram(label, p)    -> programme GM 0..127 de la voix, null = celui
 #                                   de la partition
@@ -58,9 +58,9 @@
 
 FLOOR = 0.01            # plancher du curseur de volume (≈ −40 dB)
 DEFAULT_VOLUME = 100    # volume général, en pourcentage du maximum
-# Volume d'une voix sans réglage enregistré : la moitié du maximum, pour
-# laisser de la marge au volume général (gain 0,505, ≈ −6 dB).
-DEFAULT_VOICE_VOLUME = 50
+# Volume d'une voix sans réglage enregistré : 70 % du maximum, pour laisser
+# de la marge au volume général (gain 0,703, ≈ −3 dB).
+DEFAULT_VOICE_VOLUME = 70
 SCHEDULE_INTERVAL = 25  # ms, période de l'ordonnanceur à anticipation
 SCHEDULE_WINDOW = 0.400 # s, fenêtre de notes programmées d'avance
 MAX_VOICES = 64         # plafond de sources simultanées (repli oscillateur)
@@ -93,8 +93,8 @@ volumeToGain = (volume) ->
   FLOOR + (1 - FLOOR) * (value / 100)
 
 # Gain effectif d'une voix : le plancher ne s'applique qu'au réglage de volume,
-# un masquage explicite vaut un vrai zéro. Au volume par défaut de 50 %, le
-# gain vaut 0,505 (≈ −6 dB), donc bien audible.
+# un masquage explicite vaut un vrai zéro. Au volume par défaut de 70 %, le
+# gain vaut 0,703 (≈ −3 dB), donc bien audible.
 voiceGainValue = (volume, muted) ->
   return 0 if muted
   volumeToGain volume

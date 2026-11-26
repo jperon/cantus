@@ -29,11 +29,9 @@ TRANSPOSE_MAX = 12
 
 # Réglages de voix : taille et volume d'une voix sans réglage enregistré.
 # DEFAULT_PART_VOLUME doit rester aligné sur DEFAULT_VOICE_VOLUME du moteur
-# (audio.coffee), la moitié du maximum pour laisser de la marge au volume
-# général.
-
+# (audio.coffee) : 70 % du maximum, pour laisser de la marge au volume général.
 DEFAULT_PART_SIZE = 100
-DEFAULT_PART_VOLUME = 50
+DEFAULT_PART_VOLUME = 70
 
 # Une source grégorienne (gabc, ou sa conversion en vue classique : le
 # mouvement garde alors `gabc` sans `gregorien`) lit à 120 et chante à 100 %.
@@ -221,8 +219,8 @@ applyVoiceAudio = (labels) ->
 # Réglages de voix propres à chaque fichier : voix masquées (rendu), voix
 # coupées (lecture), tailles, volumes et instruments choisis. Le champ `muted`
 # absent vaut aucune voix coupée ; `volumes` absent vaut le volume par défaut
-# (50 %) partout ; `programs` absent vaut l'instrument de la partition pour
-# toutes les voix.
+# (70 % sur un fichier ordinaire, 100 % sur une source grégorienne) ; `programs`
+# absent vaut l'instrument de la partition pour toutes les voix.
 loadPartSettings = ->
   hiddenParts = new Set()
   mutedParts = new Set()
