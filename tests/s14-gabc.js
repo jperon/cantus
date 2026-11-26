@@ -1918,8 +1918,8 @@ async function runDefaults(browser, url, pageName, results) {
     await waitTempo('80');
     const xmlTempo = await page.$eval('#tempo-input', (el) => el.value);
     const xmlRows = await L.partRows(page);
-    L.record(results, '14. MusicXML ordinaire : défauts généraux inchangés (tempo 80, volume 50)', pageName,
-      xmlTempo === '80' && xmlRows.length > 0 && xmlRows.every((r) => r.volume === '50') ? 'OK' : 'ÉCHEC',
+    L.record(results, '14. MusicXML ordinaire : défauts généraux inchangés (tempo 80, volume 70)', pageName,
+      xmlTempo === '80' && xmlRows.length > 0 && xmlRows.every((r) => r.volume === '70') ? 'OK' : 'ÉCHEC',
       `tempo ${xmlTempo}, volumes ${xmlRows.map((r) => r.volume).join('/') || 'aucun'}`);
     await L.closeSettings(page);
 

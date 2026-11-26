@@ -471,7 +471,7 @@ async function runPage(browser, url, pageName, results) {
   }
 
   // Volume par voix : gain immédiat, aucun re-rendu, persistance et volume
-  // par défaut (50 %) d'un stockage sans champ `volumes`.
+  // par défaut (70 %) d'un stockage sans champ `volumes`.
   {
     const { page, ctx: ctx4, errors: errors4 } = await L.newPage(browser, url, { pageName });
     try {
@@ -557,7 +557,7 @@ async function runPage(browser, url, pageName, results) {
       await stopPlayback(page);
       await waitState(page, 'stopped');
 
-      // Stockage sans champ `volumes` : volume de voix par défaut (50 %)
+      // Stockage sans champ `volumes` : volume de voix par défaut (70 %)
       await page.evaluate(() => {
         const key = Object.keys(localStorage).find((k) => k.startsWith('musica-hidden-parts-'));
         if (!key) return;
@@ -574,8 +574,8 @@ async function runPage(browser, url, pageName, results) {
       await page.waitForTimeout(800);
       await L.openSettings(page);
       const volumesLegacy = await partVolumeValues(page);
-      L.record(results, '6. Stockage sans `volumes` : volume par défaut à 50 %', pageName,
-        volumesLegacy.length > 0 && volumesLegacy.every((v) => v === '50') ? 'OK' : 'ÉCHEC',
+      L.record(results, '6. Stockage sans `volumes` : volume par défaut à 70 %', pageName,
+        volumesLegacy.length > 0 && volumesLegacy.every((v) => v === '70') ? 'OK' : 'ÉCHEC',
         `sélecteurs ${volumesLegacy.join('/')}`);
       await L.closeSettings(page);
     } catch (e) {

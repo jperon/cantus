@@ -129,8 +129,8 @@ async function runTelemann(browser, url, pageName, results) {
         volumesAria: volumes?.getAttribute('aria-label') || '',
       };
     });
-    const defaultsOk = !partsHidden && bulkDefaults.sizes === '100' && bulkDefaults.volumes === '50' &&
-      rows0.length >= 2 && rows0.every((r) => r.size === '100' && r.volume === '50') &&
+    const defaultsOk = !partsHidden && bulkDefaults.sizes === '100' && bulkDefaults.volumes === '70' &&
+      rows0.length >= 2 && rows0.every((r) => r.size === '100' && r.volume === '70') &&
       /Tailles à/.test(bulkDefaults.sizesLabel) && /Volumes à/.test(bulkDefaults.volumesLabel) &&
       /taille/i.test(bulkDefaults.sizesAria) && /volume/i.test(bulkDefaults.volumesAria);
     L.record(results, '3. Voix : menus « Tailles à » et « Volumes à » à la valeur commune par défaut', pageName,
@@ -161,9 +161,9 @@ async function runTelemann(browser, url, pageName, results) {
       volume80Ok ? 'OK' : 'ÉCHEC',
       `curseurs ${rowsVolume80.map((r) => r.volume).join('/')}, menu ${volumeAfter.volume}, ` +
       `SVG marqué conservé : ${volumeAfter.marker}, volumes ${JSON.stringify(volumeAfter.saved)}`);
-    await page.selectOption('#parts-volumes-reset', '50');
+    await page.selectOption('#parts-volumes-reset', '70');
     await page.waitForTimeout(400);
-    const rowsVolume50 = await L.partRows(page);
+    const rowsVolume70 = await L.partRows(page);
     const volumeReset = await page.evaluate(() => {
       const key = Object.keys(localStorage).find((k) => k.startsWith('musica-hidden-parts-'));
       return {
@@ -172,10 +172,10 @@ async function runTelemann(browser, url, pageName, results) {
         saved: key ? JSON.parse(localStorage.getItem(key))?.volumes : null,
       };
     });
-    L.record(results, '3. Menu « Volumes à » : retour à 50 %, sans re-rendu', pageName,
-      rowsVolume50.every((r) => r.volume === '50') && volumeReset.volume === '50' &&
+    L.record(results, '3. Menu « Volumes à » : retour à 70 %, sans re-rendu', pageName,
+      rowsVolume70.every((r) => r.volume === '70') && volumeReset.volume === '70' &&
         volumeReset.marker && Object.keys(volumeReset.saved || {}).length === 0 ? 'OK' : 'ÉCHEC',
-      `curseurs ${rowsVolume50.map((r) => r.volume).join('/')}, menu ${volumeReset.volume}, ` +
+      `curseurs ${rowsVolume70.map((r) => r.volume).join('/')}, menu ${volumeReset.volume}, ` +
       `SVG marqué conservé : ${volumeReset.marker}, volumes ${JSON.stringify(volumeReset.saved)}`);
 
     // Taille d'une seule voix : le menu « Tailles à » passe à « — » (valeurs
