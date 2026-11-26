@@ -21,6 +21,7 @@ const MALVEILLANT = path.join(GABC_DIR, 'malveillant.gabc');
 const KYRIE_MEI = path.join(GABC_DIR, 'kyrie.mei');
 const KYRIE_GABC_XML = path.join(GABC_DIR, 'kyrie-gabc.musicxml');
 const SANS_ENTETE = path.join(GABC_DIR, 'sans-entete.gabc');
+const NABC = path.join(GABC_DIR, 'nabc.gabc');
 const XML = path.join(__dirname, 'fixtures', 'enchainement.xml');
 const MOVEMENTS_XML = path.join(__dirname, 'fixtures', 'movements.xml');
 
@@ -434,6 +435,124 @@ async function runPage(browser, url, pageName, results) {
     L.record(results, '6. Erreurs JS (gabc)', pageName, relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
   } catch (e) {
     L.record(results, '14. Notation carrée gabc', pageName, 'ÉCHEC',
+      'exception du test : ' + e.message);
+  }
+  await ctx.close();
+}
+
+// Neumes NABC : exsurge ne les dessine qu'avec une police fournie à part,
+// évaluée seulement pour un gabc dont l'en-tête annonce nabc-lines. Vérifie
+// les glyphes (défs Nabc-…), l'absence d'erreur NABC, l'absence de chargement
+// pour un gabc ordinaire, et le changement de police.
+async function nabcState(page) {
+  return page.evaluate(() => {
+    const slot = document.getElementById('page-current');
+    const svg = slot.querySelector('.scroll-page svg');
+    const ids = svg ? [...svg.querySelectorAll('defs [id]')].map((el) => el.id) : [];
+    const uses = svg
+      ? [...svg.querySelectorAll('use')].map((el) =>
+        el.getAttribute('href') || el.getAttribute('xlink:href') || '')
+      : [];
+    return {
+      svgs: slot.querySelectorAll('.scroll-page svg').length,
+      nabcIds: ids.filter((id) => /^Nabc-/.test(id)),
+      nabcUses: uses.filter((href) => /#Nabc-/.test(href)),
+      nabcErrors: slot.querySelectorAll('.nabcError').length,
+      globals: {
+        gregall: typeof window.exsurgeNabcGregall,
+        gresgmodern: typeof window.exsurgeNabcGresgmodern,
+        grelaon: typeof window.exsurgeNabcGrelaon,
+      },
+      nabcScripts: [...document.querySelectorAll('script[src]')]
+        .map((el) => el.getAttribute('src') || '')
+        .filter((src) => /nabc-/.test(src)),
+    };
+  });
+}
+
+async function runNabc(browser, url, pageName, results) {
+  const { page, ctx, errors } = await L.newPage(browser, url, {
+    pageName, viewport: { width: 360, height: 720 },
+  });
+  try {
+    await L.waitReady(page);
+
+    // Réglage utile seulement pour le grégorien : masqué tant qu'aucun gabc
+    // n'est affiché. (Le menu ⋯ n'existe pas sans partition : ouvrir le
+    // panneau par sa fonction, comme le fait déjà le câblage.)
+    await page.evaluate(() => window.openSettings());
+    const hiddenWithoutGabc = await page.evaluate(() => {
+      const group = document.getElementById('nabc-font-group');
+      return group.classList.contains('hidden') && group.offsetParent === null;
+    });
+    await L.closeSettings(page);
+
+    // Un gabc sans nabc-lines ne doit charger aucune police NABC.
+    await importGabc(page, KYRIE);
+    const plain = await nabcState(page);
+    const noGlobal = Object.values(plain.globals).every((type) => type === 'undefined');
+    L.record(results, '14. NABC : un gabc sans nabc ne charge aucune police', pageName,
+      plain.svgs >= 1 && plain.nabcIds.length === 0 && plain.nabcUses.length === 0 &&
+      noGlobal && plain.nabcScripts.length === 0 ? 'OK' : 'ÉCHEC',
+      `SVG ${plain.svgs}, défs NABC ${plain.nabcIds.length}, globaux ${JSON.stringify(plain.globals)}, ` +
+      `scripts ${JSON.stringify(plain.nabcScripts)}`);
+
+    // gabc avec nabc-lines : les neumes Saint-Gall sont dessinés, sans ERR.
+    await importGabc(page, NABC);
+    const gregall = await nabcState(page);
+    L.record(results, '14. NABC : neumes Saint-Gall dessinés, sans élément d’erreur', pageName,
+      gregall.svgs >= 1 && gregall.nabcIds.length > 0 && gregall.nabcUses.length > 0 &&
+      gregall.nabcErrors === 0 && gregall.globals.gregall === 'object' ? 'OK' : 'ÉCHEC',
+      `SVG ${gregall.svgs}, défs ${gregall.nabcIds.length}, uses ${gregall.nabcUses.length}, ` +
+      `nabcError ${gregall.nabcErrors}, global gregall ${gregall.globals.gregall}`);
+
+    // Le réglage n'apparaît que pour le grégorien et change réellement le
+    // dessin : Saint-Gall moderne a ses propres glyphes. (Laon, autre système
+    // de neumes, n'est pas choisie pour ce gabc Saint-Gall.)
+    await L.openSettings(page);
+    const groupVisible = await page.evaluate(() => {
+      const group = document.getElementById('nabc-font-group');
+      return !group.classList.contains('hidden') && group.offsetParent !== null;
+    });
+    await page.selectOption('#nabc-font-select', 'gresgmodern');
+    await L.closeSettings(page);
+    await L.waitUntil(page, () => {
+      const ids = [...document.querySelectorAll('#page-current .scroll-page svg defs [id]')]
+        .map((el) => el.id);
+      return ids.some((id) => /^Nabc-gresgmodern-/.test(id));
+    }, { timeout: 60000, interval: 200, what: 'rendu des neumes Saint-Gall modernes' });
+    const moderne = await nabcState(page);
+    const savedFont = await page.evaluate(() => {
+      try { return JSON.parse(localStorage.getItem('musica-settings')).nabcFont; } catch (e) { return null; }
+    });
+    const moderneIds = moderne.nabcIds.some((id) => /^Nabc-gresgmodern-/.test(id));
+    const gregallIds = gregall.nabcIds.some((id) => /^Nabc-gregall-/.test(id));
+    L.record(results, '14. NABC : réglage visible et changement de police effectif', pageName,
+      hiddenWithoutGabc && groupVisible && moderneIds && gregallIds &&
+      moderne.nabcErrors === 0 && savedFont === 'gresgmodern' ? 'OK' : 'ÉCHEC',
+      `masqué sans gabc ${hiddenWithoutGabc}, visible ${groupVisible}, ` +
+      `défs Saint-Gall ${gregall.nabcIds.length}, modernes ${moderne.nabcIds.length} ` +
+      `(ids ${moderneIds}), nabcError ${moderne.nabcErrors}, enregistré ${savedFont}`);
+
+    // La vue classique n'est pas concernée par les neumes : le gabc avec
+    // NABC doit malgré tout s'y convertir sans erreur.
+    await clickToggle(page);
+    await waitNotationReady(page);
+    const classic = await notationState(page);
+    L.record(results, '14. NABC : le gabc se convertit sans erreur en vue classique', pageName,
+      classic.view === 'classic' && classic.staffs > 0 && !classic.errorVisible &&
+      !classic.errorText ? 'OK' : 'ÉCHEC',
+      `vue ${classic.view}, ${classic.staffs} portée(s), erreur ${JSON.stringify(classic.errorText)}`);
+
+    // Remettre le défaut : les scénarios suivants gardent le rendu habituel.
+    await page.evaluate(() => {
+      localStorage.removeItem('musica-settings');
+    });
+    const relevant = L.summarize(errors);
+    L.record(results, '6. Erreurs JS (neumes NABC)', pageName,
+      relevant.length ? 'ÉCHEC' : 'OK', relevant.join(' | '));
+  } catch (e) {
+    L.record(results, '14. Neumes NABC', pageName, 'ÉCHEC',
       'exception du test : ' + e.message);
   }
   await ctx.close();
@@ -2062,6 +2181,7 @@ async function runDefaults(browser, url, pageName, results) {
       await runScoretkAbsent(browser, url, pageName, results);
       await runModernClef(browser, url, pageName, results);
       await runAltChords(browser, url, pageName, results);
+      await runNabc(browser, url, pageName, results);
       await runMixedFallback(browser, url, pageName, results);
       await runRapid(browser, url, pageName, results);
     }
