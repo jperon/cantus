@@ -359,6 +359,54 @@ async function runPage(browser, url, pageName, results) {
       duringSettings.state === 'stopped' ? 'OK' : 'ÉCHEC',
       `état ${duringSettings.state}`);
 
+    // Flèches gauche/droite : ±5 s dans le mouvement courant, et à l'arrêt la
+    // vue suit la nouvelle position (aucune boucle de lecture ne tourne).
+    await page.evaluate(() => {
+      window.__arrowDefaults = [];
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+          window.__arrowDefaults.push({ key: e.key, prevented: e.defaultPrevented });
+        }
+      });
+    });
+    const arrowBefore = await page.evaluate(() => ({
+      state: window.__musicaPlaybackState(),
+      page: displayedPage(),
+    }));
+    let rightPresses = 0;
+    while (rightPresses < 20) {
+      await page.keyboard.press('ArrowRight');
+      await page.waitForTimeout(80);
+      rightPresses += 1;
+      if (await displayedPageNumber(page) > arrowBefore.page) break;
+    }
+    await page.waitForTimeout(300);
+    const arrowRight = await page.evaluate(() => ({
+      state: window.__musicaPlaybackState(),
+      page: displayedPage(),
+    }));
+    for (let i = 0; i < rightPresses; i++) {
+      await page.keyboard.press('ArrowLeft');
+      await page.waitForTimeout(80);
+    }
+    await page.waitForTimeout(300);
+    const arrowLeft = await page.evaluate(() => ({
+      state: window.__musicaPlaybackState(),
+      page: displayedPage(),
+    }));
+    const arrowDefaults = await page.evaluate(() => window.__arrowDefaults);
+    const arrowsPrevented = arrowDefaults.length === rightPresses * 2 &&
+      arrowDefaults.every((ev) => ev.prevented);
+    L.record(results, '6. Flèches gauche/droite : ±5 s, affichage qui suit à l’arrêt', pageName,
+      arrowBefore.state.state === 'stopped' && arrowBefore.state.position === 0 &&
+        arrowRight.state.position === rightPresses * 5000 &&
+        arrowRight.page > arrowBefore.page && arrowLeft.state.position === 0 &&
+        arrowLeft.page === arrowBefore.page && arrowsPrevented ? 'OK' : 'ÉCHEC',
+      `arrêt ${arrowBefore.state.position} ms p.${arrowBefore.page} → ` +
+      `${rightPresses}×droite : ${arrowRight.state.position} ms p.${arrowRight.page} → ` +
+      `${rightPresses}×gauche : ${arrowLeft.state.position} ms p.${arrowLeft.page}, ` +
+      `${arrowDefaults.length} touche(s) neutralisée(s) : ${arrowsPrevented}`);
+
     // --- Suivi du défilement, mode vertical par système ---
     await page.click('#transport-play');
     await waitState(page, 'playing');
@@ -1100,6 +1148,129 @@ async function runPage(browser, url, pageName, results) {
           firstRestart.page === 1 ? 'OK' : 'ÉCHEC',
         `mouvement ${firstRestart.state.movementId}, position ${firstRestart.state.position} ms, ` +
         `p.${firstRestart.page}`);
+
+      // (f) Clavier : Espace lecture/pause, PgDn/PgUp mouvements (PgUp suit la
+      // même règle que ⏮), et touches neutralisées hors champ de saisie.
+      await page.evaluate(() => {
+        window.__navDefaults = [];
+        document.addEventListener('keydown', (e) => {
+          if ([' ', 'PageUp', 'PageDown'].includes(e.key)) {
+            window.__navDefaults.push({ key: e.key, prevented: e.defaultPrevented });
+          }
+        });
+      });
+      const spaceBefore = await page.evaluate(() => ({
+        state: window.__musicaPlaybackState(),
+        page: displayedPage(),
+      }));
+      await page.keyboard.press('Space');
+      await waitState(page, 'playing');
+      await page.keyboard.press('Space');
+      await waitState(page, 'paused');
+      const spaceAfter = await page.evaluate(() => ({
+        state: window.__musicaPlaybackState(),
+        page: displayedPage(),
+      }));
+      L.record(results, '6. Espace : lecture puis pause', pageName,
+        spaceBefore.state.state === 'stopped' && spaceAfter.state.state === 'paused' &&
+          spaceAfter.page === spaceBefore.page ? 'OK' : 'ÉCHEC',
+        `arrêt → lecture → ${spaceAfter.state.state}, position ${spaceAfter.state.position} ms, ` +
+        `p.${spaceBefore.page} → p.${spaceAfter.page}`);
+
+      await stopPlayback(page);
+      await waitState(page, 'stopped');
+      await page.keyboard.press('PageDown');
+      await page.waitForFunction(({ id, page }) => {
+        const s = window.__musicaPlaybackState ? window.__musicaPlaybackState() : null;
+        return s && s.movementId === id && displayedPage() === page;
+      }, { id: 2, page: starts[1] }, { timeout: 8000, polling: 50 });
+      const pgDown = await page.evaluate(() => ({
+        state: window.__musicaPlaybackState(),
+        page: displayedPage(),
+      }));
+      L.record(results, '6. PgDn : mouvement suivant', pageName,
+        pgDown.state.movementId === 2 && pgDown.page === starts[1] ? 'OK' : 'ÉCHEC',
+        `mouvement ${pgDown.state.movementId}, p.${pgDown.page}, attendu mouvement 2 p.${starts[1]}`);
+
+      // Bornes du pas de 5 s : le mouvement 2 dure 4 s.
+      await page.keyboard.press('ArrowRight');
+      const boundedRight = await state(page);
+      await page.keyboard.press('ArrowLeft');
+      const boundedLeft = await state(page);
+      L.record(results, '6. Flèches : pas borné au mouvement courant', pageName,
+        boundedRight.state === 'stopped' && boundedRight.position === m2.duration &&
+          boundedLeft.position === 0 ? 'OK' : 'ÉCHEC',
+        `droite ${boundedRight.position} ms (durée ${m2.duration}), gauche ${boundedLeft.position} ms`);
+
+      await page.keyboard.press('PageUp');
+      await page.waitForFunction(({ id, page }) => {
+        const s = window.__musicaPlaybackState ? window.__musicaPlaybackState() : null;
+        return s && s.movementId === id && displayedPage() === page;
+      }, { id: 1, page: starts[0] }, { timeout: 8000, polling: 50 });
+      const pgUpAtStart = await page.evaluate(() => ({
+        state: window.__musicaPlaybackState(),
+        page: displayedPage(),
+      }));
+      L.record(results, '6. PgUp au début du mouvement : mouvement précédent', pageName,
+        pgUpAtStart.state.movementId === 1 && pgUpAtStart.page === starts[0] ? 'OK' : 'ÉCHEC',
+        `mouvement ${pgUpAtStart.state.movementId}, p.${pgUpAtStart.page}, attendu mouvement 1 p.${starts[0]}`);
+
+      await page.evaluate((p) => window.goToPage(p), starts[1]);
+      await page.waitForFunction(({ id, page }) => {
+        const s = window.__musicaPlaybackState ? window.__musicaPlaybackState() : null;
+        return s && s.movementId === id && displayedPage() === page;
+      }, { id: 2, page: starts[1] }, { timeout: 8000, polling: 50 });
+      await page.waitForTimeout(300);
+      await page.evaluate((ms) => window.seekPlayback(ms), Math.round(m2.duration * 0.75));
+      await page.waitForTimeout(200);
+      await page.keyboard.press('PageUp');
+      await page.waitForTimeout(400);
+      const pgUpMid = await page.evaluate(() => ({
+        state: window.__musicaPlaybackState(),
+        page: displayedPage(),
+      }));
+      L.record(results, '6. PgUp au milieu du mouvement : début du mouvement courant (règle de ⏮)', pageName,
+        pgUpMid.state.movementId === 2 && pgUpMid.state.position === 0 &&
+          pgUpMid.page === starts[1] ? 'OK' : 'ÉCHEC',
+        `mouvement ${pgUpMid.state.movementId}, position ${pgUpMid.state.position} ms, ` +
+        `p.${pgUpMid.page}, attendu mouvement 2 à 0 ms p.${starts[1]}`);
+
+      const navDefaults = await page.evaluate(() => window.__navDefaults);
+      L.record(results, '6. Espace/PgUp/PgDn : touches neutralisées (preventDefault)', pageName,
+        navDefaults.length >= 4 && navDefaults.every((ev) => ev.prevented) ? 'OK' : 'ÉCHEC',
+        navDefaults.map((ev) => `${ev.key === ' ' ? 'Espace' : ev.key}:${ev.prevented}`).join(' '));
+
+      // Focus dans un champ : aucune touche du transport ne doit agir.
+      await page.evaluate(() => {
+        const input = document.createElement('input');
+        input.id = '__kbd-field';
+        document.body.appendChild(input);
+        input.focus();
+      });
+      const fieldBefore = await page.evaluate(() => ({
+        state: window.__musicaPlaybackState(),
+        page: displayedPage(),
+      }));
+      await page.keyboard.press('Space');
+      await page.keyboard.press('ArrowRight');
+      await page.keyboard.press('PageDown');
+      await page.waitForTimeout(400);
+      const fieldAfter = await page.evaluate(() => ({
+        focused: document.activeElement?.id === '__kbd-field',
+        state: window.__musicaPlaybackState(),
+        page: displayedPage(),
+      }));
+      L.record(results, '6. Focus dans un champ : raccourcis du transport ignorés', pageName,
+        fieldAfter.focused && fieldBefore.state.state === 'stopped' &&
+          fieldAfter.state.state === 'stopped' &&
+          fieldAfter.state.position === fieldBefore.state.position &&
+          fieldAfter.state.movementId === fieldBefore.state.movementId &&
+          fieldAfter.page === fieldBefore.page ? 'OK' : 'ÉCHEC',
+        `focus ${fieldAfter.focused}, ${fieldBefore.state.state} mouvement ${fieldBefore.state.movementId} ` +
+        `${fieldBefore.state.position} ms p.${fieldBefore.page} → ${fieldAfter.state.state} ` +
+        `mouvement ${fieldAfter.state.movementId} ${fieldAfter.state.position} ms p.${fieldAfter.page}`);
+      await page.evaluate(() => document.getElementById('__kbd-field')?.remove());
+
       await stopPlayback(page);
       await waitState(page, 'stopped');
     } catch (e) {
