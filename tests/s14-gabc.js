@@ -22,6 +22,7 @@ const KYRIE_MEI = path.join(GABC_DIR, 'kyrie.mei');
 const KYRIE_GABC_XML = path.join(GABC_DIR, 'kyrie-gabc.musicxml');
 const SANS_ENTETE = path.join(GABC_DIR, 'sans-entete.gabc');
 const NABC = path.join(GABC_DIR, 'nabc.gabc');
+const NABC_SANS_ENTETE = path.join(GABC_DIR, 'nabc-sans-entete.gabc');
 const XML = path.join(__dirname, 'fixtures', 'enchainement.xml');
 const MOVEMENTS_XML = path.join(__dirname, 'fixtures', 'movements.xml');
 
@@ -496,6 +497,28 @@ async function runNabc(browser, url, pageName, results) {
       noGlobal && plain.nabcScripts.length === 0 ? 'OK' : 'ÉCHEC',
       `SVG ${plain.svgs}, défs NABC ${plain.nabcIds.length}, globaux ${JSON.stringify(plain.globals)}, ` +
       `scripts ${JSON.stringify(plain.nabcScripts)}`);
+
+    // Un gabc sans en-tête et sans | ne doit charger aucune police NABC.
+    await importGabc(page, SANS_ENTETE);
+    const sansNabc = await nabcState(page);
+    const sansNabcAucunGlobal = Object.values(sansNabc.globals).every((type) => type === 'undefined');
+    L.record(results, '14. NABC : un gabc sans en-tête et sans | ne charge aucune police', pageName,
+      sansNabc.svgs >= 1 && sansNabc.nabcIds.length === 0 && sansNabc.nabcUses.length === 0 &&
+      sansNabcAucunGlobal && sansNabc.nabcScripts.length === 0 ? 'OK' : 'ÉCHEC',
+      `SVG ${sansNabc.svgs}, défs NABC ${sansNabc.nabcIds.length}, globaux ${JSON.stringify(sansNabc.globals)}, ` +
+      `scripts ${JSON.stringify(sansNabc.nabcScripts)}`);
+
+    // gabc brut de GregoBase (corps seul, sans ligne %%) : les | du NABC
+    // doivent suffire à le détecter et à faire dessiner les neumes.
+    await importGabc(page, NABC_SANS_ENTETE);
+    const auto = await nabcState(page);
+    L.record(results, '14. NABC : neumes détectés dans un gabc sans en-tête', pageName,
+      auto.svgs >= 1 && auto.nabcIds.some((id) => /^Nabc-gregall-/.test(id)) &&
+      auto.nabcUses.length > 0 && auto.nabcErrors === 0 &&
+      auto.globals.gregall === 'object' ? 'OK' : 'ÉCHEC',
+      `SVG ${auto.svgs}, défs Saint-Gall ` +
+      `${auto.nabcIds.filter((id) => /^Nabc-gregall-/.test(id)).length}, ` +
+      `uses ${auto.nabcUses.length}, nabcError ${auto.nabcErrors}, global gregall ${auto.globals.gregall}`);
 
     // gabc avec nabc-lines : les neumes Saint-Gall sont dessinés, sans ERR.
     await importGabc(page, NABC);
