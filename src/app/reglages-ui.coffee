@@ -157,7 +157,10 @@ renderPartsList = ->
       continue if seen.has label
       seen.add label
       labels.push label
-  group.classList.toggle "hidden", labels.length < 2
+  group.classList.toggle "hidden", labels.length is 0
+  # Les menus « toutes les voix » n'ont de sens qu'à partir de deux voix.
+  bulk = group.querySelector ".settings-parts-bulk"
+  bulk.classList.toggle "hidden", labels.length < 2 if bulk
   list.innerHTML = ""
   sourcePrograms = partSourcePrograms()
   percussion = partPercussionLabels()
