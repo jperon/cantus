@@ -341,19 +341,9 @@ setupNavigation = ->
           when "next-mov" then goToNextMovement()
 
   # Keyboard navigation
-  document.addEventListener "keydown", (e) ->
-    return unless fileLoaded
-    return if isFormField e.target
-    # Espace activé sur un contrôle de la barre : laisser le bouton faire son
-    # action au lieu de tourner la page en plus.
-    return if e.key is " " and e.target.closest?("#command-bar, #command-menu, #page-jump")
-    switch e.key
-      when "ArrowRight", " "
-        e.preventDefault()
-        goNext()
-      when "ArrowLeft"
-        e.preventDefault()
-        goPrev()
+  # Les flèches et la barre d'espace ne tournent plus les pages : elles
+  # pilotent la lecture (voir le raccourci du transport). PgUp/PgDn changent de
+  # mouvement.
 
 # Ask the worker to convert a scoretk file (MuseScore, LilyPond, ABC, MIDI) to
 # MusicXML. `name` permet au worker de déduire `from` de l'extension.

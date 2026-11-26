@@ -472,6 +472,17 @@ seekPlayback = (ms) ->
       console.warn "Déplacement de lecture impossible : #{err?.message or err}"
   renderTransport()
 
+# Pas d'un raccourci flèche, en millisecondes, borné au mouvement chargé.
+SEEK_STEP_MS = 5000
+
+# Déplace la lecture de `deltaMs` dans le mouvement courant. À l'arrêt ou en
+# pause, la boucle de lecture ne tourne pas : amener aussi la vue sur la
+# position visée, la boucle s'en charge pendant la lecture.
+seekPlaybackBy = (deltaMs) ->
+  return unless playback.hasData
+  seekPlayback currentPlaybackPosition() + deltaMs
+  applyFollowView() unless playback.state is "playing"
+
 # Libère le moteur et oublie les données chargées (changement de mouvement,
 # rechargement, retour à la bibliothèque).
 resetPlayback = ->
@@ -912,11 +923,19 @@ setupTransport = ->
     return if isFormField e.target
     return unless $("settings-overlay").classList.contains "hidden"
     switch e.key.toLowerCase()
-      when "p"
+      when " "
         e.preventDefault()
         togglePlayPause()
-      when "s"
+      when "arrowleft", "arrowright"
         e.preventDefault()
+        step = if e.key is "ArrowLeft" then -SEEK_STEP_MS else SEEK_STEP_MS
+        seekPlaybackBy step
+      when "pageup", "pagedown"
+        e.preventDefault()
+        if e.key is "PageUp" then goToPrevMovement() else goToNextMovement()
+      when "p"
+        togglePlayPause()
+      when "s"
         stopPlayback()
 
 # Get movement and local page from global page number

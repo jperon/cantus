@@ -1020,7 +1020,10 @@ createEngine = (initialOptions = {}) ->
   api.resume = ->
     return Promise.resolve() unless state.ctx
     return Promise.resolve() if state.ctx.state isnt 'suspended'
-    state.ctx.resume()
+    # Un arrêt ou un changement de mouvement peut fermer le contexte pendant
+    # la reprise (Space puis arrêt rapide) : le rejet ne doit pas remonter en
+    # erreur JS non gérée.
+    state.ctx.resume?().catch? -> null
 
   api.load = (playbackData, options = {}) ->
     api.stop()
