@@ -166,8 +166,23 @@ async function viewBoxState(page) {
   });
 }
 
+// L'import est asynchrone : le fichier est lu puis écrit dans la bibliothèque
+// avant que loadSources ne vide #page-current. Sans repère, un SVG encore
+// affiché (le fichier précédent) ferait croire à tort que l'import est fini :
+// la mesure porterait alors sur un écran en cours de vidage. Marquer les SVG
+// présents et attendre un SVG du nouveau fichier, une fois le chargement fini.
 async function importGabc(page, file, timeout = 60000) {
+  await page.evaluate(() => {
+    for (const svg of document.querySelectorAll('#page-current .scroll-page svg')) {
+      svg.setAttribute('data-avant-import', '1');
+    }
+  });
   await page.setInputFiles('#file-input', file);
+  await L.waitUntil(page, () => {
+    if (!document.getElementById('overlay-loading').classList.contains('hidden')) return false;
+    const svgs = [...document.querySelectorAll('#page-current .scroll-page svg')];
+    return svgs.length > 0 && svgs.every((svg) => !svg.hasAttribute('data-avant-import'));
+  }, { timeout, interval: 100, what: 'affichage du fichier importé' });
   const first = await L.waitFirstSvg(page, timeout);
   await L.waitBackgroundLoaded(page, timeout);
   await page.waitForTimeout(400);
